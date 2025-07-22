@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+python-dateutil
+python-jose[cryptography]
+passlib
+python-multipart
+apscheduler
+bcrypt

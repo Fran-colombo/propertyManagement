@@ -1,0 +1,41 @@
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from models.base import Base 
+
+# Ruta absoluta al archivo de la base de datos
+DB_PATH = os.path.join(
+    "C:\\", "Users", "Francesco", "Desktop", "TUP", "propertyManager", "properties_data", "properties.db"
+)
+
+# Crear carpeta si no existe
+db_folder = os.path.dirname(DB_PATH)
+os.makedirs(db_folder, exist_ok=True)
+
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def init_db():
+    from models.property import Property, Garage, RealAgency
+    from models.person import Tenant, Owner
+    from models.contract import RentalContract
+    from models.contract_period import ContractPeriod
+    from models.index import Index
+    from models.transactions import Transaction
+
+    Base.metadata.create_all(bind=engine)
+
