@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getOwners, getTenants, deleteOwner, deleteTenant, updateOwner, updateTenant } from "../api/person";
 import { getAllAgencies, deleteAgency , updateAgency} from "../api/real_agency";
 import { Plus, Search } from "lucide-react";
-import OwnerModal from "../components/ownerModal";
+import OwnerModal from "../components/OwnerModal";
 import TenantModal from "../components/TenantModal";
 import AgencyModal from "../components/CreateAgenciesModal";
 import UpdatePersonModal from "../components/UpdatePersonModal";

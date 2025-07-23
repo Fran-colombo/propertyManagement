@@ -184,7 +184,7 @@ const handleChange = (e) => {
 
               <Form.Group className="mb-2">
                 <Form.Label>Monto base</Form.Label>
-                <Form.Control type="number" name="base_rent" value={form.base_rent} onChange={handleChange} />
+                <Form.Control type="number" name="base_rent" value={form.base_rent} onChange={handleChange} onWheel={(e) => e.target.blur()}/>
               </Form.Group>
 
               <Form.Group className="mb-2">

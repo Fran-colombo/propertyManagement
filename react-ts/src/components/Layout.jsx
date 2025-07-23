@@ -1,10 +1,10 @@
 import { Container } from "react-bootstrap";
-import Navbar from "./Navbar"; 
+import NavigationBar from "./Navbar";
 
 export default function Layout({ children }) {
   return (
     <>
-      <Navbar />
+      <NavigationBar />
       <main className="py-4">
         <Container>
           {children}

@@ -5,11 +5,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from models.base import Base 
 
 # Ruta absoluta al archivo de la base de datos
-DB_PATH = os.path.join(
-    "C:\\", "Users", "Francesco", "Desktop", "TUP", "propertyManager", "properties_data", "properties.db"
-)
+# DB_PATH = os.path.join(
+#     "C:\\", "Users", "Francesco", "Desktop", "TUP", "propertyManager", "properties_data", "properties.db"
+# )
 
-# Crear carpeta si no existe
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "properties_data", "properties.db")
+DB_PATH = os.path.abspath(DB_PATH)
+
 db_folder = os.path.dirname(DB_PATH)
 os.makedirs(db_folder, exist_ok=True)
 

@@ -13,29 +13,6 @@ import PrivateRoute from "../routes/PrivateRoute";
 import './App.css';
 
 
-// function App() {
-//   return (
-//     <AuthProvider>
-//     <Router>
-//       <Layout>
-//         <Routes>
-//           <Route path="/login" element={<Login />} />
-//           <Route path="/" element={<Dashboard />} />
-//           <Route path="/people" element={<People />} />
-//           <Route path="/properties" element={<PropertiesAndGarages />} />
-//           <Route path="/transactions" element={<Transactions />} />
-//           <Route path="/contracts" element={<ContractsTable />} />
-//           <Route path="/all-contracts" element= {< AllContracts/>}/>
-//         </Routes>
-//       </Layout>
-//     </Router>
-//     </AuthProvider>
-      
-//   );
-// }
-
-// export default App;
-
 
 
 function App() {

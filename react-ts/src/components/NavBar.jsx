@@ -1,5 +1,6 @@
 import { Navbar, Nav, Container } from "react-bootstrap";
 import { Link, useLocation } from "react-router-dom";
+import useAuth from "../../hooks/useAuth"
 import {
   House,
   People,
@@ -10,6 +11,7 @@ import {
 
 export default function NavigationBar() {
   const location = useLocation();
+  const {logout } = useAuth()
 
   const navItems = [
     { to: "/people", icon: <People className="me-2" />, label: "Personas" },
@@ -17,6 +19,7 @@ export default function NavigationBar() {
     { to: "/transactions", icon: <CashStack className="me-2" />, label: "Transacciones" },
     { to: "/contracts", icon: <FileEarmarkText className="me-2" />, label: "Contratos activos" },
     { to: "/all-contracts", icon: <FileEarmarkText className="me-2" />, label: "Historial de contratos" },
+
   ];
 
   return (
@@ -44,6 +47,15 @@ export default function NavigationBar() {
                 <span>{label}</span>
               </Nav.Link>
             ))}
+            <Nav.Link
+            as="button"
+            onClick={logout}
+            className="d-flex align-items-center px-3 rounded-pill me-2 text-danger border-0 bg-transparent"
+            style={{ cursor: "pointer" }}
+          >
+            <span className="me-2">Cerrar sesión</span>
+          </Nav.Link>
+
           </Nav>
         </Navbar.Collapse>
       </Container>
