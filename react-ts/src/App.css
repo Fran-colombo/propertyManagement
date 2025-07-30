@@ -1,29 +1,16 @@
-/* body, html {
-  margin: 0;
-  padding: 0;
-  background-color: #0b0f1a;
-  color: #d0eaff;
-  font-family: 'Segoe UI', sans-serif;
-  height: 100%;
-} */
-
-/* Fondo general de la aplicación */
 body {
-  background-color: #b3bed1;  /* Gris azulado muy claro */
+  background-color: #b3bed1;  
   min-height: 100vh;
 }
 
-/* Opción más oscura (si prefieres contraste) */
 body.dark-bg {
-  background-color: #e9ecef;  /* Gris claro estándar */
+  background-color: #e9ecef; 
 }
 
-/* Opción profesional con gradiente sutil */
 body.gradient-bg {
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
 }
 
-/* App.css */
 .btn-delete {
   color: red;
   font-weight: bold;

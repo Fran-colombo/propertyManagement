@@ -1,13 +1,8 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
 from models.base import Base 
 
-# Ruta absoluta al archivo de la base de datos
-# DB_PATH = os.path.join(
-#     "C:\\", "Users", "Francesco", "Desktop", "TUP", "propertyManager", "properties_data", "properties.db"
-# )
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "properties_data", "properties.db")
 DB_PATH = os.path.abspath(DB_PATH)

@@ -16,13 +16,7 @@ export async function getAgencyById(id) {
   return await apiFetch(`/real-agencies/${id}`);
 }
 
-// export async function updateAgency(id, agencyData){
-//   return await apiFetch(`/real-agencies/${id}`,{
-//     method: "POST",
-//     headers: { "Content-Type": "application/json" },
-//     body: JSON.stringify(agencyData),
-//   });
-// }
+
 export async function updateAgency(id, agencyData) {
   return await apiFetch(`/real-agencies/${id}`, {
     method: "PUT",  

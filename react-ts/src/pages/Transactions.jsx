@@ -1,23 +1,6 @@
 import { useEffect, useState } from "react";
-import { 
-  Card, 
-  Table, 
-  Badge, 
-  Form, 
-  InputGroup, 
-  Row, 
-  Col,
-  Container,
-  Spinner
-} from "react-bootstrap";
-import { 
-  Calendar, 
-  Cash, 
-  Search, 
-  Funnel,
-  CreditCard,
-  FileText
-} from "react-bootstrap-icons";
+import { Card, Table, Badge, Form, InputGroup, Row, Col, Container, Spinner } from "react-bootstrap";
+import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-bootstrap-icons";
 import { getAllTransactions } from "../api/transaction";
 
 

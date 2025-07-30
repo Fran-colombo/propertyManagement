@@ -1,10 +1,7 @@
-from datetime import date
-from sqlalchemy import Column, Integer, ForeignKey, Date, Float, Boolean, Enum, String, event
+from sqlalchemy import Column, Integer, ForeignKey, Date, Float, Boolean, Enum, String
 from sqlalchemy.orm import relationship
 from models.base import Base 
 from database import Base
-# from datetime import date, timedelta
-# from dateutil.relativedelta import relativedelta
 
 from models.index import IndexTypeEnum
 from schemas.enums.enums import AdjustmentFrequencyEnum, CurrencyEnum
@@ -38,8 +35,3 @@ class RentalContract(Base):
     tenant = relationship("Tenant", back_populates="rental_contract")
     garage = relationship("Garage", back_populates="rental_contract")
     periods = relationship("ContractPeriod", back_populates="contract", cascade="all, delete-orphan")
-
-    # @property
-    # def is_active(self):
-    #     today = date.today()
-    #     return self.start_date <= today <= self.end_date

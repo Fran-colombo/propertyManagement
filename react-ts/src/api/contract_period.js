@@ -1,9 +1,5 @@
 import { apiFetch } from "./clients";
 
-// export const getPeriodsByContract = async (contractId) => {
-//   return await apiFetch(`/contracts/${contractId}/periods`);
-// };
-
 export const getPendingPeriodsByContract = async (contractId) => {
   try {
     const response = await apiFetch(`/periods/contract/${contractId}/pending`);

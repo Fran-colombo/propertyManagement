@@ -1,7 +1,6 @@
 from datetime import date
 from models.transaction_history import TransactionHistory
 from models.transactions import Transaction
-from repositories.transaction_repository import TransactionRepository
 from schemas.transactionDTO import TransactionHistoryResponse, TransactionResponseDTO, SimpleUser, ContractInfo, PeriodInfo
 from sqlalchemy.orm import Session
 
@@ -61,7 +60,6 @@ class TransactionService:
         return [self._to_dto(tx) for tx in txs]
     
     def _to_dto(self, tx: Transaction) -> TransactionResponseDTO:
-    # Initialize default values
         default_contract = ContractInfo(
             id=0,
             owner=SimpleUser(id=0, name="Unknown Owner"),
@@ -73,7 +71,6 @@ class TransactionService:
             contract = tx.period.contract if hasattr(tx, 'period') and tx.period else None
             
             if contract:
-                # Try to get owner info
                 owner = SimpleUser(id=0, name="Unknown Owner")
                 if hasattr(contract, 'property') and contract.property and hasattr(contract.property, 'owner'):
                     if contract.property.owner:
@@ -82,7 +79,6 @@ class TransactionService:
                             name=contract.property.owner.name
                         )
 
-                # Try to get tenant info
                 tenant = SimpleUser(id=0, name="Unknown Tenant")
                 if hasattr(contract, 'tenant') and contract.tenant:
                     tenant = SimpleUser(
@@ -90,7 +86,6 @@ class TransactionService:
                         name=contract.tenant.name
                     )
 
-                # Try to get property direction
                 property_direction = "Unknown Property"
                 if hasattr(contract, 'property') and contract.property and hasattr(contract.property, 'direction'):
                     property_direction = contract.property.direction
@@ -104,7 +99,6 @@ class TransactionService:
             else:
                 contract_info = default_contract
 
-            # Handle period info
             period_info = PeriodInfo(
                 id=tx.period.id if hasattr(tx, 'period') and tx.period else 0,
                 start_date=tx.period.start_date if hasattr(tx, 'period') and tx.period else date.today(),
@@ -128,7 +122,6 @@ class TransactionService:
             )
 
         except Exception as e:
-            # Fallback to default values if anything goes wrong
             return TransactionResponseDTO(
                 id=tx.id,
                 amount=tx.amount,

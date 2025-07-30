@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from typing import List
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
@@ -227,14 +227,6 @@ class RentalContractService:
 
         return [ContractPeriodResponse.from_orm(p) for p in periods]
     
-    # def release_properties_from_ended_contracts(self):
-    #     today = date.today()
-    #     contracts = self.db.query(RentalContract).filter(RentalContract.end_date < today, RentalContract.status == 1).all()
-
-    #     for contract in contracts:
-    #         contract.status = 0
-
-    #     self.db.commit()
 
     def release_properties_from_ended_contracts(self):
         today = date.today()
@@ -261,37 +253,6 @@ class RentalContractService:
                 contract.status = 0
 
         self.db.commit()
-
-
-    # def cancel_contract(self, contract_id: int):
-    #     today = date.today()
-    #     contract = self.get_contract(contract_id)
-
-    #     if contract.status == 0:
-    #         raise HTTPException(status_code=400, detail="El contrato ya está cancelado")
-
-    #     try:
-    #         # 1. Cancelar contrato
-    #         contract.status = 0
-
-    #         # 2. Marcar los períodos a futuro como CONTRATO_TERMINADO
-    #         future_periods = self.db.query(ContractPeriod)\
-    #             .filter(
-    #                 ContractPeriod.contract_id == contract_id,
-    #                 ContractPeriod.start_date > today,
-    #                 ContractPeriod.payment_status != PaymentStatusEnum.PAGADO
-    #             )\
-    #             .all()
-
-    #         for period in future_periods:
-    #             period.payment_status = PaymentStatusEnum.CONTRATO_TERMINADO
-
-    #         self.db.commit()
-
-    #     except Exception as e:
-    #         self.db.rollback()
-    #         raise HTTPException(status_code=500, detail=f"Error al cancelar el contrato: {str(e)}")
-
 
 
     def cancel_contract(self, contract_id: int):

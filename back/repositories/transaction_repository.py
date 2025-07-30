@@ -17,7 +17,6 @@ class TransactionRepository:
         transaction = Transaction(**data.dict())
         self.db.add(transaction)
 
-        # Actualizar período
         period = self.db.query(ContractPeriod).filter(ContractPeriod.id == data.period_id).first()
         if period:
             nuevo_monto_pagado = period.amount_paid + data.amount

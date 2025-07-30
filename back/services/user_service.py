@@ -2,8 +2,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from jose import jwt
 from passlib.context import CryptContext
-from fastapi import HTTPException, status
-
+from fastapi import HTTPException
 from models.user_model import RoleEnum, User
 from repositories import user_repository as user_repo
 from schemas.user_schemas import CreateUser

@@ -1,24 +1,3 @@
-// import { apiFetch } from "./clients";
-
-// export async function createContract(contractData) {
-//   return await apiFetch("/contracts", {
-//     method: "POST",
-//     headers: {
-//       "Content-Type": "application/json",
-//     },
-//     body: JSON.stringify(contractData),
-//   });
-// }
-
-// export async function getContractById(contractId) {
-//   return await apiFetch(`/contracts/${contractId}`);
-// }
-
-// export async function getContractsAdjustingNextMonth() {
-//   return await apiFetch("/contracts/adjust-next-month");
-// }
-
-
 import { apiFetch } from "./clients";
 
 
@@ -55,7 +34,6 @@ export const cancelContract = async (contractId) => {
 
     if (response.ok) {
       alert("Contrato cancelado correctamente");
-      // Recargar lista de contratos
       await getContracts(); 
     } else {
       const errorData = await response.json();

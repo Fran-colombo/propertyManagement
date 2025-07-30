@@ -1,22 +1,7 @@
 
 import { useEffect, useState } from "react";
-import { 
-  Button, 
-  Spinner, 
-  Table, 
-  Alert, 
-  ToggleButton, 
-  ToggleButtonGroup,
-  Form,
-  Tab,
-  Tabs
-} from "react-bootstrap";
-import { 
-  getAllPendingPeriods,
-  registerPayment,
-  updateTaxes,
-  getCurrentPendingPeriods
-} from "../api/contract_period";
+import { Button, Spinner, Table, Alert, ToggleButton, ToggleButtonGroup, Form, Tab, Tabs } from "react-bootstrap";
+import { getAllPendingPeriods, registerPayment, updateTaxes, getCurrentPendingPeriods} from "../api/contract_period";
 import PayPeriodModal from "../components/PayPeriodModal";
 import EditTaxesModal from "../components/EditTaxesModal";
 import CreateContractModal from "../components/CreateContractModal";
@@ -244,8 +229,6 @@ const ContractsTable = () => {
           </Button>
         </div>
       </div>
-
-      {/* Filtros */}
       <div className="mb-3">
         <Form.Group controlId="tenantFilter" className="w-25">
           <Form.Label>Filtrar por inquilino:</Form.Label>
@@ -262,8 +245,6 @@ const ContractsTable = () => {
           </Form.Select>
         </Form.Group>
       </div>
-
-      {/* Tabs para alternar entre vistas */}
       <Tabs defaultActiveKey="all" className="mb-3">
         <Tab eventKey="all" title="Todos">
           {displayedPeriods.length > 0 ? (

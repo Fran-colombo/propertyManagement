@@ -10,8 +10,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 init_db()
 
-# Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
 scheduler = BackgroundScheduler() 
 

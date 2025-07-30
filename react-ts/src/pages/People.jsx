@@ -48,9 +48,7 @@ const PeopleAndAgencies = () => {
     }
     
     if (response.message) {
-      // Recargar los datos después de eliminar
       fetchData();
-      // Mostrar notificación de éxito
       alert(response.message);
     }
   } catch (error) {
@@ -144,7 +142,6 @@ return (
       </div>
       
       <div className="card-body">
-        {/* Pestañas */}
         <ul className="nav nav-tabs mb-4">
           <li className="nav-item">
             <button 
@@ -171,8 +168,6 @@ return (
             </button>
           </li>
         </ul>
-
-        {/* Barra de búsqueda y botón */}
         <div className="d-flex justify-content-between mb-4">
           <div className="input-group" style={{width: "300px"}}>
             <span className="input-group-text bg-white">
@@ -195,8 +190,6 @@ return (
             Agregar {activeTab === "owners" ? "Propietario" : activeTab === "tenants" ? "Inquilino" : "Agencia"}
           </button>
         </div>
-
-        {/* Lista de personas */}
         <div className="list-group">
           {filteredList.map((item) => (
             <div key={item.id} className="list-group-item p-4 border-0 shadow-sm mb-3 rounded">
@@ -247,7 +240,6 @@ return (
       </div>
     </div>
 
-    {/* Modales (se mantienen igual) */}
     {showModal && activeTab === "owners" && (
       <OwnerModal onClose={() => setShowModal(false)} onSave={handlePersonSaved} />
     )}

@@ -53,7 +53,6 @@ class ContractResponse(BaseModel):
 
     @classmethod
     def from_orm(cls, db_contract):
-        # Extraer los valores del modelo SQLAlchemy
         contract_dict = {
             "id": db_contract.id,
             "property_id": db_contract.property_id,

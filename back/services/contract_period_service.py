@@ -3,7 +3,6 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import case, or_, and_
-from models.property import RealAgency
 from models.contract_period import ContractPeriod
 from schemas.contract_periodDTO import ContractPeriodResponse
 from schemas.enums.enums import PaymentStatusEnum
@@ -19,8 +18,6 @@ class ContractPeriodService:
 
         try:
             contract_start = self.db.query(RentalContract).filter(RentalContract.id == contract_id).first().start_date
-
-            # Rango del mes actual del contrato (no del calendario)
             first_day_of_contract_month = date(today.year, today.month, contract_start.day)
             last_day_of_contract_month = first_day_of_contract_month + relativedelta(months=1) - relativedelta(days=1)
 

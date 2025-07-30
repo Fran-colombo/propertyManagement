@@ -26,8 +26,6 @@ class RentalContractSimpleResponse(BaseModel):
     id: int
     tenant: TenantSimpleResponse
 
-# class UpdatePropertyDTO(BaseModel):
-
 
 class GarageResponse(BaseModel):
     id: int

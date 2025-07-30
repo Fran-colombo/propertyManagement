@@ -14,7 +14,6 @@ const PropertiesAndGarages = () => {
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateGarageModal, setShowCreateGarageModal] = useState(false);
-  // const [deleteId, setDeleteId] = useState(null);
 
 
   const findCurrentPeriod = (periods) => {
@@ -78,7 +77,6 @@ const PropertiesAndGarages = () => {
   }, []);
 
   const handleDeleteProperty = async (propertyId) => {
-    // setDeleteId(propertyId)
   try {
     const response = await deleteProperty(propertyId);
     if (response.message) {
@@ -89,11 +87,7 @@ const PropertiesAndGarages = () => {
     console.error("Error deleting property:", error);
     alert(`Error al eliminar propiedad: ${error.message}`);
   }
-  //  finally{
-  //   setDeleteId(null)
-  //   }
 };
-  // Componente para mostrar una propiedad
   const PropertyCard = ({ prop }) => (
     <Card className="mb-3 h-100">
       <Card.Body>
@@ -101,7 +95,7 @@ const PropertiesAndGarages = () => {
         <Card.Subtitle className="mb-2 text-muted">
           Dueño: {prop.owner?.name || 'Sin dueño'} 
         </Card.Subtitle>
-                     <Button 
+          <Button 
           variant="outline-danger" 
           size="sm"
           onClick={() => {
@@ -173,7 +167,6 @@ const PropertiesAndGarages = () => {
     </Card>
   );
 
-  // Componente para mostrar un garage
   const GarageCard = ({ garage }) => (
     <Card className="mb-3 h-100">
       <Card.Body className="d-flex flex-column">
@@ -225,8 +218,6 @@ const PropertiesAndGarages = () => {
           ))}
         </Row>
       </section>
-
-      {/* Modal para mostrar los períodos */}
       <Modal 
         show={showPeriodsModal} 
         onHide={() => setShowPeriodsModal(false)}

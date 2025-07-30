@@ -1,28 +1,5 @@
-# from typing import Optional
-# from pydantic import BaseModel
-
-
-# class CreateTenantDTO(BaseModel):
-#     name: str
-#     phone: str
-#     email: str
-
-# class UpdateTenantDTO(BaseModel):
-#     name: Optional[str]
-#     phone: Optional[str]
-#     email: Optional[str]
-
-
-# class TenantResponse(CreateTenantDTO):
-#     id: int
-
-#     class Config:
-#         orm_mode = True
-
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel
-from schemas.propertyDTO import PropertySimpleResponse
-from schemas.garageDTO import GarageRead
 
 class CreateTenantDTO(BaseModel):
     name: str
@@ -41,4 +18,4 @@ class TenantResponse(CreateTenantDTO):
 
 
     class Config:
-        from_attributes = True  # Equivalente a orm_mode = True en Pydantic v2
+        from_attributes = True  

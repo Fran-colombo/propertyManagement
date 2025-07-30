@@ -53,7 +53,7 @@ const UpdateIndexModal = ({ show, onHide }) => {
         value: parseFloat(newValue) 
       });
       
-      onHide(); // Cerrar el modal
+      onHide(); 
     } catch (err) {
       console.error("Error updating index:", err);
       setError("Error al actualizar el índice");

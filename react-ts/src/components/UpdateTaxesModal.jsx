@@ -13,7 +13,6 @@ const UpdateTaxesModal = ({ period, onClose, onUpdate }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    // Simular actualización
     setTimeout(() => {
       onUpdate()
     }, 1000)

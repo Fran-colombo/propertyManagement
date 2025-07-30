@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../api/auth';
 import useAuth from "../../hooks/useAuth";
-// import logoConkreto from '../assets/logo-conkreto.png';
 
 function LoginPage() {
   const [formData, setFormData] = useState({
@@ -51,8 +50,7 @@ function LoginPage() {
     >
       <div className="bg-white rounded shadow-lg p-4" style={{ maxWidth: 420, width: '100%' }}>
         <div className="text-center mb-4">
-          {/* <img src={logoConkreto} alt="Logo Conkreto" style={{ maxWidth: 200 }} />  */}
-          <h4 className="mt-3 fw-bold">Gestor de Inventario</h4>
+          <h4 className="mt-3 fw-bold">Gestor de Propiedades</h4>
           <p className="text-muted">Conkreto Construcciones STL</p>
         </div>
 
