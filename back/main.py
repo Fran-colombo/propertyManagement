@@ -57,14 +57,19 @@ app.include_router(contract_history_controller.router)
 def startup_event():
     init_scheduler()
     db = SessionLocal()
-    service = RentalContractService(db)
+    try:
+        from services import user_service
+        user_service.ensure_admin_from_env(db)
 
-    scheduler.add_job(
-        service.release_properties_from_ended_contracts,
-        'interval',
-        hours=24
-    )
-    scheduler.start()
+        service = RentalContractService(db)
+        scheduler.add_job(
+            service.release_properties_from_ended_contracts,
+            'interval',
+            hours=24
+        )
+        scheduler.start()
+    finally:
+        db.close()
 
 @app.on_event("shutdown")
 def shutdown_event():

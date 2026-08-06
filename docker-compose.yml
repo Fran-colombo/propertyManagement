@@ -19,6 +19,10 @@ services:
       - PYTHONUNBUFFERED=1
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080,http://69.197.176.243:8080,http://69.197.176.243:10046}
+      - ADMIN_USER_EMAIL=${ADMIN_USER_EMAIL:-}
+      - ADMIN_USER_PASSWORD=${ADMIN_USER_PASSWORD:-}
+      - ADMIN_USER_NAME=${ADMIN_USER_NAME:-Admin}
+      - ADMIN_USER_SURNAME=${ADMIN_USER_SURNAME:-Conkreto}
     # Solo red Docker interna; el acceso público es vía nginx en 8080
     expose:
       - "8000"

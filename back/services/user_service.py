@@ -62,3 +62,34 @@ def get_user_name(db: Session, user_id: int):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return f"{user.name} {user.surname}"
+
+
+def ensure_admin_from_env(db: Session) -> None:
+    """Create admin user from ADMIN_USER_* env vars if missing."""
+    email = os.getenv("ADMIN_USER_EMAIL", "").strip()
+    password = os.getenv("ADMIN_USER_PASSWORD", "").strip()
+    if not email or not password:
+        return
+
+    existing = user_repo.get_by_email(db, email)
+    if existing:
+        if existing.status != 1:
+            existing.status = 1
+            existing.password = bcrypt_context.hash(password)
+            existing.role = RoleEnum.admin
+            db.commit()
+            print(f"[seed] Reactivated admin user: {email}")
+        return
+
+    name = os.getenv("ADMIN_USER_NAME", "Admin").strip() or "Admin"
+    surname = os.getenv("ADMIN_USER_SURNAME", "Conkreto").strip() or "Conkreto"
+    admin = User(
+        name=name.capitalize(),
+        surname=surname.capitalize(),
+        email=email,
+        password=bcrypt_context.hash(password),
+        role=RoleEnum.admin,
+        status=1,
+    )
+    user_repo.create(db, admin)
+    print(f"[seed] Created admin user: {email}")
