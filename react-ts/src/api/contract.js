@@ -20,6 +20,13 @@ export const createContract = async (contractData) => {
   });
 };
 
+export const applyContractIndex = async (contractId, value) => {
+  return await apiFetch(`/contracts/${contractId}/apply-index`, {
+    method: 'POST',
+    body: JSON.stringify({ value }),
+  });
+};
+
 export const getContracts = async() => {
   return await apiFetch("/contracts/");
 }
@@ -28,25 +35,17 @@ export const cancelContract = async (contractId) => {
   if (!window.confirm("¿Estás seguro que querés cancelar este contrato?")) return;
 
   try {
-    const response = await fetch(`http://localhost:8000/contracts/${contractId}/cancel`, {
+    await apiFetch(`/contracts/${contractId}/cancel`, {
       method: "DELETE",
     });
-
-    if (response.ok) {
-      alert("Contrato cancelado correctamente");
-      await getContracts(); 
-    } else {
-      const errorData = await response.json();
-      alert("Error al cancelar contrato: " + errorData.detail);
-    }
+    alert("Contrato cancelado correctamente");
+    await getContracts();
   } catch (err) {
     console.error(err);
-    alert("Error inesperado al cancelar contrato");
+    alert(err.message || "Error inesperado al cancelar contrato");
   }
 };
 
 export const getContractHistory = async () => {
   return await apiFetch("/contracts-history/")
 }
-
-

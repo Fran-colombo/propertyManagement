@@ -1,111 +1,77 @@
 import { useState, useEffect } from "react";
 import { Modal, Form, Button, Spinner, Alert } from "react-bootstrap";
-import { getIndexes, updateIndex } from "../api/index";
+import { applyContractIndex } from "../api/contract";
 
-const UpdateIndexModal = ({ show, onHide }) => {
-  const [indexes, setIndexes] = useState([]);
-  const [loading, setLoading] = useState(true);
+const UpdateIndexModal = ({ show, onHide, contract, onUpdate }) => {
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(null);
   const [newValue, setNewValue] = useState("");
 
   useEffect(() => {
     if (show) {
-      loadIndexes();
-    }
-  }, [show]);
-
-  const loadIndexes = async () => {
-    try {
-      setLoading(true);
       setError(null);
-      const data = await getIndexes();
-      setIndexes(data);
-      if (data.length > 0) {
-        setSelectedIndex(data[0].type);
-        setNewValue(data[0].value.toString());
-      }
-    } catch (err) {
-      console.error("Error loading indexes:", err);
-      setError("Error al cargar los índices");
-    } finally {
-      setLoading(false);
+      setNewValue("");
+      setUpdating(false);
     }
-  };
-
-  const handleIndexChange = (e) => {
-    const type = e.target.value;
-    setSelectedIndex(type);
-    const index = indexes.find(i => i.type === type);
-    setNewValue(index.value.toString());
-  };
+  }, [show, contract?.id]);
 
   const handleSubmit = async () => {
-    if (!selectedIndex || !newValue) return;
-    
+    if (!contract?.id || newValue === "") return;
+
     try {
       setUpdating(true);
       setError(null);
-      
-      await updateIndex({ 
-        type: selectedIndex, 
-        value: parseFloat(newValue) 
-      });
-      
-      onHide(); 
+
+      await applyContractIndex(contract.id, parseFloat(newValue));
+
+      if (onUpdate) onUpdate();
+      onHide();
     } catch (err) {
-      console.error("Error updating index:", err);
-      setError("Error al actualizar el índice");
+      console.error("Error applying index:", err);
+      setError(err.message || "Error al aplicar el índice a este contrato");
     } finally {
       setUpdating(false);
     }
   };
 
+  const propertyLabel = contract?.property?.direction || "Contrato";
+  const tenantLabel = contract?.tenant?.name || "";
+  const indexLabel = contract?.index_type || "IPC/ICL";
+  const freqLabel = contract?.frequency_adjustment || "";
+
   return (
     <Modal show={show} onHide={onHide} centered>
       <Modal.Header closeButton>
-        <Modal.Title>Actualizar Índice</Modal.Title>
+        <Modal.Title>Aplicar índice</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         {error && <Alert variant="danger">{error}</Alert>}
-        
-        {loading ? (
-          <div className="text-center">
-            <Spinner animation="border" />
-            <p>Cargando índices...</p>
-          </div>
+
+        {!contract?.id ? (
+          <Alert variant="warning">Seleccioná un contrato para aplicar el índice.</Alert>
         ) : (
           <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Seleccione el índice</Form.Label>
-              <Form.Select 
-                value={selectedIndex || ""}
-                onChange={handleIndexChange}
-                disabled={updating}
-              >
-                {indexes.map(index => (
-                  <option key={index.type} value={index.type}>
-                    {index.type.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
+            <p className="mb-2">
+              <strong>{propertyLabel}</strong>
+              {tenantLabel ? ` — ${tenantLabel}` : ""}
+            </p>
+            <p className="text-muted small mb-3">
+              Índice: {indexLabel}
+              {freqLabel ? ` · Ajuste ${freqLabel.toLowerCase()}` : ""}
+              <br />
+              Solo actualiza este contrato desde el próximo período de ajuste pendiente. No modifica períodos anteriores ni otros contratos.
+            </p>
 
             <Form.Group className="mb-3">
-              <Form.Label>Nuevo valor</Form.Label>
+              <Form.Label>Porcentaje de variación (%)</Form.Label>
               <Form.Control
                 type="number"
                 step="0.01"
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
                 disabled={updating}
+                placeholder="Ej: 12.5"
               />
-              {selectedIndex && (
-                <Form.Text className="text-muted">
-                  Valor actual: {indexes.find(i => i.type === selectedIndex)?.value}
-                </Form.Text>
-              )}
             </Form.Group>
           </Form>
         )}
@@ -114,16 +80,18 @@ const UpdateIndexModal = ({ show, onHide }) => {
         <Button variant="secondary" onClick={onHide} disabled={updating}>
           Cancelar
         </Button>
-        <Button 
-          variant="primary" 
+        <Button
+          variant="primary"
           onClick={handleSubmit}
-          disabled={updating || !selectedIndex || !newValue}
+          disabled={updating || !contract?.id || newValue === ""}
         >
           {updating ? (
             <>
-              <Spinner as="span" animation="border" size="sm" /> Actualizando...
+              <Spinner as="span" animation="border" size="sm" /> Aplicando...
             </>
-          ) : 'Actualizar'}
+          ) : (
+            "Aplicar"
+          )}
         </Button>
       </Modal.Footer>
     </Modal>

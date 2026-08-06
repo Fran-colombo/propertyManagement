@@ -1,7 +1,7 @@
 import { apiFetch } from "./clients";
 
 export async function createAgency(data) {
-  return await apiFetch("/real-agencies", {
+  return await apiFetch("/real-agencies/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -9,7 +9,7 @@ export async function createAgency(data) {
 }
 
 export async function getAllAgencies() {
-  return await apiFetch("/real-agencies");
+  return await apiFetch("/real-agencies/");
 }
 
 export async function getAgencyById(id) {

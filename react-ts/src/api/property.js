@@ -5,7 +5,7 @@ export async function getProperties() {
 }
 
 export async function createProperty(propertyData) {
-  return await apiFetch("/properties", {
+  return await apiFetch("/properties/", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

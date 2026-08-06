@@ -2,7 +2,7 @@ import calendar
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import case, or_, and_
+from sqlalchemy import or_, and_
 from models.contract_period import ContractPeriod
 from schemas.contract_periodDTO import ContractPeriodResponse
 from schemas.enums.enums import PaymentStatusEnum
@@ -86,15 +86,27 @@ class ContractPeriodService:
                 joinedload(ContractPeriod.contract)
                 .joinedload(RentalContract.real_agency)
             )
-            .filter(ContractPeriod.payment_status != "PAGADO", ContractPeriod.payment_status != "CONTRATO_TERMINADO")
+            .filter(
+                ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
+                ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
+            )
+            .order_by(
+                ContractPeriod.due_date.asc(),
+                ContractPeriod.contract_id,
+            )
             .all()
         )
 
     def get_all_relevant_periods(self) -> List[ContractPeriod]:
+        """Periods overlapping the current calendar month only (no blanket overdue dump)."""
         today = date.today()
         first_day_of_month = date(today.year, today.month, 1)
-        last_day_of_month = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
-        
+        last_day_of_month = date(
+            today.year,
+            today.month,
+            calendar.monthrange(today.year, today.month)[1],
+        )
+
         return (
             self.db.query(ContractPeriod)
             .options(
@@ -107,25 +119,43 @@ class ContractPeriodService:
                 .joinedload(RentalContract.real_agency)
             )
             .filter(
-                or_(
-                    and_(
-                        ContractPeriod.start_date <= last_day_of_month,
-                        ContractPeriod.end_date >= first_day_of_month
-                    ),
-                    and_(
-                        ContractPeriod.due_date < today,
-                        ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
-                        ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO
-                    )
-                )
+                ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
+                ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
+                ContractPeriod.start_date <= last_day_of_month,
+                ContractPeriod.end_date >= first_day_of_month,
             )
             .order_by(
-                case(
-                    (ContractPeriod.due_date < today, 0),
-                    else_=1
-                ),
+                ContractPeriod.due_date.asc(),
                 ContractPeriod.contract_id,
-                ContractPeriod.due_date
+            )
+            .all()
+        )
+
+    def get_periods_for_month(self, year: int, month: int) -> List[ContractPeriod]:
+        """Unpaid periods that overlap the given year/month."""
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+        return (
+            self.db.query(ContractPeriod)
+            .options(
+                joinedload(ContractPeriod.contract),
+                joinedload(ContractPeriod.contract)
+                .joinedload(RentalContract.tenant),
+                joinedload(ContractPeriod.contract)
+                .joinedload(RentalContract.property),
+                joinedload(ContractPeriod.contract)
+                .joinedload(RentalContract.real_agency)
+            )
+            .filter(
+                ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
+                ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
+                ContractPeriod.start_date <= last_day,
+                ContractPeriod.end_date >= first_day,
+            )
+            .order_by(
+                ContractPeriod.due_date.asc(),
+                ContractPeriod.contract_id,
             )
             .all()
         )

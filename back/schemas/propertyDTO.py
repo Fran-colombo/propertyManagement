@@ -75,8 +75,8 @@ class PropertyResponse(BaseModel):
     direction: str
     floor: Optional[str] = None
     apartment: Optional[str] = None
-    owner: OwnerSimpleResponse
-    rental_contract: Optional[RentalContractWithPeriodsResponse] = None  # ← CAMBIO
+    owner: Optional[OwnerSimpleResponse] = None
+    rental_contract: Optional[RentalContractWithPeriodsResponse] = None
     garages: List[GarageResponse] = []
 
     class Config:

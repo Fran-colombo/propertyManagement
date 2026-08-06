@@ -4,14 +4,29 @@ import { createTenant } from "../api/person"
 
 export default function TenantModal({ onClose, onSave }) {
   const [formData, setFormData] = useState({ name: "", phone: "", email: "" })
+  const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
   const handleSubmit = async () => {
-    await createTenant(formData)
-    onSave()
+    if (!formData.name || !formData.phone || !formData.email) {
+      setError("Completá todos los campos")
+      return
+    }
+    try {
+      setSaving(true)
+      setError("")
+      await createTenant(formData)
+      onSave()
+    } catch (e) {
+      console.error(e)
+      setError(e.message || "Error al crear el inquilino")
+    } finally {
+      setSaving(false)
+    }
   }
 
 return (
@@ -29,6 +44,7 @@ return (
         </div>
         
         <div className="modal-body p-4">
+          {error && <div className="alert alert-danger">{error}</div>}
           <div className="mb-3">
             <label htmlFor="tenantName" className="form-label">Nombre completo</label>
             <input 
@@ -68,14 +84,16 @@ return (
           <button 
             className="btn btn-outline-secondary px-4" 
             onClick={onClose}
+            disabled={saving}
           >
             Cancelar
           </button>
           <button 
             className="btn btn-primary px-4" 
             onClick={handleSubmit}
+            disabled={saving}
           >
-            Guardar Inquilino
+            {saving ? "Guardando..." : "Guardar Inquilino"}
           </button>
         </div>
       </div>

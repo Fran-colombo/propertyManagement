@@ -48,6 +48,10 @@ export const getCurrentPendingPeriods = async () => {
   return await apiFetch("/periods/current-pending");
 };
 
+export const getPeriodsByMonth = async (year, month) => {
+  return await apiFetch(`/periods/by-month?year=${year}&month=${month}`);
+};
+
 export const getPeriodsByContract = async (contractId) => {
   return await apiFetch(`/periods/contract/${contractId}/`);
 };

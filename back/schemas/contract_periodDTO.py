@@ -19,8 +19,13 @@ class AgencySimpleResponse(BaseModel):
 class RentalContractSimpleResponse(BaseModel):
     id: int
     property: Optional[PropertySimpleResponse] = None
-    tenant: TenantResponse
-    real_agency: Optional[AgencySimpleResponse]
+    tenant: Optional[TenantResponse] = None
+    real_agency: Optional[AgencySimpleResponse] = None
+    currency: Optional[str] = None
+    index_type: Optional[str] = None
+    frequency_adjustment: Optional[str] = None
+    start_date: Optional[date] = None
+    base_rent: Optional[float] = None
 
 class PeriodTaxesResponse(BaseModel):
     epe: Optional[float] = None
@@ -88,7 +93,12 @@ class ContractPeriodResponse(BaseModel):
                 'id': contract_obj.id,
                 'property': property_dict,
                 'tenant': tenant_dict,
-                'real_agency': agency_dict
+                'real_agency': agency_dict,
+                'currency': getattr(contract_obj.currency, 'value', contract_obj.currency) if contract_obj.currency else None,
+                'index_type': getattr(contract_obj.index_type, 'value', contract_obj.index_type) if contract_obj.index_type else None,
+                'frequency_adjustment': getattr(contract_obj.frequency_adjustment, 'value', contract_obj.frequency_adjustment) if contract_obj.frequency_adjustment else None,
+                'start_date': contract_obj.start_date,
+                'base_rent': contract_obj.base_rent,
             }
 
         period_dict['contract'] = contract_dict

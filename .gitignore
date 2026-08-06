@@ -1,0 +1,14 @@
+# Secrets / local env
+.env
+.env.local
+.env.production
+
+# Data (keep on server; don't overwrite casually from git)
+# properties_data/*.db
+
+# Python / Node
+**/__pycache__/
+**/.venv/
+**/venv/
+**/node_modules/
+**/dist/

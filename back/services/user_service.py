@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import os
 from sqlalchemy.orm import Session
 from jose import jwt
 from passlib.context import CryptContext
@@ -9,7 +10,7 @@ from schemas.user_schemas import CreateUser
 
 
 
-SECRET_KEY = "sinalientoputotetradescendidoporput0ycagon"
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-insecure-secret-change-me")
 ALGORITHM = "HS256"
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

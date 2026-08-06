@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class CreateTenantDTO(BaseModel):
     name: str
@@ -14,8 +14,5 @@ class UpdateTenantDTO(BaseModel):
 
 
 class TenantResponse(CreateTenantDTO):
+    model_config = ConfigDict(from_attributes=True)
     id: int
-
-
-    class Config:
-        from_attributes = True  

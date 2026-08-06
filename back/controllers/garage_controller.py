@@ -7,7 +7,7 @@ from typing import List
 
 router = APIRouter(prefix="/garages", tags=["Garages"])
 
-@router.post("/", response_model=GarageRead)
+@router.post("/", response_model=GarageRead, status_code=201)
 def create_garage(garage: GarageCreate, db: Session = Depends(get_db)):
     return garage_service.create_garage(db, garage)
 

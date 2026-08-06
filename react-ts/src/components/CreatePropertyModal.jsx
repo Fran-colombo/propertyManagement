@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Modal, Button, Form, Spinner } from "react-bootstrap";
+import { Modal, Button, Form, Spinner, Alert } from "react-bootstrap";
 import { createProperty } from "../api/property";
 import { getOwners } from "../api/person";
+
 export default function CreatePropertyModal({ show, onHide, onCreated }) {
   const [form, setForm] = useState({
     direction: "",
@@ -20,12 +21,14 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
 
   const loadData = async () => {
     setLoading(true);
+    setError("");
     try {
-      const [o ] = await Promise.all([getOwners()]);
+      const o = await getOwners();
       setOwners(o || []);
     } catch (e) {
       console.error(e);
-      setError("Error cargando datos");
+      setError("Error cargando dueños. Podés reintentar o crear un propietario en Personas.");
+      setOwners([]);
     } finally {
       setLoading(false);
     }
@@ -48,11 +51,15 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
     }
 
     try {
-      await createProperty(form);
+      setError("");
+      await createProperty({
+        ...form,
+        owner_id: parseInt(form.owner_id, 10),
+      });
       onCreated();
       onHide();
     } catch (e) {
-      setError("Error al crear la propiedad");
+      setError(e.message || "Error al crear la propiedad");
       console.error(e);
     }
   };
@@ -68,7 +75,13 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
             <Spinner animation="border" />
           ) : (
             <>
-              {error && <div className="alert alert-danger">{error}</div>}
+              {error && <Alert variant="danger">{error}</Alert>}
+
+              {!error && owners.length === 0 && (
+                <Alert variant="info">
+                  No hay propietarios todavía. Creá uno en Personas antes de agregar una propiedad.
+                </Alert>
+              )}
 
               <Form.Group className="mb-2">
                 <Form.Label>Dirección *</Form.Label>
@@ -106,6 +119,7 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
                   name="owner_id"
                   value={form.owner_id}
                   onChange={handleChange}
+                  disabled={owners.length === 0}
                 >
                   <option value="">Seleccione dueño</option>
                   {owners.map((o) => (
@@ -115,8 +129,6 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
                   ))}
                 </Form.Select>
               </Form.Group>
-
-
             </>
           )}
         </Modal.Body>
@@ -124,7 +136,7 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
           <Button variant="secondary" onClick={onHide}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" disabled={!isValid()}>
+          <Button type="submit" variant="primary" disabled={!isValid() || loading}>
             Guardar
           </Button>
         </Modal.Footer>

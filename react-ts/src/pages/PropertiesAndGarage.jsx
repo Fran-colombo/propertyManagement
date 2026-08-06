@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Spinner, Row, Col, Container, Badge, Button, Modal, Table } from "react-bootstrap";
+import { Card, Spinner, Row, Col, Container, Badge, Button, Modal, Table, Alert } from "react-bootstrap";
 import { apiFetch } from "../api/clients";
 import { deleteProperty } from "../api/property";
 import CreatePropertyModal from "../components/CreatePropertyModal";
@@ -36,9 +36,11 @@ const PropertiesAndGarages = () => {
         apiFetch("/garages/")
       ]);
 
-      const detachedGarages = garagesData.filter(g => !g.property_id);
+      const propertiesList = propertiesData || [];
+      const garagesList = garagesData || [];
+      const detachedGarages = garagesList.filter(g => !g.property_id);
 
-      const processedProperties = propertiesData.map(property => {
+      const processedProperties = propertiesList.map(property => {
         const currentPeriod = property.rental_contract 
           ? findCurrentPeriod(property.rental_contract.periods)
           : null;
@@ -67,6 +69,8 @@ const PropertiesAndGarages = () => {
     } catch (err) {
       console.error("Error loading data:", err);
       setError("Error al cargar los datos. Por favor intenta nuevamente.");
+      setProperties([]);
+      setGarageAlone([]);
     } finally {
       setLoading(false);
     }
@@ -180,11 +184,15 @@ const PropertiesAndGarages = () => {
   );
 
   if (loading) return <Spinner animation="border" className="m-5" />;
-  if (error) return <div className="alert alert-danger m-3">{error}</div>;
 
   return (
     <div className="bg-light py-4">
     <Container className="mt-4">
+      {error && (
+        <Alert variant="danger" className="mb-3" dismissible onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
       <section className="mb-5">
         <div className="d-flex justify-content-between align-items-center mb-3">
             <h2>Propiedades</h2>
@@ -193,13 +201,19 @@ const PropertiesAndGarages = () => {
             </Button>
           </div>
 
-        <Row xs={1} md={2} lg={3}>
-          {properties.map(prop => (
-            <Col key={prop.id} className="mb-4">
-              <PropertyCard prop={prop} />
-            </Col>
-          ))}
-        </Row>
+        {properties.length === 0 ? (
+          <Alert variant="info">
+            No tenés propiedades todavía. Podés crear una con el botón de arriba.
+          </Alert>
+        ) : (
+          <Row xs={1} md={2} lg={3}>
+            {properties.map(prop => (
+              <Col key={prop.id} className="mb-4">
+                <PropertyCard prop={prop} />
+              </Col>
+            ))}
+          </Row>
+        )}
       </section>
 
       <section>
@@ -210,13 +224,19 @@ const PropertiesAndGarages = () => {
           + Nuevo Garage
         </Button>
       </div>
-        <Row xs={1} md={2} lg={3}>
-          {garageAlone.map(garage => (
-            <Col key={garage.id} className="mb-4">
-              <GarageCard garage={garage} />
-            </Col>
-          ))}
-        </Row>
+        {garageAlone.length === 0 ? (
+          <Alert variant="info">
+            No hay garages disponibles. Podés crear uno con el botón de arriba.
+          </Alert>
+        ) : (
+          <Row xs={1} md={2} lg={3}>
+            {garageAlone.map(garage => (
+              <Col key={garage.id} className="mb-4">
+                <GarageCard garage={garage} />
+              </Col>
+            ))}
+          </Row>
+        )}
       </section>
       <Modal 
         show={showPeriodsModal} 

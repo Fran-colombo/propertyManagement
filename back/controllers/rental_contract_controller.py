@@ -5,6 +5,7 @@ from schemas.contract_periodDTO import ContractPeriodResponse
 from database import get_db
 from services.rental_contract_service import RentalContractService
 from schemas.contractDTO import CreateContractDTO, ContractResponse
+from schemas.updateIndexDTO import ApplyIndexDTO
 
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
 
@@ -17,8 +18,11 @@ def create_contract(
     try:
         service.release_properties_from_ended_contracts()
         contract = service.create_contract(contract_data)
-        db.commit()  
+        db.commit()
         return contract
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(
@@ -26,12 +30,15 @@ def create_contract(
             detail=f"No se pudo crear el contrato: {str(e)}"
         )
 
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"No se pudo crear el contrato: {str(e)}"
-        )
+
+@router.post("/{contract_id}/apply-index", response_model=ContractResponse)
+def apply_index(
+    contract_id: int,
+    dto: ApplyIndexDTO,
+    db: Session = Depends(get_db)
+):
+    service = RentalContractService(db)
+    return service.apply_index(contract_id, dto.value)
 
 
 @router.get("/adjust-next-month", response_model=List[ContractResponse])
@@ -41,6 +48,8 @@ def contracts_adjusting_next_month(db: Session = Depends(get_db)):
     today = date.today()
     next_month = today + relativedelta(months=1)
     service = RentalContractService(db)
+    if not hasattr(service, "get_contracts_next_adjustment"):
+        return []
     return service.get_contracts_next_adjustment(next_month.year, next_month.month)
 
 @router.get("/{contract_id}", response_model=ContractResponse)
@@ -69,5 +78,3 @@ def cancel_contract(contract_id: int, db: Session = Depends(get_db)):
     contractService = RentalContractService(db)
     contractService.cancel_contract(contract_id)
     contractService.release_properties_from_ended_contracts()
-    
-

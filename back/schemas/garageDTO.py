@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
 class GarageCreate(BaseModel):
@@ -7,7 +7,5 @@ class GarageCreate(BaseModel):
     property_id: Optional[int] = None
 
 class GarageRead(GarageCreate):
+    model_config = ConfigDict(from_attributes=True)
     id: int
-
-    class Config:
-        orm_mode = True

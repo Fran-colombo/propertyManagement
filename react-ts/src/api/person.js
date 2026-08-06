@@ -5,7 +5,7 @@ export async function getOwners() {
 }
 
 export async function createOwner(ownerData) {
-  return await apiFetch("/owners", {
+  return await apiFetch("/owners/", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -63,5 +63,3 @@ export async function deleteTenant(id){
     method: "DELETE"
 });
 }
-
-

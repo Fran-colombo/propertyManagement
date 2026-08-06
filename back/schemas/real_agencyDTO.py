@@ -1,15 +1,13 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class RealAgencyCreate(BaseModel):
     name: str
     direction: str
 
 class RealAgencyRead(RealAgencyCreate):
+    model_config = ConfigDict(from_attributes=True)
     id: int
-
-    class Config:
-        from_attributes = True  
 
 class UpdateRealAgency(BaseModel):
     name: Optional[str] = None

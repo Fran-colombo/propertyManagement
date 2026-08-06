@@ -45,19 +45,38 @@ const loadData = async () => {
   setLoading(true);
   setError("");
   try {
-    const [p, t, g, a] = await Promise.all([
+    const results = await Promise.allSettled([
       getProperties(),
       getTenants(),
       getGarages(),
       getAllAgencies(),
     ]);
-    setProperties(p || []);
-    setTenants(t || []);
-    setGarages(g || []);
-    setRealAgencies(a || [])
+
+    const [p, t, g, a] = results.map((r) =>
+      r.status === "fulfilled" ? r.value || [] : []
+    );
+
+    setProperties(p);
+    setTenants(t);
+    setGarages(g);
+    setRealAgencies(a);
+
+    const failed = results.filter((r) => r.status === "rejected");
+    if (failed.length === results.length) {
+      setError("Error al cargar los datos. Por favor intenta nuevamente.");
+    } else if (failed.length > 0) {
+      console.warn(
+        "Algunos datos no se pudieron cargar:",
+        failed.map((r) => r.reason)
+      );
+    }
   } catch (e) {
     console.error("Error loading data:", e);
     setError("Error al cargar los datos. Por favor intenta nuevamente.");
+    setProperties([]);
+    setTenants([]);
+    setGarages([]);
+    setRealAgencies([]);
   } finally {
     setLoading(false);
   }
@@ -125,15 +144,26 @@ const handleChange = (e) => {
                 </div>
               )}
 
+              {!error && properties.filter((p) => !p.rental_contract).length === 0 && (
+                <div className="alert alert-info">
+                  No hay propiedades disponibles. Creá una en Propiedades antes de armar un contrato.
+                </div>
+              )}
+              {!error && tenants.length === 0 && (
+                <div className="alert alert-info">
+                  No hay inquilinos todavía. Creá uno en Personas antes de armar un contrato.
+                </div>
+              )}
+
           <Form.Group className="mb-2">
             <Form.Label>Propiedad</Form.Label>
             <Form.Select name="property_id" value={form.property_id} onChange={handleChange}>
               <option value="">Seleccione propiedad</option>
               {properties
-                .filter((p) => p.rental_contract === null) 
+                .filter((p) => !p.rental_contract) 
                 .map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.direction} - {p.apartment} - {p.floor} - {p.owner.name}
+                    {p.direction} - {p.apartment || "-"} - {p.floor || "-"} - {p.owner?.name || "Sin dueño"}
                   </option>
                 ))}
             </Form.Select>

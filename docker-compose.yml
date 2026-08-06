@@ -1,22 +1,44 @@
 version: "3.9"
 
+# Property Manager — no usa el puerto 80 del host (ocupado por otro proyecto).
+# Host: 8080 -> nginx (front + /api proxy al backend)
+#
+# En el panel del VPS agregá un Port Mapping, por ejemplo:
+#   Public port 10046  ->  Inner port 8080  (TCP)
+# Acceso: http://69.197.176.243:10046
+
 services:
   backend:
     build:
       context: ./back
-    container_name: backendV2
+    container_name: propertyManager-backend
+    restart: unless-stopped
     volumes:
       - ./properties_data:/app/properties_data
-    ports:
-      - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080,http://69.197.176.243:8080,http://69.197.176.243:10046}
+    # Solo red Docker interna; el acceso público es vía nginx en 8080
+    expose:
+      - "8000"
+    networks:
+      - propertyManager-net
 
   frontend:
     build:
       context: ./react-ts
-    container_name: frontendV2
+      args:
+        VITE_API_URL: /api
+    container_name: propertyManager-frontend
+    restart: unless-stopped
     ports:
-      - "3000:80"
+      - "8080:80"
     depends_on:
       - backend
+    networks:
+      - propertyManager-net
+
+networks:
+  propertyManager-net:
+    driver: bridge

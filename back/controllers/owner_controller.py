@@ -10,7 +10,7 @@ router = APIRouter(prefix="/owners", tags=["Owners"])
 def get_service(db: Session = Depends(get_db)):
     return OwnerService(db)
 
-@router.post("", response_model=OwnerResponse)
+@router.post("/", response_model=OwnerResponse, status_code=201)
 def create_owner(data: CreateOwnerDTO, service: OwnerService = Depends(get_service)):
     return service.create_owner(data)
 

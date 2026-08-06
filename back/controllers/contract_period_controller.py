@@ -90,6 +90,27 @@ def get_all_pending_periods(db: Session = Depends(get_db)):
             status_code=500,
             detail=f"Error al obtener todos los períodos pendientes: {str(e)}"
         )
+
+@router.get("/by-month", response_model=List[ContractPeriodResponse])
+def get_periods_by_month(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    today = date.today()
+    year = year or today.year
+    month = month or today.month
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Mes inválido")
+    service = ContractPeriodService(db)
+    try:
+        periods = service.get_periods_for_month(year, month)
+        return [ContractPeriodResponse.from_orm(p) for p in periods]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener períodos del mes: {str(e)}"
+        )
     
 @router.get("/current-pending", response_model=List[ContractPeriodResponse])
 def get_current_pending_periods(db: Session = Depends(get_db)):
