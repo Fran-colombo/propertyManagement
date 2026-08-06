@@ -1,5 +1,5 @@
 import { Container } from "react-bootstrap";
-import NavigationBar from "./Navbar";
+import NavigationBar from "./NavBar";
 
 export default function Layout({ children }) {
   return (
