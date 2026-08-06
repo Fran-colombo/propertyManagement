@@ -1,9 +1,8 @@
-from sched import scheduler
 import os
 from fastapi import FastAPI
 from services.rental_contract_service import RentalContractService
 from controllers import tenant_controller, user_controller, owner_controller, property_controller, rental_contract_controller, contract_period_controller, transaction_controller, garage_controller, real_agency_controller, index_controller, contract_history_controller
-from database import Base, SessionLocal, engine
+from database import SessionLocal
 from database import init_db
 from scheduler_tasks import init_scheduler
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +11,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 init_db()
 
 app = FastAPI()
-scheduler = BackgroundScheduler()
+bg_scheduler = BackgroundScheduler()
 
 _default_origins = [
     "http://localhost:5173",
@@ -23,8 +22,7 @@ _default_origins = [
     "http://127.0.0.1:8080",
 ]
 _extra = os.getenv("CORS_ORIGINS", "")
-allow_origins = [o.strip() for o in _extra.split(",") if o.strip()] or _default_origins
-# Merge defaults so local dev still works when CORS_ORIGINS is set
+allow_origins = [o.strip() for o in _extra.split(",") if o.strip()] or list(_default_origins)
 for origin in _default_origins:
     if origin not in allow_origins:
         allow_origins.append(origin)
@@ -52,6 +50,13 @@ app.include_router(index_controller.router)
 app.include_router(contract_history_controller.router)
 
 
+def _release_ended_contracts_job():
+    db = SessionLocal()
+    try:
+        RentalContractService(db).release_properties_from_ended_contracts()
+    finally:
+        db.close()
+
 
 @app.on_event("startup")
 def startup_event():
@@ -59,18 +64,30 @@ def startup_event():
     db = SessionLocal()
     try:
         from services import user_service
-        user_service.ensure_admin_from_env(db)
+        try:
+            user_service.ensure_admin_from_env(db)
+        except Exception as e:
+            print(f"[seed] ERROR creating admin: {e}")
 
-        service = RentalContractService(db)
-        scheduler.add_job(
-            service.release_properties_from_ended_contracts,
-            'interval',
-            hours=24
-        )
-        scheduler.start()
+        if not bg_scheduler.running:
+            bg_scheduler.add_job(
+                _release_ended_contracts_job,
+                "interval",
+                hours=24,
+                id="release_ended_contracts",
+                replace_existing=True,
+            )
+            bg_scheduler.start()
     finally:
         db.close()
 
+
 @app.on_event("shutdown")
 def shutdown_event():
-    scheduler.shutdown()
+    if bg_scheduler.running:
+        bg_scheduler.shutdown(wait=False)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

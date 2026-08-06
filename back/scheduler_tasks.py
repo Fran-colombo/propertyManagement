@@ -2,7 +2,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database import get_db
-from models.contract_period import ContractPeriod, PaymentStatusEnum
+from models.contract_period import ContractPeriod
+from schemas.enums.enums import PaymentStatusEnum
 
 def update_periods_status():
     """Actualiza automáticamente los estados de los períodos"""

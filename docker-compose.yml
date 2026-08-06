@@ -1,11 +1,6 @@
-version: "3.9"
-
-# Property Manager — no usa el puerto 80 del host (ocupado por otro proyecto).
-# Host: 8080 -> nginx (front + /api proxy al backend)
-#
-# En el panel del VPS agregá un Port Mapping, por ejemplo:
-#   Public port 10046  ->  Inner port 8080  (TCP)
-# Acceso: http://69.197.176.243:10046
+# Property Manager — host 8080 (el 80 del VPS ya está ocupado)
+# Panel VPS: Public 10046 -> Inner 8080
+# URL: http://69.197.176.243:10046
 
 services:
   backend:
@@ -13,21 +8,22 @@ services:
       context: ./back
     container_name: propertyManager-backend
     restart: unless-stopped
+    env_file:
+      - .env
     volumes:
       - ./properties_data:/app/properties_data
     environment:
       - PYTHONUNBUFFERED=1
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080,http://69.197.176.243:8080,http://69.197.176.243:10046}
-      - ADMIN_USER_EMAIL=${ADMIN_USER_EMAIL:-}
-      - ADMIN_USER_PASSWORD=${ADMIN_USER_PASSWORD:-}
-      - ADMIN_USER_NAME=${ADMIN_USER_NAME:-Admin}
-      - ADMIN_USER_SURNAME=${ADMIN_USER_SURNAME:-Conkreto}
-    # Solo red Docker interna; el acceso público es vía nginx en 8080
     expose:
       - "8000"
     networks:
       - propertyManager-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   frontend:
     build:
@@ -39,7 +35,8 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - propertyManager-net
 
