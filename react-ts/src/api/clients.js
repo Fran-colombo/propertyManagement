@@ -1,26 +1,33 @@
 export async function apiFetch(endpoint, options = {}) {
   const token = localStorage.getItem("authToken");
   const url = `${import.meta.env.VITE_API_URL}${endpoint}`;
-  
-  console.log(`Making request to: ${url}`); // Debug
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
 
   try {
+    const headers = {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(options.headers || {}),
+    };
+    if (!isFormData && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+
     const response = await fetch(url, {
       method: options.method || "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...(options.headers || {}),
-      },
+      headers,
       body: options.body,
     });
 
-    const contentType = response.headers.get("content-type");
-    
-    if (!contentType || !contentType.includes("application/json")) {
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!contentType.includes("application/json")) {
       const text = await response.text();
       console.error("Non-JSON response:", text);
-      throw new Error(`Expected JSON but got: ${contentType}`);
+      throw new Error(
+        response.status === 502
+          ? "El servidor no respondió (502). Revisá que el backend esté arriba."
+          : `Expected JSON but got: ${contentType || "unknown"}`
+      );
     }
 
     if (!response.ok) {
@@ -30,6 +37,8 @@ export async function apiFetch(endpoint, options = {}) {
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
     }
 
+    // 204 No Content
+    if (response.status === 204) return null;
     return await response.json();
   } catch (error) {
     console.error("Fetch error:", error);

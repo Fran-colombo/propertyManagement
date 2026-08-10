@@ -6,6 +6,7 @@ from database import SessionLocal
 from database import init_db
 from scheduler_tasks import init_scheduler
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 
 init_db()
@@ -48,6 +49,12 @@ app.include_router(garage_controller.router)
 app.include_router(real_agency_controller.router)
 app.include_router(index_controller.router)
 app.include_router(contract_history_controller.router)
+
+_uploads_root = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "properties_data", "uploads")
+)
+os.makedirs(_uploads_root, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_uploads_root), name="uploads")
 
 
 def _release_ended_contracts_job():

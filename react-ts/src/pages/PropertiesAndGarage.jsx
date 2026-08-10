@@ -4,6 +4,7 @@ import { apiFetch } from "../api/clients";
 import { deleteProperty } from "../api/property";
 import CreatePropertyModal from "../components/CreatePropertyModal";
 import CreateGarageModal from "../components/CreateGarageModal";
+import CancelContractModal from "../components/CancelContractModal";
 
 const PropertiesAndGarages = () => {
   const [properties, setProperties] = useState([]);
@@ -14,6 +15,8 @@ const PropertiesAndGarages = () => {
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateGarageModal, setShowCreateGarageModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [contractToCancel, setContractToCancel] = useState(null);
 
 
   const findCurrentPeriod = (periods) => {
@@ -164,16 +167,28 @@ const PropertiesAndGarages = () => {
               </>
             )}
 
-            <Button
-              variant="outline-primary"
-              size="sm"
-              onClick={() => {
-                setSelectedProperty(prop);
-                setShowPeriodsModal(true);
-              }}
-            >
-              Ver Detalles de Pagos
-            </Button>
+            <div className="d-flex flex-wrap gap-2">
+              <Button
+                variant="outline-primary"
+                size="sm"
+                onClick={() => {
+                  setSelectedProperty(prop);
+                  setShowPeriodsModal(true);
+                }}
+              >
+                Ver Detalles de Pagos
+              </Button>
+              <Button
+                variant="outline-danger"
+                size="sm"
+                onClick={() => {
+                  setContractToCancel(prop.rental_contract);
+                  setShowCancelModal(true);
+                }}
+              >
+                Finalizar contrato
+              </Button>
+            </div>
           </>
         ) : (
           <p>
@@ -331,9 +346,22 @@ const PropertiesAndGarages = () => {
                         </td>
                         <td>${total.toLocaleString()}</td>
                         <td>
-                          <Badge bg={period.payment_status === 'PAGADO' ? 'success' : 'warning'}>
+                          <Badge
+                            bg={
+                              period.payment_status === "PAGADO"
+                                ? "success"
+                                : period.payment_status === "CONTRATO_TERMINADO"
+                                ? "danger"
+                                : "warning"
+                            }
+                          >
                             {period.payment_status}
                           </Badge>
+                          {period.termination_note && (
+                            <div>
+                              <small className="text-muted">{period.termination_note}</small>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -359,7 +387,19 @@ const PropertiesAndGarages = () => {
           onHide={() => setShowCreateGarageModal(false)}
           onCreated={loadData}
         />
-
+      <CancelContractModal
+        show={showCancelModal}
+        onHide={() => {
+          setShowCancelModal(false);
+          setContractToCancel(null);
+        }}
+        contractId={contractToCancel?.id}
+        propertyLabel={
+          contractToCancel?.property?.direction ||
+          properties.find((p) => p.rental_contract?.id === contractToCancel?.id)?.direction
+        }
+        onCancelled={loadData}
+      />
 
     </Container>
     </div>

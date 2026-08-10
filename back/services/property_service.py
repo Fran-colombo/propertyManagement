@@ -115,7 +115,12 @@ class PropertyService:
                 GarageResponse(
                     id=g.id,
                     number=g.number,
-                    rental_contract_id=g.rental_contract.id if g.rental_contract else None
-                ) for g in prop.garages
+                    rental_contract_id=(
+                        g.rental_contract.id
+                        if g.rental_contract and g.rental_contract.status == 1
+                        else None
+                    ),
+                )
+                for g in prop.garages
             ]
         )

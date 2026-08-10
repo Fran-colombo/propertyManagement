@@ -66,6 +66,7 @@ class RentalContractService:
 
             self.db.refresh(contract)
             all_contract = ContractHistory(
+                rental_contract_id=contract.id,
                 property_id=contract.property_id,
                 property_address=property_obj.direction,
                 tenant_id=contract.tenant_id,
@@ -92,7 +93,7 @@ class RentalContractService:
         garage = self.db.query(Garage).filter(Garage.id == contract_data.garage_id).first()
         if not garage:
             raise HTTPException(status_code=404, detail="Garage no encontrado")
-        if garage.rental_contract is not None:
+        if garage.rental_contract is not None and garage.rental_contract.status == 1:
             raise HTTPException(status_code=400, detail="El garage ya está alquilado")
 
         try:
@@ -126,6 +127,7 @@ class RentalContractService:
                 address = f"{address} ({garage.property.direction})"
 
             self.db.add(ContractHistory(
+                rental_contract_id=contract.id,
                 property_id=garage.property_id,
                 property_address=address,
                 tenant_id=contract.tenant_id,
@@ -158,17 +160,26 @@ class RentalContractService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="El garage seleccionado no existe"
                 )
-            if garage.rental_contract is not None:
+            if garage.rental_contract is not None and garage.rental_contract.status == 1:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="El garage ya está alquilado"
                 )
         else:
             property_id = contract_data.get('property_id')
-            garage = self.db.query(Garage).filter(
-                Garage.property_id == property_id,
-                Garage.rental_contract == None
-            ).first()
+            candidates = (
+                self.db.query(Garage)
+                .filter(Garage.property_id == property_id)
+                .all()
+            )
+            garage = next(
+                (
+                    g
+                    for g in candidates
+                    if not g.rental_contract or g.rental_contract.status != 1
+                ),
+                None,
+            )
 
             if not garage:
                 raise HTTPException(
@@ -384,62 +395,187 @@ class RentalContractService:
     
 
     def release_properties_from_ended_contracts(self):
+        """Free units whose end_date already passed. Scheduled terminations always free after that date."""
         today = date.today()
 
-        contracts = self.db.query(RentalContract)\
-            .join(ContractPeriod)\
+        contracts = (
+            self.db.query(RentalContract)
             .filter(
                 RentalContract.end_date < today,
-                RentalContract.status == 1
-            )\
+                RentalContract.status == 1,
+            )
             .all()
+        )
 
         for contract in contracts:
+            has_termination = contract.termination is not None
             has_pending_debt = any(
-                p.payment_status in [
+                p.payment_status
+                in [
                     PaymentStatusEnum.PENDIENTE,
                     PaymentStatusEnum.VENCIDO,
                     PaymentStatusEnum.POR_VENCER,
-                    PaymentStatusEnum.PARCIAL
-                ] for p in contract.periods
+                    PaymentStatusEnum.PARCIAL,
+                ]
+                for p in contract.periods
             )
 
-            if not has_pending_debt:
+            # After a scheduled leave date, free the unit even if there is unpaid debt
+            if has_termination or not has_pending_debt:
                 contract.status = 0
 
         self.db.commit()
 
+    def cancel_contract(
+        self,
+        contract_id: int,
+        *,
+        cancelled_by: str,
+        reason: str,
+        effective_date: date,
+        settlement_amount: float = 0.0,
+        settlement_direction: str = "SIN_MONTO",
+        waive_remaining_rent: bool = False,
+        receipt_path: str | None = None,
+        receipt_original_name: str | None = None,
+    ):
+        from models.contract_termination import (
+            ContractTermination,
+            CancellationPartyEnum,
+            SettlementDirectionEnum,
+        )
 
-    def cancel_contract(self, contract_id: int):
-        today = date.today()
         contract = self.get_contract(contract_id)
 
         if contract.status == 0:
             raise HTTPException(status_code=400, detail="El contrato ya está cancelado")
 
-        try:
-            contract.status = 0
-            contract.end_date = today  
-            all_contract = self.db.query(ContractHistory).filter(ContractHistory.id == contract.id).first()
-            if all_contract:
-                all_contract.end_date = contract.end_date
-                all_contract.cancelled = 1
+        existing_term = (
+            self.db.query(ContractTermination)
+            .filter(ContractTermination.rental_contract_id == contract.id)
+            .first()
+        )
+        if existing_term:
+            raise HTTPException(
+                status_code=400,
+                detail="Este contrato ya tiene una baja registrada",
+            )
 
-            future_periods = self.db.query(ContractPeriod)\
+        if effective_date < contract.start_date:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha de baja no puede ser anterior al inicio del contrato",
+            )
+
+        try:
+            party = CancellationPartyEnum(cancelled_by)
+            direction = SettlementDirectionEnum(settlement_direction)
+            if direction != SettlementDirectionEnum.SIN_MONTO and settlement_amount <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Indicá el monto del acuerdo de terminación",
+                )
+            if direction == SettlementDirectionEnum.SIN_MONTO:
+                settlement_amount = 0.0
+
+            today = date.today()
+            next_month_start = today.replace(day=1) + relativedelta(months=1)
+
+            ref = f"BAJA-{contract_id}"
+            note = (
+                f"Baja contrato {ref}. Solicitado por {party.value}. "
+                f"Ocupación hasta {effective_date.isoformat()}. Motivo: {reason}"
+            )
+            if waive_remaining_rent:
+                note += (
+                    f". Sin alquiler desde {next_month_start.isoformat()} "
+                    f"hasta la fecha de salida."
+                )
+
+            unpaid = (
+                self.db.query(ContractPeriod)
                 .filter(
                     ContractPeriod.contract_id == contract_id,
-                    ContractPeriod.start_date > today,
-                    ContractPeriod.payment_status != PaymentStatusEnum.PAGADO
-                )\
+                    ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
+                )
                 .all()
+            )
 
-            for period in future_periods:
-                period.payment_status = PaymentStatusEnum.CONTRATO_TERMINADO
-                period.end_date = today  
-                period.due_date = today  
+            annulled = []
+            for period in unpaid:
+                after_leave = period.start_date > effective_date
+                waived_stay = (
+                    waive_remaining_rent
+                    and period.start_date >= next_month_start
+                    and period.start_date <= effective_date
+                )
+                if after_leave or waived_stay:
+                    period.payment_status = PaymentStatusEnum.CONTRATO_TERMINADO
+                    period.payment_reference = ref
+                    period.termination_note = note
+                    period.total_amount = period.amount_paid or 0
+                    annulled.append(period)
+
+            # Stay occupied until effective_date; free only if leaving today/past
+            contract.end_date = effective_date
+            contract.status = 0 if effective_date <= today else 1
+            contract.notes = (
+                (contract.notes + " | " if contract.notes else "") + note
+            )
+
+            termination = ContractTermination(
+                rental_contract_id=contract.id,
+                cancelled_by=party,
+                reason=reason,
+                settlement_amount=settlement_amount,
+                settlement_direction=direction,
+                effective_date=effective_date,
+                waive_remaining_rent=waive_remaining_rent,
+                receipt_path=receipt_path,
+                receipt_original_name=receipt_original_name,
+            )
+            self.db.add(termination)
+
+            history = (
+                self.db.query(ContractHistory)
+                .filter(ContractHistory.rental_contract_id == contract.id)
+                .first()
+            )
+            if not history:
+                history = (
+                    self.db.query(ContractHistory)
+                    .filter(
+                        ContractHistory.property_id == contract.property_id,
+                        ContractHistory.tenant_id == contract.tenant_id,
+                        ContractHistory.start_date == contract.start_date,
+                    )
+                    .first()
+                )
+            if history:
+                history.end_date = effective_date
+                history.cancelled = 1
+                history.rental_contract_id = contract.id
+                history.cancellation_reason = reason
+                history.cancelled_by = party.value
+                history.settlement_amount = settlement_amount
+                history.settlement_direction = direction.value
+                history.receipt_path = receipt_path
 
             self.db.commit()
+            return {
+                "message": "Baja registrada correctamente",
+                "contract_id": contract.id,
+                "effective_date": effective_date.isoformat(),
+                "still_occupied": contract.status == 1,
+                "waive_remaining_rent": waive_remaining_rent,
+                "annulled_periods": len(annulled),
+                "termination_id": termination.id,
+                "receipt_path": receipt_path,
+            }
 
+        except HTTPException:
+            self.db.rollback()
+            raise
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=f"Error al cancelar el contrato: {str(e)}")

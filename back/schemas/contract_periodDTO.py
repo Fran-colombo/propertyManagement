@@ -57,6 +57,7 @@ class ContractPeriodResponse(BaseModel):
     payment_reference: Optional[str] = None
     taxes: Optional[PeriodTaxesResponse] = None
     active_taxes: Optional[dict] = None
+    termination_note: Optional[str] = None
 
     @classmethod
     def from_orm(cls, period):

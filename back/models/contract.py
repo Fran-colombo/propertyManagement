@@ -35,3 +35,9 @@ class RentalContract(Base):
     tenant = relationship("Tenant", back_populates="rental_contract")
     garage = relationship("Garage", back_populates="rental_contract")
     periods = relationship("ContractPeriod", back_populates="contract", cascade="all, delete-orphan")
+    termination = relationship(
+        "ContractTermination",
+        back_populates="contract",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

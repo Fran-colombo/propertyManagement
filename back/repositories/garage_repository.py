@@ -43,6 +43,11 @@ class GarageRepository:
 
 
 def to_garage_read(garage: Garage) -> GarageRead:
+    active = (
+        garage.rental_contract
+        if garage.rental_contract and garage.rental_contract.status == 1
+        else None
+    )
     return GarageRead(
         id=garage.id,
         number=garage.number,
@@ -50,5 +55,5 @@ def to_garage_read(garage: Garage) -> GarageRead:
         property_id=garage.property_id,
         owner_name=garage.owner.name if garage.owner else None,
         property_direction=garage.property.direction if garage.property else None,
-        rental_contract_id=garage.rental_contract.id if garage.rental_contract else None,
+        rental_contract_id=active.id if active else None,
     )

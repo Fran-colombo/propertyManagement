@@ -5,6 +5,7 @@ import PayPeriodModal from "../components/PayPeriodModal";
 import EditTaxesModal from "../components/EditTaxesModal";
 import CreateContractModal from "../components/CreateContractModal";
 import UpdateIndexModal from "../components/UpdateIndexModal";
+import CancelContractModal from "../components/CancelContractModal";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -20,7 +21,9 @@ const ContractsTable = () => {
   const [showTaxesModal, setShowTaxesModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showIndexModal, setShowIndexModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
+  const [contractToCancel, setContractToCancel] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState("all");
   const [tenants, setTenants] = useState([]);
   const [filterYear, setFilterYear] = useState(today.getFullYear());
@@ -233,6 +236,18 @@ const ContractsTable = () => {
                             Índice
                           </Button>
                         )}
+                      {period.contract?.id && (
+                        <Button
+                          variant="outline-danger"
+                          size="sm"
+                          onClick={() => {
+                            setContractToCancel(period.contract);
+                            setShowCancelModal(true);
+                          }}
+                        >
+                          Finalizar
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -377,6 +392,16 @@ const ContractsTable = () => {
         }}
         contract={selectedPeriod?.contract}
         onUpdate={loadPeriods}
+      />
+      <CancelContractModal
+        show={showCancelModal}
+        onHide={() => {
+          setShowCancelModal(false);
+          setContractToCancel(null);
+        }}
+        contractId={contractToCancel?.id}
+        propertyLabel={contractToCancel?.property?.direction}
+        onCancelled={loadPeriods}
       />
     </div>
   );

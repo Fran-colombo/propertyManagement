@@ -1,77 +1,110 @@
 import { useEffect, useState } from "react";
-import { getContractHistory, cancelContract } from "../api/contract";
+import { getContractHistory } from "../api/contract";
 import { getPeriodsByContract } from "../api/contract_period";
-import { Table, Button, Modal, Badge } from "react-bootstrap";
+import { Table, Button, Modal, Badge, Alert } from "react-bootstrap";
 import { getPropertyById } from "../api/property";
 import { getTenantById } from "../api/person";
+import CancelContractModal from "../components/CancelContractModal";
+
+const mediaUrl = (path) => {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const api = import.meta.env.VITE_API_URL || "";
+  try {
+    if (api.startsWith("http")) {
+      return `${new URL(api).origin}${path}`;
+    }
+  } catch (_) {}
+  return path;
+};
 
 const AllContracts = () => {
   const [contracts, setContracts] = useState([]);
   const [selectedContract, setSelectedContract] = useState(null);
   const [periods, setPeriods] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [contractToCancel, setContractToCancel] = useState(null);
   const [loadingPeriods, setLoadingPeriods] = useState(false);
-  const [error, setError] = useState("")
+  const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [startDateFilter, setStartDateFilter] = useState(() => {
-  const current = new Date();
-  return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-});
+    const current = new Date();
+    return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
+  });
 
+  const resolveContractId = (contract) =>
+    contract.rental_contract_id || contract.id;
 
+  const loadContracts = async () => {
+    try {
+      const contractsData = await getContractHistory();
 
-const loadContracts = async () => {
-  try {
-    const contractsData = await getContractHistory();
+      const contractsWithProps = await Promise.all(
+        (contractsData || []).map(async (contract) => {
+          let property = null;
+          let tenant = null;
+          try {
+            if (contract.property_id) {
+              property = await getPropertyById(contract.property_id);
+            }
+          } catch (_) {}
+          try {
+            if (contract.tenant_id) {
+              tenant = await getTenantById(contract.tenant_id);
+            }
+          } catch (_) {}
+          return {
+            ...contract,
+            property: property || { direction: contract.property_address },
+            tenant,
+          };
+        })
+      );
 
-    const contractsWithProps = await Promise.all(
-      contractsData.map(async (contract) => {
-        const property = await getPropertyById(contract.property_id);
-        const tenant = await getTenantById(contract.tenant_id)
-        return {
-          ...contract,
-          property,
-          tenant,
-        };
-      })
-    );
-
-    setContracts(contractsWithProps);
-  } catch (err) {
-    console.error("Error al obtener contratos", err);
-  }
-};
-
-const handleViewDetails = async (contract) => {
-  try {
-    setSelectedContract(contract);
-    setShowModal(true);
-    setLoadingPeriods(true);
-    setError(null);
-    
-    const data = await getPeriodsByContract(contract.id);
-    
-    if (!data || data.length === 0) {
-      setError(error, "No se encontraron períodos para este contrato");
-      setPeriods([]);
-    } else {
-      setPeriods(data);
+      setContracts(contractsWithProps);
+    } catch (err) {
+      console.error("Error al obtener contratos", err);
+      setError("No se pudieron cargar los contratos");
     }
-  } catch (err) {
-    console.error("Error al obtener períodos", err);
-    setError("Error al cargar los períodos. Por favor intenta nuevamente.");
-    setPeriods([]);
-  } finally {
-    setLoadingPeriods(false);
-  }
-};
+  };
+
+  const handleViewDetails = async (contract) => {
+    try {
+      setSelectedContract(contract);
+      setShowModal(true);
+      setLoadingPeriods(true);
+      setError("");
+
+      const rentalId = resolveContractId(contract);
+      const data = await getPeriodsByContract(rentalId);
+
+      if (!data || data.length === 0) {
+        setError("No se encontraron períodos para este contrato");
+        setPeriods([]);
+      } else {
+        setPeriods(data);
+      }
+    } catch (err) {
+      console.error("Error al obtener períodos", err);
+      setError("Error al cargar los períodos. Por favor intenta nuevamente.");
+      setPeriods([]);
+    } finally {
+      setLoadingPeriods(false);
+    }
+  };
 
   useEffect(() => {
     loadContracts();
   }, []);
 
+  const settlementLabel = (direction) => {
+    if (direction === "INQUILINO_A_PROPIETARIO") return "Inquilino → Propietario";
+    if (direction === "PROPIETARIO_A_INQUILINO") return "Propietario → Inquilino";
+    return "Sin monto";
+  };
+
   return (
-    
     <div className="p-4">
       <div className="d-flex gap-3 mb-3">
         <input
@@ -88,7 +121,12 @@ const handleViewDetails = async (contract) => {
           className="form-control"
         />
       </div>
-      <h2>Todos los Contratos</h2>
+      <h2>Historial de contratos</h2>
+      {error && !showModal && (
+        <Alert variant="danger" dismissible onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
       <Table striped bordered hover>
         <thead>
           <tr>
@@ -96,58 +134,119 @@ const handleViewDetails = async (contract) => {
             <th>Inquilino</th>
             <th>Fecha Inicio</th>
             <th>Fecha Fin</th>
+            <th>Estado</th>
             <th>Acciones</th>
-            <th>Finalizar contrato</th>
           </tr>
         </thead>
         <tbody>
           {contracts
-            .filter(contract => {
+            .filter((contract) => {
               const matchesTenant = contract.tenant?.name
                 ?.toLowerCase()
                 .includes(searchTerm.toLowerCase());
 
-              const matchesStartDate = !startDateFilter ||
-                contract.start_date.startsWith(startDateFilter); // YYYY-MM
+              const matchesStartDate =
+                !startDateFilter ||
+                String(contract.start_date).startsWith(startDateFilter);
 
               return matchesTenant && matchesStartDate;
             })
-            .map(contract => (
-            <tr key={contract.id}>
-              <td>{contract.property?.direction || 'Sin dirección'}</td>
-              <td>{contract.tenant?.name || 'Sin inquilino'}</td>
-              <td>{new Date(contract.start_date).toLocaleDateString()}</td>
-              <td>{new Date(contract.end_date).toLocaleDateString()}</td>
-              <td>
-                <Button 
-                  variant="info" 
-                  size="sm" 
-                  onClick={() => handleViewDetails(contract)}
-                >
-                  Ver Períodos
-                </Button>
-              </td>
-              <td> 
-                <Button variant="danger" onClick={() => cancelContract(contract.id)}>
-                  Cancelar Contrato
-                </Button>
-              </td>
-            </tr>
-          ))}
+            .map((contract) => (
+              <tr key={contract.id}>
+                <td>
+                  {contract.property?.direction ||
+                    contract.property_address ||
+                    "Sin dirección"}
+                </td>
+                <td>{contract.tenant?.name || "Sin inquilino"}</td>
+                <td>{new Date(contract.start_date).toLocaleDateString()}</td>
+                <td>{new Date(contract.end_date).toLocaleDateString()}</td>
+                <td>
+                  {contract.cancelled ? (
+                    <div>
+                      <Badge bg="danger">
+                        {new Date(contract.end_date) >= new Date(new Date().toDateString())
+                          ? "Baja programada"
+                          : "Baja"}
+                      </Badge>
+                      {contract.cancelled_by && (
+                        <div>
+                          <small>Por: {contract.cancelled_by}</small>
+                        </div>
+                      )}
+                      <div>
+                        <small>
+                          Ocupación hasta:{" "}
+                          {new Date(contract.end_date).toLocaleDateString()}
+                        </small>
+                      </div>
+                      {contract.settlement_amount > 0 && (
+                        <div>
+                          <small>
+                            ${Number(contract.settlement_amount).toLocaleString()}{" "}
+                            ({settlementLabel(contract.settlement_direction)})
+                          </small>
+                        </div>
+                      )}
+                      {contract.receipt_path && (
+                        <div>
+                          <a
+                            href={mediaUrl(contract.receipt_path)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Ver comprobante
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <Badge bg="success">Activo / finalizado normal</Badge>
+                  )}
+                </td>
+                <td className="d-flex gap-2">
+                  <Button
+                    variant="info"
+                    size="sm"
+                    onClick={() => handleViewDetails(contract)}
+                  >
+                    Ver Períodos
+                  </Button>
+                  {!contract.cancelled && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        setContractToCancel(contract);
+                        setShowCancelModal(true);
+                      }}
+                    >
+                      Finalizar
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
         </tbody>
       </Table>
 
-      <Modal
-        show={showModal}
-        onHide={() => setShowModal(false)}
-        size="lg"
-      >
+      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">
         <Modal.Header closeButton>
           <Modal.Title>
-            Períodos de contrato - {selectedContract?.property?.direction}
+            Períodos —{" "}
+            {selectedContract?.property?.direction ||
+              selectedContract?.property_address}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          {selectedContract?.cancellation_reason && (
+            <Alert variant="warning">
+              <strong>Motivo de baja:</strong> {selectedContract.cancellation_reason}
+              {selectedContract.cancelled_by && (
+                <> (solicitado por {selectedContract.cancelled_by})</>
+              )}
+            </Alert>
+          )}
           {loadingPeriods ? (
             <p>Cargando períodos...</p>
           ) : (
@@ -158,22 +257,34 @@ const handleViewDetails = async (contract) => {
                   <th>Fecha Fin</th>
                   <th>Monto</th>
                   <th>Estado</th>
+                  <th>Nota</th>
                 </tr>
               </thead>
               <tbody>
-                {periods.map(period => (
+                {periods.map((period) => (
                   <tr key={period.id}>
                     <td>{new Date(period.start_date).toLocaleDateString()}</td>
                     <td>{new Date(period.end_date).toLocaleDateString()}</td>
-                    <td>${period.indexed_amount.toLocaleString()}</td>
+                    <td>${Number(period.indexed_amount || 0).toLocaleString()}</td>
                     <td>
-                      <Badge bg={
-                          period.payment_status === 'PAGADO' ? 'success' : 
-                          period.payment_status === 'CONTRATO_TERMINADO' ? 'danger' : 
-                          'warning'
-                        }>
-                          {period.payment_status}
-                        </Badge>
+                      <Badge
+                        bg={
+                          period.payment_status === "PAGADO"
+                            ? "success"
+                            : period.payment_status === "CONTRATO_TERMINADO"
+                            ? "danger"
+                            : "warning"
+                        }
+                      >
+                        {period.payment_status}
+                      </Badge>
+                    </td>
+                    <td>
+                      <small>
+                        {period.termination_note ||
+                          period.payment_reference ||
+                          "—"}
+                      </small>
                     </td>
                   </tr>
                 ))}
@@ -187,6 +298,22 @@ const handleViewDetails = async (contract) => {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <CancelContractModal
+        show={showCancelModal}
+        onHide={() => {
+          setShowCancelModal(false);
+          setContractToCancel(null);
+        }}
+        contractId={
+          contractToCancel ? resolveContractId(contractToCancel) : null
+        }
+        propertyLabel={
+          contractToCancel?.property?.direction ||
+          contractToCancel?.property_address
+        }
+        onCancelled={loadContracts}
+      />
     </div>
   );
 };
