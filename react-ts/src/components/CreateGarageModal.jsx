@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
 import { createGarage } from "../api/garage";
 import { getProperties } from "../api/property";
-import { getOwners } from "../api/person"; 
+import { getOwners } from "../api/person";
 
 const CreateGarageModal = ({ show, onHide, onCreated }) => {
   const [number, setNumber] = useState("");
@@ -11,11 +11,13 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
   const [owners, setOwners] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const resetForm = () => {
     setNumber("");
     setOwnerId("");
     setPropertyId("");
+    setError("");
   };
 
   useEffect(() => {
@@ -26,19 +28,27 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
 
   const loadData = async () => {
     setLoading(true);
+    setError("");
     try {
       const [ownersData, propsData] = await Promise.all([
         getOwners(),
         getProperties(),
       ]);
       setOwners(ownersData || []);
-      setProperties((propsData || []).filter((p) => p.rental_contract === null));
+      setProperties(propsData || []);
     } catch (e) {
       console.error("Error cargando datos:", e);
+      setError("Error cargando dueños/propiedades");
     } finally {
       setLoading(false);
     }
   };
+
+  const ownerProperties = useMemo(() => {
+    if (!ownerId) return properties;
+    const oid = parseInt(ownerId, 10);
+    return properties.filter((p) => p.owner?.id === oid || p.owner_id === oid);
+  }, [properties, ownerId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -56,12 +66,18 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
       resetForm();
     } catch (err) {
       console.error("Error creando garage:", err);
-      alert("Error al crear el garage.");
+      setError(err.message || "Error al crear el garage.");
     }
   };
 
   return (
-    <Modal show={show} onHide={() => { resetForm(); onHide(); }}>
+    <Modal
+      show={show}
+      onHide={() => {
+        resetForm();
+        onHide();
+      }}
+    >
       <Modal.Header closeButton>
         <Modal.Title>Crear Garage</Modal.Title>
       </Modal.Header>
@@ -71,6 +87,7 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
             <Spinner animation="border" />
           ) : (
             <>
+              {error && <div className="alert alert-danger">{error}</div>}
               <Form.Group className="mb-3">
                 <Form.Label>Número</Form.Label>
                 <Form.Control
@@ -85,13 +102,16 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
                 <Form.Label>Dueño</Form.Label>
                 <Form.Select
                   value={ownerId}
-                  onChange={(e) => setOwnerId(e.target.value)}
+                  onChange={(e) => {
+                    setOwnerId(e.target.value);
+                    setPropertyId("");
+                  }}
                   required
                 >
                   <option value="">Seleccione dueño</option>
                   {owners.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.name} - {o.dni}
+                      {o.name} {o.email ? `— ${o.email}` : ""}
                     </option>
                   ))}
                 </Form.Select>
@@ -103,19 +123,30 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
                   value={propertyId}
                   onChange={(e) => setPropertyId(e.target.value)}
                 >
-                  <option value="">Sin propiedad</option>
-                  {properties.map((p) => (
+                  <option value="">Sin propiedad (solo garage)</option>
+                  {ownerProperties.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.direction} - {p.apartment} - {p.floor} - {p.owner.name}
+                      {p.direction}
+                      {p.floor ? ` · Piso ${p.floor}` : ""}
+                      {p.apartment ? ` · Depto ${p.apartment}` : ""}
                     </option>
                   ))}
                 </Form.Select>
+                <Form.Text className="text-muted">
+                  Si lo asociás a una propiedad, igual podés alquilarlo por separado después.
+                </Form.Text>
               </Form.Group>
             </>
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => { resetForm(); onHide(); }}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              resetForm();
+              onHide();
+            }}
+          >
             Cancelar
           </Button>
           <Button type="submit" variant="primary" disabled={!number || !ownerId}>

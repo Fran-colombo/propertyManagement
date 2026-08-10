@@ -24,7 +24,17 @@ class RentalContractService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La fecha de fin debe ser posterior a la de inicio"
             )
-        
+
+        if not contract_data.property_id and not contract_data.garage_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debés indicar una propiedad y/o un garage"
+            )
+
+        # Garage-only rental (can be linked to a property but rented separately)
+        if contract_data.garage_id and not contract_data.property_id:
+            return self._create_garage_only_contract(contract_data)
+
         existing = self.db.query(RentalContract).filter(
             RentalContract.property_id == contract_data.property_id,
             RentalContract.status == 1
@@ -42,19 +52,18 @@ class RentalContractService:
                 raise HTTPException(status_code=404, detail="Propiedad no encontrada")
 
             contract = RentalContract(**contract_dict)
-            contract.property = property_obj  
+            contract.property = property_obj
 
             if garage:
                 contract.garage = garage
+                contract.includes_garage = True
+                contract.garage_id = garage.id
 
-            if garage:
-                contract.garage = garage
-            
             self.db.add(contract)
-            self.db.flush() 
-            
+            self.db.flush()
+
             self._generate_contract_periods(contract)
-            
+
             self.db.refresh(contract)
             all_contract = ContractHistory(
                 property_id=contract.property_id,
@@ -66,45 +75,107 @@ class RentalContractService:
 
             self.db.add(all_contract)
             self.db.commit()
-            
+
             return ContractResponse.from_orm(contract)
-            
+
+        except HTTPException:
+            self.db.rollback()
+            raise
         except Exception as e:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error al crear el contrato: {str(e)}"
             )
+
+    def _create_garage_only_contract(self, contract_data: CreateContractDTO) -> ContractResponse:
+        garage = self.db.query(Garage).filter(Garage.id == contract_data.garage_id).first()
+        if not garage:
+            raise HTTPException(status_code=404, detail="Garage no encontrado")
+        if garage.rental_contract is not None:
+            raise HTTPException(status_code=400, detail="El garage ya está alquilado")
+
+        try:
+            contract = RentalContract(
+                property_id=None,
+                garage_id=garage.id,
+                tenant_id=contract_data.tenant_id,
+                start_date=contract_data.start_date,
+                end_date=contract_data.end_date,
+                currency=contract_data.currency,
+                base_rent=contract_data.base_rent,
+                real_agency_id=contract_data.real_agency_id,
+                index_type=contract_data.index_type,
+                frequency_adjustment=contract_data.frequency_adjustment,
+                includes_garage=True,
+                fire_insurance=contract_data.fire_insurance,
+                pays_api=contract_data.pays_api,
+                pays_tgi=contract_data.pays_tgi,
+                pays_epe=contract_data.pays_epe,
+                notes=contract_data.notes,
+                status=1,
+            )
+            contract.garage = garage
+            self.db.add(contract)
+            self.db.flush()
+            self._generate_contract_periods(contract)
+            self.db.refresh(contract)
+
+            address = f"Garage N° {garage.number}"
+            if garage.property:
+                address = f"{address} ({garage.property.direction})"
+
+            self.db.add(ContractHistory(
+                property_id=garage.property_id,
+                property_address=address,
+                tenant_id=contract.tenant_id,
+                start_date=contract.start_date,
+                end_date=contract.end_date,
+            ))
+            self.db.commit()
+            return ContractResponse.from_orm(contract)
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al crear el contrato de garage: {str(e)}"
+            )
+
     def _handle_garage_assignment(self, contract_data: dict):
-        """Maneja la lógica de asignación de garage"""
+        """Asigna garage al contrato de propiedad. El garage puede estar ligado a la propiedad u otro, si está libre."""
         if not contract_data.get('includes_garage'):
             return None
-            
+
         garage_id = contract_data.get('garage_id')
-        
+
         if garage_id:
-            garage = self.db.query(Garage).filter(
-                Garage.id == garage_id,
-                Garage.rental_contract == None
-            ).first()
-            
+            garage = self.db.query(Garage).filter(Garage.id == garage_id).first()
             if not garage:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El garage seleccionado no existe o ya está asignado"
+                    detail="El garage seleccionado no existe"
+                )
+            if garage.rental_contract is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El garage ya está alquilado"
                 )
         else:
+            property_id = contract_data.get('property_id')
             garage = self.db.query(Garage).filter(
-                Garage.property_id == contract_data['property_id'],
+                Garage.property_id == property_id,
                 Garage.rental_contract == None
             ).first()
-            
+
             if not garage:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="No hay garages disponibles para esta propiedad"
                 )
-        
+
         return garage
 
     def _generate_contract_periods(self, contract):

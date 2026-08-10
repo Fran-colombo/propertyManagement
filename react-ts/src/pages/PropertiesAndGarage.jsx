@@ -38,7 +38,8 @@ const PropertiesAndGarages = () => {
 
       const propertiesList = propertiesData || [];
       const garagesList = garagesData || [];
-      const detachedGarages = garagesList.filter(g => !g.property_id);
+      // Free garages: not rented — even if linked to a property (rentable separately)
+      const rentableGarages = garagesList.filter((g) => !g.rental_contract_id);
 
       const processedProperties = propertiesList.map(property => {
         const currentPeriod = property.rental_contract 
@@ -65,7 +66,7 @@ const PropertiesAndGarages = () => {
       });
 
       setProperties(processedProperties);
-      setGarageAlone(detachedGarages);
+      setGarageAlone(rentableGarages);
     } catch (err) {
       console.error("Error loading data:", err);
       setError("Error al cargar los datos. Por favor intenta nuevamente.");
@@ -97,11 +98,27 @@ const PropertiesAndGarages = () => {
       <Card.Body>
         <Card.Title>{prop.direction}</Card.Title>
         <Card.Subtitle className="mb-2 text-muted">
-          Dueño: {prop.owner?.name || 'Sin dueño'} 
+          Dueño: {prop.owner?.name || "Sin dueño"}
         </Card.Subtitle>
-          <Button 
-          variant="outline-danger" 
+        <p className="mb-1">
+          {prop.floor && (
+            <>
+              <strong>Piso:</strong> {prop.floor}{" "}
+            </>
+          )}
+          {prop.apartment && (
+            <>
+              <strong>Depto:</strong> {prop.apartment}
+            </>
+          )}
+          {!prop.floor && !prop.apartment && (
+            <span className="text-muted">Sin piso/departamento</span>
+          )}
+        </p>
+        <Button
+          variant="outline-danger"
           size="sm"
+          className="mb-2"
           onClick={() => {
             if (window.confirm(`¿Eliminar la propiedad ${prop.direction}?`)) {
               handleDeleteProperty(prop.id);
@@ -113,33 +130,42 @@ const PropertiesAndGarages = () => {
         {prop.rental_contract ? (
           <>
             <p>
-              Inquilino: <strong>{prop.rental_contract.tenant?.name || 'Sin inquilino'}</strong>
+              Inquilino:{" "}
+              <strong>{prop.rental_contract.tenant?.name || "Sin inquilino"}</strong>
             </p>
             <p>
-              Contrato hasta: <strong>
-                {prop.rental_contract.end_date ? 
-                  new Date(prop.rental_contract.end_date).toLocaleDateString() : 
-                  'Sin fecha'}
+              Contrato hasta:{" "}
+              <strong>
+                {prop.rental_contract.end_date
+                  ? new Date(prop.rental_contract.end_date).toLocaleDateString()
+                  : "Sin fecha"}
               </strong>
             </p>
-            
+
             {prop.currentPeriod && (
               <>
                 <p>
-                  Período actual: <Badge bg={prop.currentPeriod.payment_status === 'PAGADO' ? 'success' : 'warning'}>
-                    {prop.currentPeriod.payment_status || "PENDIENTE"} - 
-                    ${prop.monthlyPayment?.total.toLocaleString()}
+                  Período actual:{" "}
+                  <Badge
+                    bg={
+                      prop.currentPeriod.payment_status === "PAGADO"
+                        ? "success"
+                        : "warning"
+                    }
+                  >
+                    {prop.currentPeriod.payment_status || "PENDIENTE"} - $
+                    {prop.monthlyPayment?.total.toLocaleString()}
                   </Badge>
                 </p>
                 <p>
-                  Del {new Date(prop.currentPeriod.start_date).toLocaleDateString()} al {' '}
+                  Del {new Date(prop.currentPeriod.start_date).toLocaleDateString()} al{" "}
                   {new Date(prop.currentPeriod.end_date).toLocaleDateString()}
                 </p>
               </>
             )}
 
-            <Button 
-              variant="outline-primary" 
+            <Button
+              variant="outline-primary"
               size="sm"
               onClick={() => {
                 setSelectedProperty(prop);
@@ -150,19 +176,22 @@ const PropertiesAndGarages = () => {
             </Button>
           </>
         ) : (
-          <p><Badge bg="success">Disponible</Badge></p>
-
-        )
-
-        }
-
+          <p>
+            <Badge bg="success">Disponible</Badge>
+          </p>
+        )}
 
         {prop.garages?.length > 0 && (
           <div className="mt-2">
-            <strong>Garage(s):</strong> 
-            {prop.garages.map(g => (
-              <Badge key={g.id} bg={g.rental_contract_id ? 'secondary' : 'info'} className="me-1">
-                N° {g.number} {g.rental_contract_id ? '(Incluido)' : ''}
+            <strong>Garage(s):</strong>
+            {prop.garages.map((g) => (
+              <Badge
+                key={g.id}
+                bg={g.rental_contract_id ? "secondary" : "info"}
+                className="me-1"
+              >
+                N° {g.number}{" "}
+                {g.rental_contract_id ? "(alquilado)" : "(libre / separable)"}
               </Badge>
             ))}
           </div>
@@ -175,9 +204,23 @@ const PropertiesAndGarages = () => {
     <Card className="mb-3 h-100">
       <Card.Body className="d-flex flex-column">
         <Card.Title>Garage N° {garage.number}</Card.Title>
-        
-        <Badge bg={garage.rental_contract_id ? 'secondary' : 'info'} className="mt-auto">
-          {garage.rental_contract_id ? 'Alquilado' : 'Disponible para alquilar'}
+        <Card.Subtitle className="mb-2 text-muted">
+          Dueño: {garage.owner_name || "Sin dueño"}
+        </Card.Subtitle>
+        {garage.property_direction ? (
+          <p className="mb-2">
+            Asociado a: <strong>{garage.property_direction}</strong>
+            <br />
+            <small className="text-muted">Puede alquilarse por separado</small>
+          </p>
+        ) : (
+          <p className="mb-2 text-muted">Sin propiedad asociada</p>
+        )}
+        <Badge
+          bg={garage.rental_contract_id ? "secondary" : "info"}
+          className="mt-auto align-self-start"
+        >
+          {garage.rental_contract_id ? "Alquilado" : "Disponible para alquilar"}
         </Badge>
       </Card.Body>
     </Card>
@@ -218,7 +261,7 @@ const PropertiesAndGarages = () => {
 
       <section>
         <div className="d-flex justify-content-between align-items-center mb-3">
-        <h2 className="mb-4">Garages disponibles</h2>
+        <h2 className="mb-4">Garages para alquilar</h2>
 
         <Button variant="outline-primary" onClick={() => setShowCreateGarageModal(true)}>
           + Nuevo Garage
@@ -226,7 +269,7 @@ const PropertiesAndGarages = () => {
       </div>
         {garageAlone.length === 0 ? (
           <Alert variant="info">
-            No hay garages disponibles. Podés crear uno con el botón de arriba.
+            No hay garages libres para alquilar. Podés crear uno con el botón de arriba.
           </Alert>
         ) : (
           <Row xs={1} md={2} lg={3}>
