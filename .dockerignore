@@ -1,0 +1,13 @@
+.git
+**/.venv
+**/venv
+**/__pycache__
+**/node_modules
+**/dist
+properties_data
+demo/data
+.env
+.env.local
+.env.production
+.env.demo
+**/*.pyc

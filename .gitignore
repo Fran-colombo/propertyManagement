@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.production
+.env.demo
 
 # Data (keep on server; don't overwrite casually from git)
 # properties_data/*.db

@@ -1,0 +1,128 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Eye, EyeSlash } from 'react-bootstrap-icons';
+import { login } from '../api/auth';
+import useAuth from "../../hooks/useAuth";
+
+function LoginPage() {
+  const [formData, setFormData] = useState({
+    username: 'demo.admin@example.com',
+    password: 'Demo123!'
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login: authLogin } = useAuth();
+  const navigate = useNavigate();
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleShowPassword = () => {
+    setShowPassword(prev => !prev);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const { access_token } = await login(formData);
+      authLogin(access_token);
+      navigate('/');
+    } catch (err) {
+      const message = err?.response?.data?.detail || err.message || 'Error de autenticación';
+      setError(typeof message === 'string' ? message : JSON.stringify(message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="min-vh-100 d-flex align-items-center justify-content-center"
+      style={{
+        background: "url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSYkFvWRRoSpdvSHWgcAIWJmIv8S7u3YYjEUw&s') no-repeat center center",
+        backgroundSize: 'cover'
+      }}
+    >
+      <div className="bg-white rounded shadow-lg p-4" style={{ maxWidth: 420, width: '100%' }}>
+        <div className="alert alert-warning py-2 px-3 mb-3">
+          <strong>DEMO ENVIRONMENT — Fictional Data</strong>
+        </div>
+        <div className="text-center mb-4">
+          <h4 className="mt-3 fw-bold">Gestor de Propiedades</h4>
+          <p className="text-muted">Conkreto Construcciones STL</p>
+        </div>
+
+        <div className="alert alert-info py-2 px-3 small">
+          <div><strong>Admin:</strong> demo.admin@example.com / Demo123!</div>
+          <div><strong>User:</strong> demo.user@example.com / Demo123!</div>
+        </div>
+
+        {error && (
+          <div className="alert alert-danger py-2 px-3">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className="mb-3">
+            <label htmlFor="username" className="form-label">Email</label>
+            <input
+              type="email"
+              className="form-control"
+              id="username"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              required
+            />
+          </div>
+
+          <div className="mb-3">
+            <label htmlFor="password" className="form-label">Contraseña</label>
+            <div className="input-group">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="form-control"
+                id="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                className="btn btn-outline-secondary d-flex align-items-center"
+                onClick={handleShowPassword}
+                tabIndex={-1}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              >
+                {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary w-100"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2"></span>
+                Iniciando...
+              </>
+            ) : 'Iniciar Sesión'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default LoginPage;

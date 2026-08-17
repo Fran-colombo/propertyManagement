@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy production backend into the image only (host back/ is never written)
+COPY back/ /app/
+COPY demo/seed_demo.py /app/seed_demo.py
+COPY demo/overlays/backend/demo_reset_controller.py /app/controllers/demo_reset_controller.py
+COPY demo/overlays/backend/apply_overlay.py /tmp/apply_overlay.py
+
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python /tmp/apply_overlay.py \
+    && rm /tmp/apply_overlay.py
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

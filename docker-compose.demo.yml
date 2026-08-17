@@ -1,0 +1,56 @@
+# DEMO stack — independent from production.
+# Production: docker-compose.yml (8080 / public 10046)
+# DEMO:       this file          (8081 / public 10047)
+#
+# Start: docker compose --env-file .env.demo -f docker-compose.demo.yml up -d --build
+# Stop:  docker compose --env-file .env.demo -f docker-compose.demo.yml down
+#
+# This file must NOT interpolate production .env secrets.
+# Always pass --env-file .env.demo.
+
+name: propertyManager-demo
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile.backend
+    container_name: propertyManager-demo-backend
+    restart: unless-stopped
+    env_file:
+      - .env.demo
+    volumes:
+      - ./demo/data:/app/properties_data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEMO_MODE=true
+    expose:
+      - "8000"
+    networks:
+      - propertyManager-demo-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile.frontend
+      args:
+        VITE_API_URL: /api
+    container_name: propertyManager-demo-frontend
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - propertyManager-demo-net
+
+networks:
+  propertyManager-demo-net:
+    driver: bridge
