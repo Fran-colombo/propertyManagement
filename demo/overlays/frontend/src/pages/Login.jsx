@@ -45,7 +45,7 @@ function LoginPage() {
     <div
       className="min-vh-100 d-flex align-items-center justify-content-center"
       style={{
-        background: "url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSYkFvWRRoSpdvSHWgcAIWJmIv8S7u3YYjEUw&s') no-repeat center center",
+        background: "url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTtv_AY5eJUcK6ESwokEcsa2DensUdiE2d7vFDmIv0-9p9dazKAyJiySko&s=10') no-repeat center center",
         backgroundSize: 'cover'
       }}
     >

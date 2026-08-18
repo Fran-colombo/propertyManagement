@@ -52,7 +52,7 @@ function LoginPage() {
       <div className="bg-white rounded shadow-lg p-4" style={{ maxWidth: 420, width: '100%' }}>
         <div className="text-center mb-4">
           <h4 className="mt-3 fw-bold">Gestor de Propiedades</h4>
-          <p className="text-muted">Conkreto Construcciones STL</p>
+          <p className="text-muted">Conkreto Construcciones SRL</p>
         </div>
 
         {error && (
