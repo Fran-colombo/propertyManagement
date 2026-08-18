@@ -49,7 +49,10 @@ function LoginPage() {
         backgroundSize: 'cover'
       }}
     >
-      <div className="bg-white rounded shadow-lg p-4" style={{ maxWidth: 420, width: '100%' }}>
+      <div
+        className="bg-white rounded shadow-lg p-4"
+        style={{ maxWidth: 420, width: '100%', opacity: 0.9 }}
+      >
         <div className="alert alert-warning py-2 px-3 mb-3">
           <strong>DEMO ENVIRONMENT — Fictional Data</strong>
         </div>
