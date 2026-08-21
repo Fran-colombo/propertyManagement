@@ -27,6 +27,31 @@ export const applyContractIndex = async (contractId, value) => {
   });
 };
 
+export const updateContract = async (contractId, data) => {
+  return await apiFetch(`/contracts/${contractId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
+
+export const uploadContractDocument = async (contractId, file) => {
+  const form = new FormData();
+  form.append("document", file);
+  return await apiFetch(`/contracts/${contractId}/document`, {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const parseContractDocument = async (file) => {
+  const form = new FormData();
+  form.append("document", file);
+  return await apiFetch("/contracts/parse-document", {
+    method: "POST",
+    body: form,
+  });
+};
+
 export const getContracts = async() => {
   return await apiFetch("/contracts/");
 }

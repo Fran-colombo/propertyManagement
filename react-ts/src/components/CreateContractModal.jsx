@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Button, Form, Spinner, Alert } from "react-bootstrap";
-import { createContract } from "../api/contract";
+import { createContract, parseContractDocument, uploadContractDocument } from "../api/contract";
 import { getProperties } from "../api/property";
 import { getOwners, getTenants } from "../api/person";
 import { getGarages } from "../api/garage";
@@ -51,11 +51,16 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [realAgencies, setRealAgencies] = useState([]);
+  const [documentFile, setDocumentFile] = useState(null);
+  const [parseWarning, setParseWarning] = useState("");
+  const [parsing, setParsing] = useState(false);
 
   useEffect(() => {
     if (show) {
       setForm(emptyForm);
       setOwnerId("");
+      setDocumentFile(null);
+      setParseWarning("");
       loadData();
     }
   }, [show]);
@@ -144,6 +149,60 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
     }));
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setDocumentFile(file);
+    setParseWarning("");
+  };
+
+  const applySuggestions = (suggestions) => {
+    if (!suggestions) return;
+    setForm((prev) => {
+      const next = { ...prev };
+      if (suggestions.start_date) next.start_date = suggestions.start_date;
+      if (suggestions.end_date) next.end_date = suggestions.end_date;
+      if (suggestions.base_rent) next.base_rent = suggestions.base_rent;
+      if (suggestions.currency) next.currency = suggestions.currency;
+      if (suggestions.index_type) next.index_type = suggestions.index_type;
+      if (suggestions.frequency_adjustment) {
+        next.frequency_adjustment = suggestions.frequency_adjustment;
+      }
+      if (suggestions.pays_epe) next.pays_epe = true;
+      if (suggestions.pays_tgi) next.pays_tgi = true;
+      if (suggestions.pays_api) next.pays_api = true;
+      if (suggestions.fire_insurance) next.fire_insurance = true;
+      return next;
+    });
+  };
+
+  const handleParseDocument = async () => {
+    if (!documentFile) {
+      setParseWarning("Elegí un PDF para intentar leerlo.");
+      return;
+    }
+    setParsing(true);
+    setParseWarning("");
+    try {
+      const result = await parseContractDocument(documentFile);
+      const warnings = result?.warnings || [];
+      const suggestions = result?.suggestions || {};
+      if (Object.keys(suggestions).length) {
+        applySuggestions(suggestions);
+      }
+      if (warnings.length) {
+        setParseWarning(warnings.join(" "));
+      } else if (!Object.keys(suggestions).length) {
+        setParseWarning("No se reconocieron campos. Completá el formulario a mano.");
+      } else {
+        setParseWarning("Se completaron los campos que se pudieron leer. Revisalos antes de guardar.");
+      }
+    } catch (err) {
+      setParseWarning(err.message || "No se pudo leer el PDF. Podés cargarlo igual y completar a mano.");
+    } finally {
+      setParsing(false);
+    }
+  };
+
   const isValid = () => {
     const hasTarget = form.garage_only
       ? !!form.garage_id
@@ -179,7 +238,19 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
           form.currency === "DOLARES" ? null : form.frequency_adjustment,
       };
       delete payload.garage_only;
-      await createContract(payload);
+      const created = await createContract(payload);
+      if (documentFile && created?.id) {
+        try {
+          await uploadContractDocument(created.id, documentFile);
+        } catch (uploadErr) {
+          setError(
+            uploadErr.message ||
+              "Contrato creado, pero no se pudo subir el archivo. Podés adjuntarlo después desde Editar contrato."
+          );
+          onCreated();
+          return;
+        }
+      }
       onCreated();
       onHide();
     } catch (err) {
@@ -291,6 +362,11 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                   value={form.start_date}
                   onChange={handleChange}
                 />
+                {form.start_date && Number(form.start_date.slice(8, 10)) > 1 && (
+                  <Form.Text className="text-muted">
+                    Como no entra el día 1, el primer mes se cobra proporcional (solo los días ocupados). Si paga ese monto, queda pagado — no es un pago parcial.
+                  </Form.Text>
+                )}
               </Form.Group>
 
               <Form.Group className="mb-2">
@@ -347,8 +423,9 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                       value={form.frequency_adjustment}
                       onChange={handleChange}
                     >
-                      <option value="TRIMESTRAL">TRIMESTRAL</option>
-                      <option value="CUATRIMESTRAL">CUATRIMESTRAL</option>
+                      <option value="TRIMESTRAL">Trimestral</option>
+                      <option value="CUATRIMESTRAL">Cuatrimestral</option>
+                      <option value="SEMESTRAL">Semestral</option>
                     </Form.Select>
                   </Form.Group>
                 </>
@@ -420,6 +497,34 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                   value={form.notes}
                   onChange={handleChange}
                 />
+              </Form.Group>
+
+              <hr />
+              <Form.Group className="mb-2">
+                <Form.Label>Archivo del contrato (opcional)</Form.Label>
+                <Form.Control
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={handleFileChange}
+                />
+                <Form.Text className="text-muted d-block">
+                  No es obligatorio. Si es un PDF con texto, podés intentar completar el formulario automáticamente.
+                </Form.Text>
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="mt-2"
+                  type="button"
+                  disabled={!documentFile || parsing}
+                  onClick={handleParseDocument}
+                >
+                  {parsing ? "Leyendo..." : "Intentar completar desde el PDF"}
+                </Button>
+                {parseWarning && (
+                  <Alert variant="info" className="mt-2 py-2 small mb-0">
+                    {parseWarning}
+                  </Alert>
+                )}
               </Form.Group>
             </>
           )}

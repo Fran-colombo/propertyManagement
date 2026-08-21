@@ -1,17 +1,32 @@
-import { useState } from "react";
-import { Modal, Form, Button } from "react-bootstrap";
+import { useEffect, useState } from "react";
+import { Modal, Form, Button, Alert } from "react-bootstrap";
 
 export default function PayPeriodModal({ show, onHide, period, onPay }) {
+  const remaining = Math.max(
+    0,
+    (period?.total_amount || 0) - (period?.amount_paid || 0)
+  );
   const [paymentData, setPaymentData] = useState({
-    amount: period?.total_amount - (period?.amount_paid || 0),
+    amount: remaining,
     method: "transferencia",
     reference: ""
   });
+
+  useEffect(() => {
+    setPaymentData({
+      amount: Math.max(0, (period?.total_amount || 0) - (period?.amount_paid || 0)),
+      method: "transferencia",
+      reference: ""
+    });
+  }, [period, show]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onPay(period.id, paymentData);
   };
+
+  const periodRent = period?.period_rent ?? period?.indexed_amount;
+  const fullRent = period?.indexed_amount;
 
   return (
     <Modal show={show} onHide={onHide}>
@@ -20,6 +35,20 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
       </Modal.Header>
       <Form onSubmit={handleSubmit}>
         <Modal.Body>
+          {period?.is_prorated && (
+            <Alert variant="info" className="small">
+              <strong>Alquiler proporcional.</strong>{" "}
+              {period.proration_note || "Este mes no se ocupa completo."}
+              <div className="mt-2">
+                Alquiler mensual: ${Number(fullRent || 0).toLocaleString()}
+                <br />
+                Este período: ${Number(periodRent || 0).toLocaleString()}
+                <br />
+                Total a pagar: ${Number(period?.total_amount || 0).toLocaleString()}
+              </div>
+              Si pagás ese total, queda <strong>PAGADO</strong> (no es un pago parcial).
+            </Alert>
+          )}
           <Form.Group className="mb-3">
             <Form.Label>Monto a Pagar</Form.Label>
             <Form.Control
@@ -33,6 +62,9 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               step="0.01"
               required
             />
+            <Form.Text className="text-muted">
+              Saldo de este período: ${Number(remaining).toLocaleString()}
+            </Form.Text>
           </Form.Group>
           
           <Form.Group className="mb-3">

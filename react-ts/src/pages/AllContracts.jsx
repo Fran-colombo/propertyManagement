@@ -5,18 +5,7 @@ import { Table, Button, Modal, Badge, Alert } from "react-bootstrap";
 import { getPropertyById } from "../api/property";
 import { getTenantById } from "../api/person";
 import CancelContractModal from "../components/CancelContractModal";
-
-const mediaUrl = (path) => {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  const api = import.meta.env.VITE_API_URL || "";
-  try {
-    if (api.startsWith("http")) {
-      return `${new URL(api).origin}${path}`;
-    }
-  } catch (_) {}
-  return path;
-};
+import { mediaUrl } from "../utils/mediaUrl";
 
 const AllContracts = () => {
   const [contracts, setContracts] = useState([]);
@@ -131,9 +120,11 @@ const AllContracts = () => {
         <thead>
           <tr>
             <th>Propiedad</th>
+            <th>Dueño</th>
             <th>Inquilino</th>
             <th>Fecha Inicio</th>
             <th>Fecha Fin</th>
+            <th>Contrato</th>
             <th>Estado</th>
             <th>Acciones</th>
           </tr>
@@ -158,9 +149,27 @@ const AllContracts = () => {
                     contract.property_address ||
                     "Sin dirección"}
                 </td>
+                <td>
+                  {contract.owner_name ||
+                    contract.property?.owner?.name ||
+                    "Sin dueño"}
+                </td>
                 <td>{contract.tenant?.name || "Sin inquilino"}</td>
                 <td>{new Date(contract.start_date).toLocaleDateString()}</td>
                 <td>{new Date(contract.end_date).toLocaleDateString()}</td>
+                <td>
+                  {contract.document_path ? (
+                    <a
+                      href={mediaUrl(contract.document_path)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Ver contrato
+                    </a>
+                  ) : (
+                    <span className="text-muted">Sin archivo</span>
+                  )}
+                </td>
                 <td>
                   {contract.cancelled ? (
                     <div>
@@ -263,9 +272,23 @@ const AllContracts = () => {
               <tbody>
                 {periods.map((period) => (
                   <tr key={period.id}>
-                    <td>{new Date(period.start_date).toLocaleDateString()}</td>
+                    <td>
+                      {new Date(period.start_date).toLocaleDateString()}
+                      {period.is_prorated && (
+                        <div>
+                          <Badge bg="info" text="dark">Proporcional</Badge>
+                        </div>
+                      )}
+                    </td>
                     <td>{new Date(period.end_date).toLocaleDateString()}</td>
-                    <td>${Number(period.indexed_amount || 0).toLocaleString()}</td>
+                    <td>
+                      ${Number(period.period_rent || period.indexed_amount || 0).toLocaleString()}
+                      {period.is_prorated && period.proration_note && (
+                        <div>
+                          <small className="text-muted">{period.proration_note}</small>
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <Badge
                         bg={

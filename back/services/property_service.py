@@ -74,30 +74,17 @@ class PropertyService:
                         name=prop.rental_contract.tenant.name
                     ),
                     periods=[
-                        ContractPeriodResponse(
-                            id=period.id,
-                            contract_id=period.contract_id,
-                            start_date=period.start_date,
-                            end_date=period.end_date,
-                            due_date=period.due_date,
-                            base_rent=period.base_rent,
-                            indexed_amount=period.indexed_amount,
-                            total_amount=period.total_amount,
-                            amount_paid=period.amount_paid,
-                            payment_status=period.payment_status.value,
-                            payment_method=period.payment_method,
-                            payment_reference=period.payment_reference,
-                            taxes={
-                                "epe": period.epe_amount,
-                                "tgi": period.tgi_amount,
-                                "api": period.api_amount,
-                                "fire_insurance": period.fire_proof_amount,
-                            }
-                        )
+                        ContractPeriodResponse.from_orm(period)
                         for period in prop.rental_contract.periods
                     ],
                     start_date=prop.rental_contract.start_date,
-                    end_date=prop.rental_contract.end_date
+                    end_date=prop.rental_contract.end_date,
+                    document_path=getattr(prop.rental_contract, "document_path", None),
+                    pays_epe=bool(prop.rental_contract.pays_epe),
+                    pays_tgi=bool(prop.rental_contract.pays_tgi),
+                    pays_api=bool(prop.rental_contract.pays_api),
+                    fire_insurance=bool(prop.rental_contract.fire_insurance),
+                    notes=prop.rental_contract.notes,
                 )
         
         return PropertyResponse(

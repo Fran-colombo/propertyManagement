@@ -12,6 +12,7 @@ class CurrencyEnum(str, enum.Enum):
 class AdjustmentFrequencyEnum(str, enum.Enum):
     TRIMESTRAL = "TRIMESTRAL"
     CUATRIMESTRAL = "CUATRIMESTRAL"
+    SEMESTRAL = "SEMESTRAL"
 
 class PaymentStatusEnum(str, enum.Enum):
     PAGADO = "PAGADO"

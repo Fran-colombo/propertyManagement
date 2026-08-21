@@ -172,6 +172,6 @@ class ContractPeriodService:
             .all()
         
         if not periods:
-            raise ValueError(f"No se encontraron períodos para el contrato {contract_id}")
+            return []
         
         return periods

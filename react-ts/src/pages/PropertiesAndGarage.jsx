@@ -5,6 +5,8 @@ import { deleteProperty } from "../api/property";
 import CreatePropertyModal from "../components/CreatePropertyModal";
 import CreateGarageModal from "../components/CreateGarageModal";
 import CancelContractModal from "../components/CancelContractModal";
+import EditContractModal from "../components/EditContractModal";
+import { mediaUrl } from "../utils/mediaUrl";
 
 const PropertiesAndGarages = () => {
   const [properties, setProperties] = useState([]);
@@ -17,6 +19,8 @@ const PropertiesAndGarages = () => {
   const [showCreateGarageModal, setShowCreateGarageModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [contractToCancel, setContractToCancel] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [contractToEdit, setContractToEdit] = useState(null);
 
 
   const findCurrentPeriod = (periods) => {
@@ -59,11 +63,7 @@ const PropertiesAndGarages = () => {
               api: currentPeriod.taxes?.api || 0,
               fire_insurance: currentPeriod.taxes?.fire_insurance || 0
             },
-            total: currentPeriod.indexed_amount + 
-                  (currentPeriod.taxes?.epe || 0) +
-                  (currentPeriod.taxes?.tgi || 0) + 
-                  (currentPeriod.taxes?.api || 0) +
-                  (currentPeriod.taxes?.fire_insurance || 0)
+            total: currentPeriod.total_amount
           } : null
         };
       });
@@ -163,6 +163,12 @@ const PropertiesAndGarages = () => {
                 <p>
                   Del {new Date(prop.currentPeriod.start_date).toLocaleDateString()} al{" "}
                   {new Date(prop.currentPeriod.end_date).toLocaleDateString()}
+                  {prop.currentPeriod.is_prorated && (
+                    <>
+                      {" "}
+                      <Badge bg="info" text="dark">Proporcional</Badge>
+                    </>
+                  )}
                 </p>
               </>
             )}
@@ -177,6 +183,28 @@ const PropertiesAndGarages = () => {
                 }}
               >
                 Ver Detalles de Pagos
+              </Button>
+              {prop.rental_contract.document_path && (
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  as="a"
+                  href={mediaUrl(prop.rental_contract.document_path)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Ver contrato
+                </Button>
+              )}
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                onClick={() => {
+                  setContractToEdit(prop.rental_contract);
+                  setShowEditModal(true);
+                }}
+              >
+                Editar contrato
               </Button>
               <Button
                 variant="outline-danger"
@@ -324,7 +352,7 @@ const PropertiesAndGarages = () => {
                   {selectedProperty.rental_contract.periods.map(period => {
                     const taxes = period.taxes || {};
                     const totalTaxes = (taxes.epe || 0) + (taxes.tgi || 0) + (taxes.api || 0) + (taxes.fire_insurance || 0);
-                    const total = period.indexed_amount + totalTaxes;
+                    const total = period.total_amount ?? ((period.period_rent ?? period.indexed_amount) + totalTaxes);
                     
                     return (
                       <tr 
@@ -334,8 +362,27 @@ const PropertiesAndGarages = () => {
                         <td>
                           {new Date(period.start_date).toLocaleDateString()} - {' '}
                           {new Date(period.end_date).toLocaleDateString()}
+                          {period.is_prorated && (
+                            <div>
+                              <Badge bg="info" text="dark">Proporcional</Badge>
+                              {period.proration_note && (
+                                <div>
+                                  <small className="text-muted">{period.proration_note}</small>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </td>
-                        <td>${period.indexed_amount.toLocaleString()}</td>
+                        <td>
+                          ${Number(period.period_rent ?? period.indexed_amount).toLocaleString()}
+                          {period.is_prorated && (
+                            <div>
+                              <small className="text-muted">
+                                Mensual: ${Number(period.indexed_amount || 0).toLocaleString()}
+                              </small>
+                            </div>
+                          )}
+                        </td>
                         <td>
                           <small>
                             EPE: ${(taxes.epe || 0).toLocaleString()}<br />
@@ -399,6 +446,15 @@ const PropertiesAndGarages = () => {
           properties.find((p) => p.rental_contract?.id === contractToCancel?.id)?.direction
         }
         onCancelled={loadData}
+      />
+      <EditContractModal
+        show={showEditModal}
+        onHide={() => {
+          setShowEditModal(false);
+          setContractToEdit(null);
+        }}
+        contractId={contractToEdit?.id}
+        onSaved={loadData}
       />
 
     </Container>

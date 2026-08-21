@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Date, Float, Enum, String
+from sqlalchemy import Column, Integer, ForeignKey, Date, Float, Enum, String, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 from schemas.enums.enums import IndexTypeEnum, PaymentStatusEnum
@@ -33,6 +33,8 @@ class ContractPeriod(Base):
     payment_method = Column(String(50), nullable=True)
     payment_reference = Column(String(100), nullable=True)
     termination_note = Column(String, nullable=True)
+    is_prorated = Column(Boolean, default=False)
+    proration_note = Column(String, nullable=True)
 
     transactions = relationship("Transaction", back_populates="period", cascade="all, delete-orphan")
     contract = relationship("RentalContract", back_populates="periods")

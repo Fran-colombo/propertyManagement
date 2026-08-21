@@ -18,6 +18,7 @@ class ContractHistory(Base):
     settlement_amount = Column(Float, nullable=True)
     settlement_direction = Column(String, nullable=True)
     receipt_path = Column(String, nullable=True)
+    document_path = Column(String, nullable=True)
 
     property = relationship("Property")
     tenant = relationship("Tenant")
