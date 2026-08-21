@@ -8,16 +8,22 @@ from schemas.contract_periodDTO import ContractPeriodResponse
 from schemas.enums.enums import PaymentStatusEnum
 from typing import List, Optional
 from models.contract import RentalContract
-from models.property import Garage
+from models.person import Owner, Tenant
+from models.property import Garage, Property, RealAgency
 
-_PERIOD_LOAD = (
-    joinedload(ContractPeriod.contract),
-    joinedload(ContractPeriod.contract).joinedload(RentalContract.tenant),
-    joinedload(ContractPeriod.contract).joinedload(RentalContract.property),
-    joinedload(ContractPeriod.contract).joinedload(RentalContract.real_agency),
-    joinedload(ContractPeriod.contract).joinedload(RentalContract.garage).joinedload(Garage.owner),
-    joinedload(ContractPeriod.contract).joinedload(RentalContract.garage).joinedload(Garage.property),
-)
+# Register relationship targets before any joinedload() runs.
+_ = (Owner, Tenant, Property, RealAgency, Garage)
+
+
+def _period_load():
+    return (
+        joinedload(ContractPeriod.contract),
+        joinedload(ContractPeriod.contract).joinedload(RentalContract.tenant),
+        joinedload(ContractPeriod.contract).joinedload(RentalContract.property),
+        joinedload(ContractPeriod.contract).joinedload(RentalContract.real_agency),
+        joinedload(ContractPeriod.contract).joinedload(RentalContract.garage).joinedload(Garage.owner),
+        joinedload(ContractPeriod.contract).joinedload(RentalContract.garage).joinedload(Garage.property),
+    )
 
 class ContractPeriodService:
     def __init__(self, db: Session):
@@ -87,7 +93,7 @@ class ContractPeriodService:
     def get_all_pending_periods(self) -> List[ContractPeriod]:
         return (
             self.db.query(ContractPeriod)
-            .options(*_PERIOD_LOAD)
+            .options(*_period_load())
             .filter(
                 ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
                 ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
@@ -111,7 +117,7 @@ class ContractPeriodService:
 
         return (
             self.db.query(ContractPeriod)
-            .options(*_PERIOD_LOAD)
+            .options(*_period_load())
             .filter(
                 ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
                 ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
@@ -132,7 +138,7 @@ class ContractPeriodService:
 
         return (
             self.db.query(ContractPeriod)
-            .options(*_PERIOD_LOAD)
+            .options(*_period_load())
             .filter(
                 ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
                 ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,

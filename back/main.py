@@ -1,15 +1,15 @@
 import os
 from fastapi import FastAPI
+from database import SessionLocal, init_db, UPLOADS_ROOT
+
+init_db()
+
 from services.rental_contract_service import RentalContractService
 from controllers import tenant_controller, user_controller, owner_controller, property_controller, rental_contract_controller, contract_period_controller, transaction_controller, garage_controller, real_agency_controller, index_controller, contract_history_controller
-from database import SessionLocal
-from database import init_db, UPLOADS_ROOT
 from scheduler_tasks import init_scheduler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
-
-init_db()
 
 app = FastAPI()
 bg_scheduler = BackgroundScheduler()
