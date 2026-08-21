@@ -30,13 +30,13 @@ text = text.replace(old, new, 1)
 old = """        try:
             user_service.ensure_admin_from_env(db)
         except Exception as e:
-            print(f"[seed] ERROR creating admin: {e}")
+            print(f"[seed] ERROR creating admin: {e}", flush=True)
 """
 new = old + """        try:
             from seed_demo import seed_if_empty
             seed_if_empty(db)
         except Exception as e:
-            print(f"[demo-seed] ERROR: {e}")
+            print(f"[demo-seed] ERROR: {e}", flush=True)
 """
 if old not in text:
     raise SystemExit("main.py seed snippet missing")

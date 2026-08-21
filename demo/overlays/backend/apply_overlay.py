@@ -31,17 +31,17 @@ def main() -> None:
         """        try:
             user_service.ensure_admin_from_env(db)
         except Exception as e:
-            print(f"[seed] ERROR creating admin: {e}")
+            print(f"[seed] ERROR creating admin: {e}", flush=True)
 """,
         """        try:
             user_service.ensure_admin_from_env(db)
         except Exception as e:
-            print(f"[seed] ERROR creating admin: {e}")
+            print(f"[seed] ERROR creating admin: {e}", flush=True)
         try:
             from seed_demo import seed_if_empty
             seed_if_empty(db)
         except Exception as e:
-            print(f"[demo-seed] ERROR: {e}")
+            print(f"[demo-seed] ERROR: {e}", flush=True)
 """,
     )
     print("[demo-overlay] Applied DEMO patches inside the image")

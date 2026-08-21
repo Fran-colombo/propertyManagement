@@ -38,6 +38,6 @@ def update_periods_status():
         db.close()
 
 def init_scheduler():
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(update_periods_status, 'cron', hour=0)  
+    scheduler = BackgroundScheduler(timezone="America/Argentina/Buenos_Aires")
+    scheduler.add_job(update_periods_status, "cron", hour=0)
     scheduler.start()

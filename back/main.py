@@ -14,6 +14,11 @@ init_db()
 app = FastAPI()
 bg_scheduler = BackgroundScheduler()
 
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 _default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -67,14 +72,17 @@ def _release_ended_contracts_job():
 
 @app.on_event("startup")
 def startup_event():
-    init_scheduler()
+    try:
+        init_scheduler()
+    except Exception as e:
+        print(f"[scheduler] ERROR: {e}", flush=True)
     db = SessionLocal()
     try:
         from services import user_service
         try:
             user_service.ensure_admin_from_env(db)
         except Exception as e:
-            print(f"[seed] ERROR creating admin: {e}")
+            print(f"[seed] ERROR creating admin: {e}", flush=True)
 
         if not bg_scheduler.running:
             bg_scheduler.add_job(
@@ -85,6 +93,8 @@ def startup_event():
                 replace_existing=True,
             )
             bg_scheduler.start()
+    except Exception as e:
+        print(f"[startup] ERROR: {e}", flush=True)
     finally:
         db.close()
 
@@ -93,8 +103,3 @@ def startup_event():
 def shutdown_event():
     if bg_scheduler.running:
         bg_scheduler.shutdown(wait=False)
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}

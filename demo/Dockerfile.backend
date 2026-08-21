@@ -2,6 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=America/Argentina/Buenos_Aires
+
 # Copy production backend into the image only (host back/ is never written)
 COPY back/ /app/
 COPY demo/seed_demo.py /app/seed_demo.py
