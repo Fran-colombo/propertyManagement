@@ -53,9 +53,15 @@ def _ensure_sqlite_columns():
             "settlement_amount": "FLOAT",
             "settlement_direction": "TEXT",
             "receipt_path": "TEXT",
+            "document_path": "TEXT",
+        },
+        "rental_contracts": {
+            "document_path": "TEXT",
         },
         "contract_periods": {
             "termination_note": "TEXT",
+            "is_prorated": "BOOLEAN DEFAULT 0",
+            "proration_note": "TEXT",
         },
         "contract_terminations": {
             "waive_remaining_rent": "BOOLEAN DEFAULT 0",

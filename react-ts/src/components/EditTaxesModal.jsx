@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Modal, Form, Button, Row, Col } from "react-bootstrap";
 
 export default function EditTaxesModal({ show, onHide, period, onSave }) {
@@ -8,6 +8,15 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
     api: period?.taxes?.api || 0,
     fire_insurance: period?.taxes?.fire_insurance || 0
   });
+
+  useEffect(() => {
+    setTaxData({
+      epe: period?.taxes?.epe || 0,
+      tgi: period?.taxes?.tgi || 0,
+      api: period?.taxes?.api || 0,
+      fire_insurance: period?.taxes?.fire_insurance || 0
+    });
+  }, [period, show]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -95,6 +104,11 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
             </Col>
               }
           </Row>
+          {!active.epe && !active.tgi && !active.api && !active.fire_insurance && (
+            <p className="text-muted mb-0">
+              Este contrato no tiene impuestos activos. Activá EPE, TGI, API o seguro desde Editar contrato.
+            </p>
+          )}
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={onHide}>

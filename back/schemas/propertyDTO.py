@@ -65,6 +65,12 @@ class RentalContractWithPeriodsResponse(BaseModel):
     periods: List[ContractPeriodResponse]
     start_date: date
     end_date: date
+    document_path: Optional[str] = None
+    pays_epe: bool = False
+    pays_tgi: bool = False
+    pays_api: bool = False
+    fire_insurance: bool = False
+    notes: Optional[str] = None
 
 
     class Config:

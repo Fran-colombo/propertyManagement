@@ -1,6 +1,7 @@
 from datetime import date
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
+from utils.proration import period_rent
 
 class TenantResponse(BaseModel):
     id: int
@@ -26,6 +27,11 @@ class RentalContractSimpleResponse(BaseModel):
     frequency_adjustment: Optional[str] = None
     start_date: Optional[date] = None
     base_rent: Optional[float] = None
+    pays_epe: Optional[bool] = None
+    pays_tgi: Optional[bool] = None
+    pays_api: Optional[bool] = None
+    fire_insurance: Optional[bool] = None
+    document_path: Optional[str] = None
 
 class PeriodTaxesResponse(BaseModel):
     epe: Optional[float] = None
@@ -58,6 +64,9 @@ class ContractPeriodResponse(BaseModel):
     taxes: Optional[PeriodTaxesResponse] = None
     active_taxes: Optional[dict] = None
     termination_note: Optional[str] = None
+    is_prorated: bool = False
+    proration_note: Optional[str] = None
+    period_rent: Optional[float] = None
 
     @classmethod
     def from_orm(cls, period):
@@ -100,6 +109,11 @@ class ContractPeriodResponse(BaseModel):
                 'frequency_adjustment': getattr(contract_obj.frequency_adjustment, 'value', contract_obj.frequency_adjustment) if contract_obj.frequency_adjustment else None,
                 'start_date': contract_obj.start_date,
                 'base_rent': contract_obj.base_rent,
+                'pays_epe': getattr(contract_obj, 'pays_epe', False),
+                'pays_tgi': getattr(contract_obj, 'pays_tgi', False),
+                'pays_api': getattr(contract_obj, 'pays_api', False),
+                'fire_insurance': getattr(contract_obj, 'fire_insurance', False),
+                'document_path': getattr(contract_obj, 'document_path', None),
             }
 
         period_dict['contract'] = contract_dict
@@ -117,5 +131,12 @@ class ContractPeriodResponse(BaseModel):
             'api': getattr(contract_obj, 'pays_api', False),
             'fire_insurance': getattr(contract_obj, 'fire_insurance', False)
         } if contract_obj else None
+
+        period_dict['is_prorated'] = bool(getattr(period, 'is_prorated', False))
+        period_dict['proration_note'] = getattr(period, 'proration_note', None)
+        period_dict['period_rent'] = period_rent(period)
+        status = getattr(period, 'payment_status', None)
+        period_dict['payment_status'] = status.value if hasattr(status, 'value') else status
+        period_dict.pop('_sa_instance_state', None)
 
         return cls(**period_dict)

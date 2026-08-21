@@ -11,6 +11,7 @@ from models.transactions import Transaction
 from schemas.contract_periodDTO import ContractPeriodResponse, PeriodTaxesUpdate
 from schemas.enums.enums import PaymentStatusEnum
 from services.contract_period_service import ContractPeriodService
+from utils.proration import period_total
 
 router = APIRouter(prefix="/periods", tags=["Contract Periods"])
 
@@ -143,14 +144,7 @@ def update_period_taxes(period_id: int, taxes: PeriodTaxesUpdate, db: Session = 
         period.fire_proof_amount = taxes.fire_insurance if taxes.fire_insurance != 0 else None
 
     rent_base = period.indexed_amount if period.indexed_amount is not None else period.base_rent
-    period.total_amount = rent_base + sum(
-        imp for imp in [
-            period.epe_amount or 0,
-            period.tgi_amount or 0,
-            period.api_amount or 0,
-            period.fire_proof_amount or 0
-        ]
-    )
+    period.total_amount = period_total(period, rent_base)
 
     
     db.commit()
@@ -165,7 +159,7 @@ def get_all_contract_periods(contract_id: int, db: Session = Depends(get_db)):
     service = ContractPeriodService(db)
     try:
         periods = service.get_all_contract_periods(contract_id)
-        return periods or []
+        return [ContractPeriodResponse.from_orm(p) for p in (periods or [])]
     except Exception as e:
         raise HTTPException(
             status_code=500,

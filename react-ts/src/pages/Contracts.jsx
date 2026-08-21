@@ -6,6 +6,8 @@ import EditTaxesModal from "../components/EditTaxesModal";
 import CreateContractModal from "../components/CreateContractModal";
 import UpdateIndexModal from "../components/UpdateIndexModal";
 import CancelContractModal from "../components/CancelContractModal";
+import EditContractModal from "../components/EditContractModal";
+import { mediaUrl } from "../utils/mediaUrl";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -24,6 +26,8 @@ const ContractsTable = () => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [contractToCancel, setContractToCancel] = useState(null);
+  const [contractToEdit, setContractToEdit] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState("all");
   const [tenants, setTenants] = useState([]);
   const [filterYear, setFilterYear] = useState(today.getFullYear());
@@ -177,10 +181,29 @@ const ContractsTable = () => {
                   <td>
                     {new Date(period.start_date).toLocaleDateString()} -{" "}
                     {new Date(period.end_date).toLocaleDateString()}
+                    {period.is_prorated && (
+                      <div>
+                        <span className="badge bg-info text-dark">Proporcional</span>
+                        {period.proration_note && (
+                          <div>
+                            <small className="text-muted">{period.proration_note}</small>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td>{dueDate.toLocaleDateString()}</td>
                   <td>${period.base_rent.toLocaleString()}</td>
-                  <td>${period.indexed_amount.toLocaleString()}</td>
+                  <td>
+                    ${period.indexed_amount.toLocaleString()}
+                    {period.is_prorated && (
+                      <div>
+                        <small className="text-muted">
+                          Este mes: ${Number(period.period_rent ?? period.total_amount).toLocaleString()}
+                        </small>
+                      </div>
+                    )}
+                  </td>
                   <td>${totalTaxes.toLocaleString()}</td>
                   <td>${period.total_amount.toLocaleString()}</td>
                   <td>${period.amount_paid.toLocaleString()}</td>
@@ -198,7 +221,7 @@ const ContractsTable = () => {
                     </span>
                   </td>
                   <td>
-                    <div className="d-flex gap-2">
+                    <div className="d-flex flex-wrap gap-2">
                       <Button
                         variant="success"
                         size="sm"
@@ -236,6 +259,30 @@ const ContractsTable = () => {
                             Índice
                           </Button>
                         )}
+                      {period.contract?.id && (
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          onClick={() => {
+                            setContractToEdit(period.contract);
+                            setShowEditModal(true);
+                          }}
+                        >
+                          Editar
+                        </Button>
+                      )}
+                      {period.contract?.document_path && (
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          as="a"
+                          href={mediaUrl(period.contract.document_path)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Ver contrato
+                        </Button>
+                      )}
                       {period.contract?.id && (
                         <Button
                           variant="outline-danger"
@@ -402,6 +449,15 @@ const ContractsTable = () => {
         contractId={contractToCancel?.id}
         propertyLabel={contractToCancel?.property?.direction}
         onCancelled={loadPeriods}
+      />
+      <EditContractModal
+        show={showEditModal}
+        onHide={() => {
+          setShowEditModal(false);
+          setContractToEdit(null);
+        }}
+        contractId={contractToEdit?.id}
+        onSaved={loadPeriods}
       />
     </div>
   );

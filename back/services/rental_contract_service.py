@@ -1,5 +1,6 @@
 from datetime import date
-from typing import List
+from typing import List, Optional
+import calendar
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -8,8 +9,9 @@ from schemas.contract_periodDTO import ContractPeriodResponse
 from models.contract import RentalContract
 from models.contract_period import ContractPeriod
 from models.property import Garage, Property
-from schemas.contractDTO import ContractResponse, CreateContractDTO
+from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
 from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum
+from utils.proration import is_partial_month, period_total, proration_note, prorate
 
 class RentalContractService:
     def __init__(self, db: Session):
@@ -190,31 +192,33 @@ class RentalContractService:
         return garage
 
     def _generate_contract_periods(self, contract):
+        """One calendar month per period. First/last month is prorated if it is not a full month."""
         periods = []
         current_start = contract.start_date
-        total_months = (contract.end_date.year - contract.start_date.year) * 12 + (contract.end_date.month - contract.start_date.month)
-        
-        # Keep rent flat until the user applies an index adjustment per contract
-        current_indexed_amount = contract.base_rent
+        full_rent = contract.base_rent
 
-        for month in range(total_months):
-            current_end = current_start + relativedelta(months=1) - relativedelta(days=1)
-            current_due = current_end
+        while current_start <= contract.end_date:
+            last_day = calendar.monthrange(current_start.year, current_start.month)[1]
+            month_end = date(current_start.year, current_start.month, last_day)
+            current_end = min(month_end, contract.end_date)
+            prorated = is_partial_month(current_start, current_end)
+            period_amount = prorate(full_rent, current_start, current_end) if prorated else full_rent
 
             period = ContractPeriod(
                 contract_id=contract.id,
                 start_date=current_start,
                 end_date=current_end,
-                due_date=current_due,
-                base_rent=contract.base_rent,
-                indexed_amount=current_indexed_amount,
-                total_amount=current_indexed_amount,
+                due_date=current_end,
+                base_rent=full_rent,
+                indexed_amount=full_rent,
+                total_amount=period_amount,
                 index_id=None,
                 applied_index_value=None,
-                payment_status=PaymentStatusEnum.PENDIENTE
+                payment_status=PaymentStatusEnum.PENDIENTE,
+                is_prorated=prorated,
+                proration_note=proration_note(current_start, current_end) if prorated else None,
             )
             periods.append(period)
-
             current_start = current_end + relativedelta(days=1)
 
         self.db.add_all(periods)
@@ -225,13 +229,17 @@ class RentalContractService:
         months_elapsed = (period_start.year - contract_start.year) * 12 + (period_start.month - contract_start.month)
         if months_elapsed <= 0:
             return False
-        
-        if freq_enum == AdjustmentFrequencyEnum.TRIMESTRAL:
-            return months_elapsed % 3 == 0
-        elif freq_enum == AdjustmentFrequencyEnum.CUATRIMESTRAL:
-            return months_elapsed % 4 == 0
-        else:
+
+        freq = freq_enum.value if isinstance(freq_enum, AdjustmentFrequencyEnum) else freq_enum
+        steps = {
+            AdjustmentFrequencyEnum.TRIMESTRAL.value: 3,
+            AdjustmentFrequencyEnum.CUATRIMESTRAL.value: 4,
+            AdjustmentFrequencyEnum.SEMESTRAL.value: 6,
+        }
+        step = steps.get(str(freq))
+        if not step:
             return False
+        return months_elapsed % step == 0
 
     def apply_index(self, contract_id: int, value: float) -> ContractResponse:
         """Apply a percentage index update to a single contract, forward-only."""
@@ -324,16 +332,7 @@ class RentalContractService:
                 continue
 
             period.indexed_amount = new_amount
-            tax_total = sum(
-                amount or 0
-                for amount in [
-                    period.epe_amount,
-                    period.tgi_amount,
-                    period.api_amount,
-                    period.fire_proof_amount,
-                ]
-            )
-            period.total_amount = new_amount + tax_total
+            period.total_amount = period_total(period, new_amount)
 
             if period.id == adjustment_period.id:
                 period.applied_index_value = value
@@ -359,6 +358,43 @@ class RentalContractService:
                 detail="Contrato no encontrado"
             )
         return contract
+
+    def _history_for_contract(self, contract: RentalContract) -> Optional[ContractHistory]:
+        history = (
+            self.db.query(ContractHistory)
+            .filter(ContractHistory.rental_contract_id == contract.id)
+            .first()
+        )
+        if history:
+            return history
+        return (
+            self.db.query(ContractHistory)
+            .filter(
+                ContractHistory.property_id == contract.property_id,
+                ContractHistory.tenant_id == contract.tenant_id,
+                ContractHistory.start_date == contract.start_date,
+            )
+            .first()
+        )
+
+    def update_contract(self, contract_id: int, data: UpdateContractDTO) -> ContractResponse:
+        contract = self.get_contract(contract_id)
+        payload = data.dict(exclude_unset=True)
+        for field, value in payload.items():
+            setattr(contract, field, value)
+        self.db.commit()
+        self.db.refresh(contract)
+        return ContractResponse.from_orm(contract)
+
+    def attach_document(self, contract_id: int, document_path: str) -> ContractResponse:
+        contract = self.get_contract(contract_id)
+        contract.document_path = document_path
+        history = self._history_for_contract(contract)
+        if history:
+            history.document_path = document_path
+        self.db.commit()
+        self.db.refresh(contract)
+        return ContractResponse.from_orm(contract)
     
     def get_all_contracts(self) -> List[ContractResponse]:
         contracts = self.db.query(RentalContract).all()
@@ -536,21 +572,7 @@ class RentalContractService:
             )
             self.db.add(termination)
 
-            history = (
-                self.db.query(ContractHistory)
-                .filter(ContractHistory.rental_contract_id == contract.id)
-                .first()
-            )
-            if not history:
-                history = (
-                    self.db.query(ContractHistory)
-                    .filter(
-                        ContractHistory.property_id == contract.property_id,
-                        ContractHistory.tenant_id == contract.tenant_id,
-                        ContractHistory.start_date == contract.start_date,
-                    )
-                    .first()
-                )
+            history = self._history_for_contract(contract)
             if history:
                 history.end_date = effective_date
                 history.cancelled = 1

@@ -29,6 +29,7 @@ class RentalContract(Base):
     pays_tgi = Column(Boolean, default=False)
     pays_epe = Column(Boolean, default=False)
     notes = Column(String, nullable=True)
+    document_path = Column(String, nullable=True)
     status=   Column(Integer, default=1)
 
     property = relationship("Property", back_populates="rental_contract")

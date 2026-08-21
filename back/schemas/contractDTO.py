@@ -27,6 +27,14 @@ class CreateContractDTO(BaseModel):
     pays_epe: bool = False
     notes: Optional[str] = None
 
+class UpdateContractDTO(BaseModel):
+    fire_insurance: Optional[bool] = None
+    pays_api: Optional[bool] = None
+    pays_tgi: Optional[bool] = None
+    pays_epe: Optional[bool] = None
+    notes: Optional[str] = None
+
+
 class ContractResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
@@ -48,6 +56,7 @@ class ContractResponse(BaseModel):
     pays_epe: bool
     status: int
     notes: Optional[str] = None
+    document_path: Optional[str] = None
     active_taxes: Optional[Dict[str, bool]] = None
     
 
@@ -72,6 +81,7 @@ class ContractResponse(BaseModel):
             "pays_tgi": db_contract.pays_tgi,
             "pays_epe": db_contract.pays_epe,
             "notes": db_contract.notes,
+            "document_path": getattr(db_contract, "document_path", None),
             "active_taxes": {
                 'fire_insurance': db_contract.fire_insurance,
                 'api': db_contract.pays_api,
