@@ -2,6 +2,7 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from utils.proration import period_rent
+from utils.contract_display import contract_location_label
 
 class TenantResponse(BaseModel):
     id: int
@@ -32,6 +33,7 @@ class RentalContractSimpleResponse(BaseModel):
     pays_api: Optional[bool] = None
     fire_insurance: Optional[bool] = None
     document_path: Optional[str] = None
+    garage_label: Optional[str] = None
 
 class PeriodTaxesResponse(BaseModel):
     epe: Optional[float] = None
@@ -114,6 +116,7 @@ class ContractPeriodResponse(BaseModel):
                 'pays_api': getattr(contract_obj, 'pays_api', False),
                 'fire_insurance': getattr(contract_obj, 'fire_insurance', False),
                 'document_path': getattr(contract_obj, 'document_path', None),
+                'garage_label': contract_location_label(contract_obj) if not property_dict else None,
             }
 
         period_dict['contract'] = contract_dict

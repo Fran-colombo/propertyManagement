@@ -213,13 +213,16 @@ const AllContracts = () => {
                   <td>{new Date(contract.end_date).toLocaleDateString()}</td>
                   <td>
                     {contract.document_path ? (
-                      <a
+                      <Button
+                        variant="outline-primary"
+                        size="sm"
+                        as="a"
                         href={mediaUrl(contract.document_path)}
                         target="_blank"
                         rel="noreferrer"
                       >
                         Ver contrato
-                      </a>
+                      </Button>
                     ) : (
                       <span className="text-muted">Sin archivo</span>
                     )}
@@ -275,6 +278,18 @@ const AllContracts = () => {
                     >
                       Ver Períodos
                     </Button>
+                    {contract.document_path && (
+                      <Button
+                        variant="outline-primary"
+                        size="sm"
+                        as="a"
+                        href={mediaUrl(contract.document_path)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Ver contrato
+                      </Button>
+                    )}
                     {contract.rental_contract_id && (
                       <Button
                         variant="outline-secondary"

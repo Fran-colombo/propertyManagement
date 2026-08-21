@@ -54,6 +54,8 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   const [documentFile, setDocumentFile] = useState(null);
   const [parseWarning, setParseWarning] = useState("");
   const [parsing, setParsing] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (show) {
@@ -61,6 +63,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       setOwnerId("");
       setDocumentFile(null);
       setParseWarning("");
+      setFeedback(null);
       loadData();
     }
   }, [show]);
@@ -240,6 +243,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       return;
     }
     setError("");
+    setSubmitting(true);
     try {
       const payload = {
         ...form,
@@ -257,23 +261,45 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         try {
           await uploadContractDocument(created.id, documentFile);
         } catch (uploadErr) {
-          setError(
-            uploadErr.message ||
-              "Contrato creado, pero no se pudo subir el archivo. Podés adjuntarlo después desde Editar contrato."
-          );
           onCreated();
+          setFeedback({
+            variant: "warning",
+            title: "Contrato creado",
+            message:
+              uploadErr.message ||
+              "El contrato se creó, pero no se pudo subir el archivo. Podés adjuntarlo después desde Editar contrato.",
+          });
           return;
         }
       }
       onCreated();
-      onHide();
+      setFeedback({
+        variant: "success",
+        title: "Contrato creado",
+        message: "El contrato se creó correctamente.",
+      });
     } catch (err) {
-      setError(err.message || "Error al crear el contrato");
+      setFeedback({
+        variant: "danger",
+        title: "No se pudo crear el contrato",
+        message: err.message || "Error al crear el contrato",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const closeFeedback = () => {
+    const variant = feedback?.variant;
+    setFeedback(null);
+    if (variant !== "danger") {
+      onHide();
     }
   };
 
   return (
-    <Modal show={show} onHide={onHide} backdrop="static" size="lg">
+    <>
+    <Modal show={show && !feedback} onHide={onHide} backdrop="static" size="lg">
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Nuevo Contrato</Modal.Title>
@@ -547,11 +573,27 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
           <Button variant="secondary" onClick={onHide}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" disabled={!isValid() || loading}>
-            Guardar
+          <Button type="submit" variant="primary" disabled={!isValid() || loading || submitting}>
+            {submitting ? "Guardando..." : "Guardar"}
           </Button>
         </Modal.Footer>
       </Form>
     </Modal>
+    <Modal show={!!feedback} onHide={closeFeedback} centered>
+      <Modal.Header closeButton>
+        <Modal.Title>{feedback?.title}</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        <Alert variant={feedback?.variant || "info"} className="mb-0">
+          {feedback?.message}
+        </Alert>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="primary" onClick={closeFeedback}>
+          Aceptar
+        </Button>
+      </Modal.Footer>
+    </Modal>
+    </>
   );
 }

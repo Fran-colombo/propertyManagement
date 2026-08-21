@@ -10,6 +10,7 @@ from models.transactions import Transaction
 from schemas.enums.enums import PaymentStatusEnum
 from services.transaction_service import TransactionService
 from schemas.transactionDTO import TransactionHistoryResponse, TransactionResponseDTO
+from utils.contract_display import contract_location_label, contract_owner
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -42,18 +43,22 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
         else "PENDIENTE"
     )
 
+    contract = period.contract
+    owner = contract_owner(contract)
+    tenant = contract.tenant if contract else None
+
     history = TransactionHistory(
         transaction_id=transaction.id,
         amount=payment.amount,
         date=date.today(),
         method=payment.method,
         notes=payment.reference,
-        contract_id=period.contract.id,
-        owner_id=period.contract.property.owner.id,
-        owner_name=period.contract.property.owner.name,
-        tenant_id=period.contract.tenant.id,
-        tenant_name=period.contract.tenant.name,
-        property_direction=period.contract.property.direction,
+        contract_id=contract.id if contract else None,
+        owner_id=owner.id if owner else None,
+        owner_name=owner.name if owner else "Sin dueño",
+        tenant_id=tenant.id if tenant else None,
+        tenant_name=tenant.name if tenant else "Sin inquilino",
+        property_direction=contract_location_label(contract),
         period_id=period.id,
         period_start_date=period.start_date,
         period_end_date=period.end_date,

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from services.rental_contract_service import RentalContractService
 from controllers import tenant_controller, user_controller, owner_controller, property_controller, rental_contract_controller, contract_period_controller, transaction_controller, garage_controller, real_agency_controller, index_controller, contract_history_controller
 from database import SessionLocal
-from database import init_db
+from database import init_db, UPLOADS_ROOT
 from scheduler_tasks import init_scheduler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -50,10 +50,10 @@ app.include_router(real_agency_controller.router)
 app.include_router(index_controller.router)
 app.include_router(contract_history_controller.router)
 
-_uploads_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "properties_data", "uploads")
-)
+_uploads_root = os.path.abspath(UPLOADS_ROOT)
 os.makedirs(_uploads_root, exist_ok=True)
+os.makedirs(os.path.join(_uploads_root, "terminations"), exist_ok=True)
+os.makedirs(os.path.join(_uploads_root, "contracts"), exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_uploads_root), name="uploads")
 
 

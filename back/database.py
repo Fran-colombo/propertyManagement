@@ -6,6 +6,8 @@ from models.base import Base
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "properties_data", "properties.db")
 DB_PATH = os.path.abspath(DB_PATH)
+DATA_DIR = os.path.dirname(DB_PATH)
+UPLOADS_ROOT = os.path.join(DATA_DIR, "uploads")
 
 db_folder = os.path.dirname(DB_PATH)
 os.makedirs(db_folder, exist_ok=True)
@@ -33,6 +35,7 @@ def init_db():
     from models.contract_period import ContractPeriod
     from models.index import Index
     from models.transactions import Transaction
+from models.transaction_history import TransactionHistory  # noqa: F401
     from models.contract_termination import ContractTermination  # noqa: F401
     from models.contract_history import ContractHistory  # noqa: F401
 

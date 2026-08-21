@@ -9,7 +9,7 @@ export async function registerTransaction(periodId, paymentData) {
 }
 
 export async function getAllTransactions() {
-  return await apiFetch("/transactions");
+  return await apiFetch("/transactions/");
 }
 
 export async function getTransactionsByPeriod(periodId) {

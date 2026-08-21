@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Table, Badge, Form, InputGroup, Row, Col, Container, Spinner } from "react-bootstrap";
+import { Card, Table, Badge, Form, InputGroup, Row, Col, Container, Spinner, Alert } from "react-bootstrap";
 import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-bootstrap-icons";
 import { getAllTransactions } from "../api/transaction";
 
@@ -9,18 +9,18 @@ const Transactions = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState(() => {
-  const current = new Date();
-  return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-});
+  const [error, setError] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
 
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
         const data = await getAllTransactions();
-        setTransactions(data);
-      } catch (error) {
-        console.error("Error al cargar transacciones", error);
+        setTransactions(data || []);
+      } catch (err) {
+        console.error("Error al cargar transacciones", err);
+        setError(err.message || "No se pudieron cargar las transacciones");
+        setTransactions([]);
       } finally {
         setLoading(false);
       }
@@ -39,8 +39,11 @@ const matchesSearch =
   transaction.notes?.toLowerCase().includes(search);
 
 
-    const matchesDate = !dateFilter || transaction.date.includes(dateFilter);
-    const matchesMethod = !methodFilter || transaction.method === methodFilter;
+    const matchesDate =
+      !dateFilter || String(transaction.date || "").includes(dateFilter);
+    const matchesMethod =
+      !methodFilter ||
+      String(transaction.method || "").toLowerCase() === methodFilter;
 
     return matchesSearch && matchesDate && matchesMethod;
   });
@@ -90,6 +93,11 @@ const matchesSearch =
     
 
     <Container className="py-4">
+      {error && (
+        <Alert variant="danger" dismissible onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
       <Row className="mb-4 align-items-center">
         <Col>
           <h1 className="h2 mb-0">Transacciones</h1>
@@ -150,6 +158,7 @@ const matchesSearch =
                   onChange={(e) => setDateFilter(e.target.value)}
                 />
               </InputGroup>
+              <Form.Text className="text-muted">Mes (opcional). Vacío lista todas.</Form.Text>
             </Col>
             <Col md={4}>
               <InputGroup>
