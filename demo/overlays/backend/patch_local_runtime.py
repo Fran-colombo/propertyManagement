@@ -16,11 +16,6 @@ if old not in text:
 db.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 text = main.read_text(encoding="utf-8")
-old = 'os.path.join(os.path.dirname(__file__), "..", "properties_data", "uploads")'
-new = f'os.path.join(r"{data}", "uploads")'
-if old not in text:
-    raise SystemExit("main.py uploads snippet missing")
-text = text.replace(old, new, 1)
 
 old = "app.include_router(contract_history_controller.router)\n"
 new = (

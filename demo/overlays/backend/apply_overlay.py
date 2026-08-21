@@ -21,11 +21,6 @@ def main() -> None:
     )
     must_replace(
         MAIN,
-        'os.path.join(os.path.dirname(__file__), "..", "properties_data", "uploads")',
-        'os.path.join("/app", "properties_data", "uploads")',
-    )
-    must_replace(
-        MAIN,
         "app.include_router(contract_history_controller.router)\n",
         "app.include_router(contract_history_controller.router)\n"
         "from controllers import demo_reset_controller\n"

@@ -12,6 +12,7 @@ from models.index import Index
 from models.person import Owner, Tenant
 from models.property import Garage, Property, RealAgency
 from models.transactions import Transaction
+from models.transaction_history import TransactionHistory
 from models.user_model import RoleEnum, User
 from schemas.contractDTO import CreateContractDTO
 from schemas.enums.enums import (
@@ -21,6 +22,7 @@ from schemas.enums.enums import (
     PaymentStatusEnum,
 )
 from services.rental_contract_service import RentalContractService
+from utils.contract_display import contract_location_label, contract_owner
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -273,13 +275,38 @@ def _mark_past_periods_paid(db: Session, today: date) -> None:
         period.payment_date = period.due_date
         period.payment_method = "TRANSFERENCIA"
         period.payment_reference = "DEMO-PAGO"
+        tx = Transaction(
+            period_id=period.id,
+            amount=amount,
+            date=period.due_date,
+            method="TRANSFERENCIA",
+            notes="Pago ficticio de DEMO",
+            remaining_amount=0,
+        )
+        db.add(tx)
+        db.flush()
+        contract = period.contract
+        owner = contract_owner(contract)
+        tenant = contract.tenant if contract else None
         db.add(
-            Transaction(
-                period_id=period.id,
+            TransactionHistory(
+                transaction_id=tx.id,
                 amount=amount,
                 date=period.due_date,
                 method="TRANSFERENCIA",
                 notes="Pago ficticio de DEMO",
-                remaining_amount=0,
+                contract_id=contract.id if contract else None,
+                owner_id=owner.id if owner else None,
+                owner_name=owner.name if owner else "Sin dueño",
+                tenant_id=tenant.id if tenant else None,
+                tenant_name=tenant.name if tenant else "Sin inquilino",
+                property_direction=contract_location_label(contract),
+                period_id=period.id,
+                period_start_date=period.start_date,
+                period_end_date=period.end_date,
+                period_due_date=period.due_date,
+                period_total_amount=amount,
+                period_amount_paid=amount,
+                period_payment_status=PaymentStatusEnum.PAGADO.value,
             )
         )

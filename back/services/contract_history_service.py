@@ -1,8 +1,11 @@
 from math import ceil
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+from models.contract import RentalContract
+from models.property import Garage
 from repositories.contract_history_repository import AllContractRepository
 from schemas.contract_historyDTO import AllContractResponse, PaginatedContractHistoryResponse
+from utils.contract_display import contract_owner
 
 
 class AllContractService:
@@ -46,6 +49,19 @@ class AllContractService:
         owner_name = None
         if row.property and getattr(row.property, "owner", None):
             owner_name = row.property.owner.name
+        elif row.rental_contract_id:
+            contract = (
+                self.repo.db.query(RentalContract)
+                .options(
+                    joinedload(RentalContract.garage).joinedload(Garage.owner),
+                    joinedload(RentalContract.property),
+                )
+                .filter(RentalContract.id == row.rental_contract_id)
+                .first()
+            )
+            owner = contract_owner(contract)
+            if owner:
+                owner_name = owner.name
         return AllContractResponse(
             id=row.id,
             rental_contract_id=row.rental_contract_id,

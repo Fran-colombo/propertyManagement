@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from sqlalchemy.orm import Session
 from schemas.contract_periodDTO import ContractPeriodResponse
-from database import get_db
+from database import get_db, UPLOADS_ROOT
 from services.rental_contract_service import RentalContractService
 from services.contract_document_parser import parse_contract_pdf
 from schemas.contractDTO import CreateContractDTO, ContractResponse, UpdateContractDTO
@@ -13,9 +13,7 @@ from schemas.updateIndexDTO import ApplyIndexDTO
 
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
 
-_UPLOADS_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "properties_data", "uploads")
-)
+_UPLOADS_ROOT = os.path.abspath(UPLOADS_ROOT)
 UPLOAD_DIR = os.path.join(_UPLOADS_ROOT, "terminations")
 CONTRACT_UPLOAD_DIR = os.path.join(_UPLOADS_ROOT, "contracts")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

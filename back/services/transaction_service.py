@@ -30,10 +30,10 @@ class TransactionService:
             method=record.method,
             notes=record.notes,
             contract=ContractInfo(
-                id=record.contract_id,
-                owner=SimpleUser(id=record.owner_id, name=record.owner_name),
-                tenant=SimpleUser(id=record.tenant_id, name=record.tenant_name),
-                property_direction=record.property_direction
+                id=record.contract_id or 0,
+                owner=SimpleUser(id=record.owner_id or 0, name=record.owner_name or "Sin dueño"),
+                tenant=SimpleUser(id=record.tenant_id or 0, name=record.tenant_name or "Sin inquilino"),
+                property_direction=record.property_direction or "Sin dirección"
             ),
             period=PeriodInfo(
                 id=record.period_id,

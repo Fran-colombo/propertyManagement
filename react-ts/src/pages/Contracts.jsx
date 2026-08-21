@@ -160,7 +160,9 @@ const ContractsTable = () => {
                 dueDate < new Date() && period.payment_status !== "PAGADO";
               const tenant = period.contract?.tenant;
               const propertyAddress =
-                period.contract?.property?.direction || "Dirección no disponible";
+                period.contract?.property?.direction ||
+                period.contract?.garage_label ||
+                "Dirección no disponible";
 
               return (
                 <tr key={period.id} className={isOverdue ? "table-danger" : ""}>
