@@ -3,24 +3,29 @@ import { Modal, Form, Button, Alert, Spinner } from "react-bootstrap";
 import { getContract, updateContract, uploadContractDocument } from "../api/contract";
 import { mediaUrl } from "../utils/mediaUrl";
 
+const emptyForm = {
+  pays_epe: false,
+  pays_tgi: false,
+  pays_api: false,
+  fire_insurance: false,
+  notes: "",
+  document_path: null,
+};
+
 export default function EditContractModal({ show, onHide, contractId, onSaved }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [file, setFile] = useState(null);
-  const [form, setForm] = useState({
-    pays_epe: false,
-    pays_tgi: false,
-    pays_api: false,
-    fire_insurance: false,
-    notes: "",
-    document_path: null,
-  });
+  const [loaded, setLoaded] = useState(false);
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     if (!show || !contractId) return;
     setError("");
     setFile(null);
+    setLoaded(false);
+    setForm(emptyForm);
     setLoading(true);
     getContract(contractId)
       .then((data) => {
@@ -32,9 +37,12 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           notes: data.notes || "",
           document_path: data.document_path || null,
         });
+        setLoaded(true);
       })
       .catch((err) => {
         setError(err.message || "No se pudo cargar el contrato");
+        setForm(emptyForm);
+        setLoaded(false);
       })
       .finally(() => setLoading(false));
   }, [show, contractId]);
@@ -49,7 +57,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!contractId) return;
+    if (!contractId || !loaded) return;
     setSaving(true);
     setError("");
     try {
@@ -152,7 +160,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           <Button variant="secondary" onClick={onHide} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" disabled={loading || saving}>
+          <Button type="submit" variant="primary" disabled={loading || saving || !loaded}>
             {saving ? "Guardando..." : "Guardar"}
           </Button>
         </Modal.Footer>

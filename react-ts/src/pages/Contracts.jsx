@@ -199,7 +199,7 @@ const ContractsTable = () => {
                     {period.is_prorated && (
                       <div>
                         <small className="text-muted">
-                          Este mes: ${Number(period.period_rent ?? period.total_amount).toLocaleString()}
+                          Este mes: ${Number(period.period_rent ?? period.indexed_amount).toLocaleString()}
                         </small>
                       </div>
                     )}

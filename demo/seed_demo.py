@@ -48,7 +48,8 @@ def seed_demo(db: Session) -> None:
     service = RentalContractService(db)
     today = date.today()
 
-    active_start = (today.replace(day=1) - relativedelta(months=5))
+    # Mid-month start so the first period is prorated (not a partial payment).
+    active_start = (today.replace(day=1) - relativedelta(months=5)).replace(day=12)
     active_end = active_start + relativedelta(months=24)
     service.create_contract(
         CreateContractDTO(
@@ -67,7 +68,7 @@ def seed_demo(db: Session) -> None:
             pays_epe=True,
             pays_tgi=True,
             pays_api=False,
-            notes="Contrato DEMO activo — datos ficticios",
+            notes="Contrato DEMO activo — ingreso a mitad de mes (alquiler proporcional). PDF opcional.",
         )
     )
 
@@ -82,10 +83,10 @@ def seed_demo(db: Session) -> None:
             end_date=garage_end,
             currency=CurrencyEnum.PESOS,
             base_rent=45000,
-            index_type=None,
-            frequency_adjustment=None,
+            index_type=IndexTypeEnum.ICL,
+            frequency_adjustment=AdjustmentFrequencyEnum.SEMESTRAL,
             includes_garage=True,
-            notes="Alquiler DEMO de garage — datos ficticios",
+            notes="Alquiler DEMO de garage — ajuste ICL semestral. PDF se puede adjuntar después.",
         )
     )
 
