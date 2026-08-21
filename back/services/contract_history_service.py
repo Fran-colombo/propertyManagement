@@ -1,7 +1,8 @@
+from math import ceil
 from sqlalchemy.orm import Session
 
 from repositories.contract_history_repository import AllContractRepository
-from schemas.contract_historyDTO import AllContractResponse
+from schemas.contract_historyDTO import AllContractResponse, PaginatedContractHistoryResponse
 
 
 class AllContractService:
@@ -13,6 +14,33 @@ class AllContractService:
     
     def get_all_contracts(self) -> list[AllContractResponse]:
         return [self._to_response(row) for row in self.repo.get_all_contracts()]
+
+    def get_paginated(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        property_id: int | None = None,
+        month: str | None = None,
+        tenant: str | None = None,
+    ) -> PaginatedContractHistoryResponse:
+        page = max(1, page)
+        page_size = min(max(1, page_size), 100)
+        items, total = self.repo.get_paginated(
+            page=page,
+            page_size=page_size,
+            property_id=property_id,
+            month=month,
+            tenant=tenant,
+        )
+        pages = ceil(total / page_size) if page_size else 0
+        return PaginatedContractHistoryResponse(
+            items=[self._to_response(row) for row in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        )
 
     def _to_response(self, row) -> AllContractResponse:
         owner_name = None

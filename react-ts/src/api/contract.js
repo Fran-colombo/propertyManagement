@@ -95,6 +95,18 @@ export const cancelContract = async (contractId) => {
   }
 };
 
-export const getContractHistory = async () => {
-  return await apiFetch("/contracts-history/")
-}
+export const getContractHistory = async ({
+  page = 1,
+  pageSize = 20,
+  propertyId,
+  month,
+  tenant,
+} = {}) => {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  if (propertyId) params.set("property_id", String(propertyId));
+  if (month) params.set("month", month);
+  if (tenant) params.set("tenant", tenant);
+  return await apiFetch(`/contracts-history/?${params.toString()}`);
+};

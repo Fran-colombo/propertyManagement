@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import date
-from typing import Optional
+from typing import Optional, List
 
 class PropertyMiniDTO(BaseModel):
     id: int
@@ -37,3 +37,11 @@ class AllContractResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PaginatedContractHistoryResponse(BaseModel):
+    items: List[AllContractResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int

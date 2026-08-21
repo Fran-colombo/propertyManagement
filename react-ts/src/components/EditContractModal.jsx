@@ -142,7 +142,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
                 />
                 <Form.Text className="text-muted">
-                  Podés adjuntarlo ahora o más adelante. No es obligatorio.
+                  Si no lo adjuntaste al crear, podés cargarlo ahora. Solo se guarda el archivo: no cambia fechas, alquiler ni impuestos que ya estén cargados.
                 </Form.Text>
               </Form.Group>
             </>

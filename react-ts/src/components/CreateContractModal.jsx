@@ -159,18 +159,32 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
     if (!suggestions) return;
     setForm((prev) => {
       const next = { ...prev };
-      if (suggestions.start_date) next.start_date = suggestions.start_date;
-      if (suggestions.end_date) next.end_date = suggestions.end_date;
-      if (suggestions.base_rent) next.base_rent = suggestions.base_rent;
-      if (suggestions.currency) next.currency = suggestions.currency;
-      if (suggestions.index_type) next.index_type = suggestions.index_type;
-      if (suggestions.frequency_adjustment) {
+      const empty = (value) => value === "" || value === null || value === undefined;
+      if (suggestions.start_date && empty(prev.start_date)) {
+        next.start_date = suggestions.start_date;
+      }
+      if (suggestions.end_date && empty(prev.end_date)) {
+        next.end_date = suggestions.end_date;
+      }
+      if (suggestions.base_rent && empty(prev.base_rent)) {
+        next.base_rent = suggestions.base_rent;
+      }
+      if (suggestions.currency && prev.currency === emptyForm.currency) {
+        next.currency = suggestions.currency;
+      }
+      if (suggestions.index_type && prev.index_type === emptyForm.index_type) {
+        next.index_type = suggestions.index_type;
+      }
+      if (
+        suggestions.frequency_adjustment &&
+        prev.frequency_adjustment === emptyForm.frequency_adjustment
+      ) {
         next.frequency_adjustment = suggestions.frequency_adjustment;
       }
-      if (suggestions.pays_epe) next.pays_epe = true;
-      if (suggestions.pays_tgi) next.pays_tgi = true;
-      if (suggestions.pays_api) next.pays_api = true;
-      if (suggestions.fire_insurance) next.fire_insurance = true;
+      if (suggestions.pays_epe && !prev.pays_epe) next.pays_epe = true;
+      if (suggestions.pays_tgi && !prev.pays_tgi) next.pays_tgi = true;
+      if (suggestions.pays_api && !prev.pays_api) next.pays_api = true;
+      if (suggestions.fire_insurance && !prev.fire_insurance) next.fire_insurance = true;
       return next;
     });
   };
@@ -194,7 +208,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       } else if (!Object.keys(suggestions).length) {
         setParseWarning("No se reconocieron campos. Completá el formulario a mano.");
       } else {
-        setParseWarning("Se completaron los campos que se pudieron leer. Revisalos antes de guardar.");
+        setParseWarning("Se completaron solo los campos vacíos que se pudieron leer. Revisalos antes de guardar.");
       }
     } catch (err) {
       setParseWarning(err.message || "No se pudo leer el PDF. Podés cargarlo igual y completar a mano.");
@@ -508,7 +522,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                   onChange={handleFileChange}
                 />
                 <Form.Text className="text-muted d-block">
-                  No es obligatorio. Si es un PDF con texto, podés intentar completar el formulario automáticamente.
+                  No es obligatorio. Para autocompletar tiene que ser un PDF con texto seleccionable (no una foto o escaneo). Después tocá “Intentar completar desde el PDF”. Solo rellena campos vacíos; lo que ya cargaste no se pisa.
                 </Form.Text>
                 <Button
                   variant="outline-secondary"
