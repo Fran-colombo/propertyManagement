@@ -35,7 +35,7 @@ def init_db():
     from models.contract_period import ContractPeriod
     from models.index import Index
     from models.transactions import Transaction
-from models.transaction_history import TransactionHistory  # noqa: F401
+    from models.transaction_history import TransactionHistory  # noqa: F401
     from models.contract_termination import ContractTermination  # noqa: F401
     from models.contract_history import ContractHistory  # noqa: F401
 
