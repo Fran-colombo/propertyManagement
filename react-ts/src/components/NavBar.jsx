@@ -1,6 +1,7 @@
-import { Navbar, Nav, Container } from "react-bootstrap";
+import { useState } from "react";
+import { Navbar, Nav, Container, Offcanvas } from "react-bootstrap";
 import { Link, useLocation } from "react-router-dom";
-import useAuth from "../../hooks/useAuth"
+import useAuth from "../../hooks/useAuth";
 import {
   House,
   People,
@@ -11,7 +12,8 @@ import {
 
 export default function NavigationBar() {
   const location = useLocation();
-  const {logout } = useAuth()
+  const { logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const navItems = [
     { to: "/people", icon: <People className="me-2" />, label: "Personas" },
@@ -19,45 +21,65 @@ export default function NavigationBar() {
     { to: "/transactions", icon: <CashStack className="me-2" />, label: "Transacciones" },
     { to: "/contracts", icon: <FileEarmarkText className="me-2" />, label: "Contratos activos" },
     { to: "/all-contracts", icon: <FileEarmarkText className="me-2" />, label: "Historial de contratos" },
-
   ];
 
-  return (
-    <Navbar bg="light" expand="lg" className="shadow-sm border-bottom py-3">
-      <Container>
-        <Navbar.Brand as={Link} to="/" className="fw-bold text-primary d-flex align-items-center">
-          <House className="me-2" size={24} />
-          <span className="fs-5">Gestión Inmobiliaria</span>
-        </Navbar.Brand>
-        <Navbar.Toggle aria-controls="main-navbar" />
-        <Navbar.Collapse id="main-navbar">
-          <Nav className="ms-auto">
-            {navItems.map(({ to, icon, label }) => (
-              <Nav.Link
-                as={Link}
-                to={to}
-                key={to}
-                active={location.pathname === to}
-                className={`d-flex align-items-center px-3 rounded-pill me-2 ${
-                  location.pathname === to ? "bg-primary text-white" : "text-dark"
-                }`}
-                style={{ transition: "all 0.3s" }}
-              >
-                {icon}
-                <span>{label}</span>
-              </Nav.Link>
-            ))}
-            <Nav.Link
-            as="button"
-            onClick={logout}
-            className="d-flex align-items-center px-3 rounded-pill me-2 text-danger border-0 bg-transparent"
-            style={{ cursor: "pointer" }}
-          >
-            <span className="me-2">Cerrar sesión</span>
-          </Nav.Link>
+  const closeMenu = () => setMenuOpen(false);
 
-          </Nav>
-        </Navbar.Collapse>
+  const links = (onSelect) => (
+    <>
+      {navItems.map(({ to, icon, label }) => (
+        <Nav.Link
+          as={Link}
+          to={to}
+          key={to}
+          active={location.pathname === to}
+          onClick={onSelect}
+          className={`d-flex align-items-center px-3 py-2 rounded-pill me-lg-2 mb-1 mb-lg-0 ${
+            location.pathname === to ? "bg-primary text-white" : "text-dark"
+          }`}
+        >
+          {icon}
+          <span>{label}</span>
+        </Nav.Link>
+      ))}
+      <Nav.Link
+        as="button"
+        onClick={() => {
+          onSelect?.();
+          logout();
+        }}
+        className="d-flex align-items-center px-3 py-2 rounded-pill text-danger border-0 bg-transparent"
+      >
+        Cerrar sesión
+      </Nav.Link>
+    </>
+  );
+
+  return (
+    <Navbar bg="light" expand="lg" className="shadow-sm border-bottom py-2" sticky="top">
+      <Container fluid="xl">
+        <Navbar.Brand as={Link} to="/" className="fw-bold text-primary d-flex align-items-center">
+          <House className="me-2" size={22} />
+          <span>Gestión Inmobiliaria</span>
+        </Navbar.Brand>
+        <Navbar.Toggle
+          aria-controls="main-navbar"
+          onClick={() => setMenuOpen(true)}
+        />
+        <Nav className="ms-auto d-none d-lg-flex align-items-center">{links()}</Nav>
+        <Offcanvas
+          id="main-navbar"
+          placement="end"
+          show={menuOpen}
+          onHide={closeMenu}
+        >
+          <Offcanvas.Header closeButton>
+            <Offcanvas.Title>Menú</Offcanvas.Title>
+          </Offcanvas.Header>
+          <Offcanvas.Body>
+            <Nav className="flex-column">{links(closeMenu)}</Nav>
+          </Offcanvas.Body>
+        </Offcanvas>
       </Container>
     </Navbar>
   );

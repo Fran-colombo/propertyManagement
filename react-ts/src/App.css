@@ -1,10 +1,15 @@
+html {
+  overflow-x: hidden;
+}
+
 body {
-  background-color: #b3bed1;  
+  background-color: #b3bed1;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 body.dark-bg {
-  background-color: #e9ecef; 
+  background-color: #e9ecef;
 }
 
 body.gradient-bg {
@@ -18,4 +23,55 @@ body.gradient-bg {
   background: transparent;
   padding: 0;
   cursor: pointer;
+}
+
+.min-width-0 {
+  min-width: 0;
+}
+
+.table-responsive {
+  max-width: 100%;
+}
+
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.page-toolbar .input-group {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.page-toolbar .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  .page-toolbar .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+.person-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 767.98px) {
+  .navbar-brand span {
+    font-size: 1rem;
+  }
+
+  .modal-body {
+    max-height: calc(100vh - 8rem);
+    overflow-y: auto;
+  }
 }

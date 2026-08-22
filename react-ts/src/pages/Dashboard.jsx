@@ -1,13 +1,13 @@
 import { useNavigate } from "react-router-dom"
-import { Button, Card, Container, Row, Col } from "react-bootstrap"
+import { Button, Card } from "react-bootstrap"
 import { PeopleFill, HouseDoorFill, ReceiptCutoff, FileEarmarkTextFill, ClockHistory } from "react-bootstrap-icons"
 
 export default function Dashboard() {
   const navigate = useNavigate()
 
   return (
-    <Container className="d-flex justify-content-center align-items-center vh-100">
-      <Card className="shadow-lg p-4" style={{ minWidth: "400px", maxWidth: "500px", width: "100%" }}>
+    <div className="d-flex justify-content-center py-3">
+      <Card className="shadow-lg p-3 p-md-4 w-100" style={{ maxWidth: "500px" }}>
         <Card.Body>
           <Card.Title className="text-center mb-4 fs-3">Sistema de Gestión Inmobiliaria</Card.Title>
           <div className="d-grid gap-3">
@@ -49,6 +49,6 @@ export default function Dashboard() {
           </div>
         </Card.Body>
       </Card>
-    </Container>
+    </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Spinner, Table, Alert, Form, Tab, Tabs, Row, Col } from "react-bootstrap";
+import { Button, Spinner, Table, Alert, Form, Tab, Tabs, Row, Col, Card } from "react-bootstrap";
 import { getAllPendingPeriods, registerPayment, updateTaxes, getPeriodsByMonth } from "../api/contract_period";
 import PayPeriodModal from "../components/PayPeriodModal";
 import EditTaxesModal from "../components/EditTaxesModal";
@@ -126,10 +126,170 @@ const ContractsTable = () => {
   const displayedPeriods = getFilteredPeriods();
   const { withAgency, withoutAgency } = splitPeriodsByAgency(displayedPeriods);
 
-  const PeriodsTable = ({ periods: tablePeriods, title }) => (
+  const PeriodsTable = ({ periods: tablePeriods, title }) => {
+    const renderPeriodActions = (period) => (
+      <div className="d-flex flex-wrap gap-2">
+        <Button
+          variant="success"
+          size="sm"
+          onClick={() => {
+            setSelectedPeriod(period);
+            setShowPayModal(true);
+          }}
+          disabled={period.payment_status === "PAGADO"}
+        >
+          Pagar
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            setSelectedPeriod(period);
+            setShowTaxesModal(true);
+          }}
+          disabled={period.payment_status === "PAGADO"}
+        >
+          Impuestos
+        </Button>
+        {period.contract?.id &&
+          period.contract?.currency !== "DOLARES" &&
+          period.contract?.index_type && (
+            <Button
+              variant="info"
+              size="sm"
+              onClick={() => {
+                setSelectedPeriod(period);
+                setShowIndexModal(true);
+              }}
+              disabled={period.payment_status === "PAGADO"}
+            >
+              Índice
+            </Button>
+          )}
+        {period.contract?.id && (
+          <Button
+            variant="outline-secondary"
+            size="sm"
+            onClick={() => {
+              setContractToEdit(period.contract);
+              setShowEditModal(true);
+            }}
+          >
+            Editar
+          </Button>
+        )}
+        {period.contract?.document_path && (
+          <Button
+            variant="outline-primary"
+            size="sm"
+            as="a"
+            href={mediaUrl(period.contract.document_path)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ver contrato
+          </Button>
+        )}
+        {period.contract?.id && (
+          <Button
+            variant="outline-danger"
+            size="sm"
+            onClick={() => {
+              setContractToCancel(period.contract);
+              setShowCancelModal(true);
+            }}
+          >
+            Finalizar
+          </Button>
+        )}
+      </div>
+    );
+
+    const periodMeta = (period) => {
+      const taxes = period.taxes || {};
+      const totalTaxes =
+        (taxes.epe || 0) +
+        (taxes.tgi || 0) +
+        (taxes.api || 0) +
+        (taxes.fire_insurance || 0);
+      const dueDate = new Date(period.due_date);
+      const isOverdue =
+        dueDate < new Date() && period.payment_status !== "PAGADO";
+      const tenant = period.contract?.tenant;
+      const propertyAddress =
+        period.contract?.property?.direction ||
+        period.contract?.garage_label ||
+        "Dirección no disponible";
+      return { taxes, totalTaxes, dueDate, isOverdue, tenant, propertyAddress };
+    };
+
+    return (
     <>
       <h4 className="mt-4">{title}</h4>
       {tablePeriods.length > 0 ? (
+        <>
+          <div className="d-lg-none">
+            {tablePeriods.map((period) => {
+              const { totalTaxes, dueDate, isOverdue, tenant, propertyAddress } =
+                periodMeta(period);
+              return (
+                <Card
+                  key={period.id}
+                  className={`mb-3 ${isOverdue ? "border-danger" : ""}`}
+                >
+                  <Card.Body>
+                    <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
+                      <div>
+                        <div className="fw-semibold">{tenant?.name || "Inquilino no disponible"}</div>
+                        {tenant?.email && (
+                          <small className="text-muted text-break-all d-block">
+                            {tenant.email}
+                          </small>
+                        )}
+                      </div>
+                      <span
+                        className={`badge bg-${
+                          period.payment_status === "PAGADO"
+                            ? "success"
+                            : isOverdue
+                            ? "danger"
+                            : "warning"
+                        }`}
+                      >
+                        {isOverdue ? "VENCIDO" : period.payment_status}
+                      </span>
+                    </div>
+                    <div className="small mb-2 text-break-all">
+                      <strong>Dirección:</strong> {propertyAddress}
+                    </div>
+                    {title.includes("Agencia") && (
+                      <div className="small mb-2">
+                        <strong>Agencia:</strong> {period.contract?.real_agency?.name || "-"}
+                      </div>
+                    )}
+                    <div className="small mb-1">
+                      <strong>Período:</strong>{" "}
+                      {new Date(period.start_date).toLocaleDateString()} -{" "}
+                      {new Date(period.end_date).toLocaleDateString()}
+                      {period.is_prorated && (
+                        <span className="badge bg-info text-dark ms-2">Proporcional</span>
+                      )}
+                    </div>
+                    <div className="small mb-2">
+                      <strong>Vencimiento:</strong> {dueDate.toLocaleDateString()}
+                    </div>
+                    <div className="small mb-3">
+                      Total ${period.total_amount.toLocaleString()} · Pagado $
+                      {period.amount_paid.toLocaleString()}
+                      {totalTaxes > 0 && ` · Impuestos $${totalTaxes.toLocaleString()}`}
+                    </div>
+                    {renderPeriodActions(period)}
+                  </Card.Body>
+                </Card>
+              );
+            })}
+          </div>
+          <div className="table-responsive d-none d-lg-block">
         <Table striped bordered hover>
           <thead>
             <tr>
@@ -149,20 +309,8 @@ const ContractsTable = () => {
           </thead>
           <tbody>
             {tablePeriods.map((period) => {
-              const taxes = period.taxes || {};
-              const totalTaxes =
-                (taxes.epe || 0) +
-                (taxes.tgi || 0) +
-                (taxes.api || 0) +
-                (taxes.fire_insurance || 0);
-              const dueDate = new Date(period.due_date);
-              const isOverdue =
-                dueDate < new Date() && period.payment_status !== "PAGADO";
-              const tenant = period.contract?.tenant;
-              const propertyAddress =
-                period.contract?.property?.direction ||
-                period.contract?.garage_label ||
-                "Dirección no disponible";
+              const { totalTaxes, dueDate, isOverdue, tenant, propertyAddress } =
+                periodMeta(period);
 
               return (
                 <tr key={period.id} className={isOverdue ? "table-danger" : ""}>
@@ -222,98 +370,25 @@ const ContractsTable = () => {
                       {isOverdue ? "VENCIDO" : period.payment_status}
                     </span>
                   </td>
-                  <td>
-                    <div className="d-flex flex-wrap gap-2">
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedPeriod(period);
-                          setShowPayModal(true);
-                        }}
-                        disabled={period.payment_status === "PAGADO"}
-                      >
-                        Pagar
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedPeriod(period);
-                          setShowTaxesModal(true);
-                        }}
-                        disabled={period.payment_status === "PAGADO"}
-                      >
-                        Impuestos
-                      </Button>
-                      {period.contract?.id &&
-                        period.contract?.currency !== "DOLARES" &&
-                        period.contract?.index_type && (
-                          <Button
-                            variant="info"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedPeriod(period);
-                              setShowIndexModal(true);
-                            }}
-                            disabled={period.payment_status === "PAGADO"}
-                          >
-                            Índice
-                          </Button>
-                        )}
-                      {period.contract?.id && (
-                        <Button
-                          variant="outline-secondary"
-                          size="sm"
-                          onClick={() => {
-                            setContractToEdit(period.contract);
-                            setShowEditModal(true);
-                          }}
-                        >
-                          Editar
-                        </Button>
-                      )}
-                      {period.contract?.document_path && (
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          as="a"
-                          href={mediaUrl(period.contract.document_path)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Ver contrato
-                        </Button>
-                      )}
-                      {period.contract?.id && (
-                        <Button
-                          variant="outline-danger"
-                          size="sm"
-                          onClick={() => {
-                            setContractToCancel(period.contract);
-                            setShowCancelModal(true);
-                          }}
-                        >
-                          Finalizar
-                        </Button>
-                      )}
-                    </div>
-                  </td>
+                  <td>{renderPeriodActions(period)}</td>
                 </tr>
               );
             })}
           </tbody>
         </Table>
+          </div>
+        </>
       ) : (
         <Alert variant="info">No hay períodos {title.toLowerCase()}.</Alert>
       )}
     </>
   );
+  };
 
   return (
-    <div className="container mt-4">
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h2>Períodos Pendientes</h2>
+    <div>
+      <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+        <h2 className="h4 mb-0">Períodos Pendientes</h2>
         <Button variant="primary" onClick={() => setShowCreateModal(true)}>
           Nuevo contrato
         </Button>
@@ -326,7 +401,7 @@ const ContractsTable = () => {
       )}
 
       <Row className="mb-3 g-3 align-items-end">
-        <Col md={2}>
+        <Col xs={6} md={2}>
           <Form.Group controlId="filterMonth">
             <Form.Label>Mes</Form.Label>
             <Form.Select
@@ -342,7 +417,7 @@ const ContractsTable = () => {
             </Form.Select>
           </Form.Group>
         </Col>
-        <Col md={2}>
+        <Col xs={6} md={2}>
           <Form.Group controlId="filterYear">
             <Form.Label>Año</Form.Label>
             <Form.Select
@@ -358,7 +433,7 @@ const ContractsTable = () => {
             </Form.Select>
           </Form.Group>
         </Col>
-        <Col md={3}>
+        <Col xs={12} md={3}>
           <Form.Group controlId="tenantFilter">
             <Form.Label>Inquilino</Form.Label>
             <Form.Select
@@ -374,7 +449,7 @@ const ContractsTable = () => {
             </Form.Select>
           </Form.Group>
         </Col>
-        <Col md={3}>
+        <Col xs={12} md={3}>
           <Form.Check
             type="switch"
             id="show-all-pending"
@@ -392,7 +467,7 @@ const ContractsTable = () => {
         </p>
       )}
 
-      <Tabs defaultActiveKey="all" className="mb-3">
+      <Tabs defaultActiveKey="all" className="mb-3 flex-nowrap overflow-auto">
         <Tab eventKey="all" title="Todos">
           {displayedPeriods.length > 0 ? (
             <PeriodsTable periods={displayedPeriods} title="Todos los períodos" />

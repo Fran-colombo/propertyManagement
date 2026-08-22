@@ -30,23 +30,24 @@ export default function DemoBanner() {
   };
 
   return (
-    <Alert variant="warning" className="mb-0 rounded-0 text-center py-2">
-      <strong>DEMO ENVIRONMENT — Fictional Data</strong>
-      <span className="mx-2">·</span>
-      <Button
-        variant="outline-danger"
-        size="sm"
-        onClick={handleReset}
-        disabled={resetting}
-      >
-        {resetting ? (
-          <>
-            <Spinner size="sm" className="me-1" /> Restoring…
-          </>
-        ) : (
-          "Reset demo data"
-        )}
-      </Button>
+    <Alert variant="warning" className="mb-0 rounded-0 text-center py-2 px-2">
+      <div className="d-flex flex-wrap justify-content-center align-items-center gap-2">
+        <strong>DEMO ENVIRONMENT — Fictional Data</strong>
+        <Button
+          variant="outline-danger"
+          size="sm"
+          onClick={handleReset}
+          disabled={resetting}
+        >
+          {resetting ? (
+            <>
+              <Spinner size="sm" className="me-1" /> Restoring…
+            </>
+          ) : (
+            "Reset demo data"
+          )}
+        </Button>
+      </div>
       {message && <div className="small mt-1">{message}</div>}
       {error && <div className="small text-danger mt-1">{error}</div>}
     </Alert>

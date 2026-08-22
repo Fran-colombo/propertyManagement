@@ -123,13 +123,13 @@ const AllContracts = () => {
   }
 
   return (
-    <div className="p-4">
-      <h2>Historial de contratos</h2>
+    <div>
+      <h2 className="h4">Historial de contratos</h2>
       <p className="text-muted small">
         Se listan todos, del más reciente al más viejo. El mes y la propiedad son filtros opcionales.
       </p>
       <Row className="g-3 mb-3">
-        <Col md={4}>
+        <Col xs={12} md={4}>
           <Form.Control
             type="text"
             placeholder="Buscar por inquilino..."
@@ -137,7 +137,7 @@ const AllContracts = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </Col>
-        <Col md={3}>
+        <Col xs={12} md={3}>
           <Form.Select
             value={propertyId}
             onChange={(e) => setPropertyId(e.target.value)}
@@ -150,7 +150,7 @@ const AllContracts = () => {
             ))}
           </Form.Select>
         </Col>
-        <Col md={3}>
+        <Col xs={12} md={3}>
           <Form.Control
             type="month"
             value={startDateFilter}
@@ -159,7 +159,7 @@ const AllContracts = () => {
           <Form.Text className="text-muted">Mes de inicio (opcional)</Form.Text>
         </Col>
         {(propertyId || startDateFilter || searchTerm) && (
-          <Col md={2} className="d-flex align-items-start">
+          <Col xs={12} md={2} className="d-flex align-items-start">
             <Button
               variant="outline-secondary"
               onClick={() => {
@@ -182,7 +182,8 @@ const AllContracts = () => {
         <p>Cargando contratos...</p>
       ) : (
         <>
-          <Table striped bordered hover>
+          <div className="table-responsive">
+          <Table striped bordered hover className="mb-0">
             <thead>
               <tr>
                 <th>Propiedad</th>
@@ -326,7 +327,8 @@ const AllContracts = () => {
               )}
             </tbody>
           </Table>
-          <div className="d-flex justify-content-between align-items-center">
+          </div>
+          <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mt-3">
             <small className="text-muted">
               {total} contrato{total === 1 ? "" : "s"}
             </small>
@@ -355,7 +357,7 @@ const AllContracts = () => {
         </>
       )}
 
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">
+      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" fullscreen="sm-down">
         <Modal.Header closeButton>
           <Modal.Title>
             Períodos —{" "}
@@ -375,6 +377,7 @@ const AllContracts = () => {
           {loadingPeriods ? (
             <p>Cargando períodos...</p>
           ) : (
+            <div className="table-responsive">
             <Table striped bordered hover>
               <thead>
                 <tr>
@@ -429,6 +432,7 @@ const AllContracts = () => {
                 ))}
               </tbody>
             </Table>
+            </div>
           )}
         </Modal.Body>
         <Modal.Footer>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Table, Badge, Form, InputGroup, Row, Col, Container, Spinner, Alert } from "react-bootstrap";
+import { Card, Table, Badge, Form, InputGroup, Row, Col, Spinner, Alert } from "react-bootstrap";
 import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-bootstrap-icons";
 import { getAllTransactions } from "../api/transaction";
 
@@ -92,7 +92,7 @@ const matchesSearch =
   return (
     
 
-    <Container className="py-4">
+    <div>
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError("")}>
           {error}
@@ -112,13 +112,13 @@ const matchesSearch =
       <Card className="mb-4">
         <Card.Body>
           <Row className="align-items-center">
-            <Col md={4}>
+            <Col xs={12} md={4}>
               <div className="mb-3 mb-md-0">
                 <p className="text-muted mb-1">Total de Transacciones</p>
                 <h3 className="mb-0">{filteredTransactions.length}</h3>
               </div>
             </Col>
-            <Col md={4}>
+            <Col xs={12} md={4}>
               <div className="mb-3 mb-md-0">
                 <p className="text-muted mb-1">Monto Total</p>
                 <h3 className="mb-0 text-success">${totalAmount.toLocaleString()}</h3>
@@ -135,7 +135,7 @@ const matchesSearch =
       <Card className="mb-4">
         <Card.Body>
           <Row className="g-3">
-            <Col md={4}>
+            <Col xs={12} md={4}>
               <InputGroup>
                 <InputGroup.Text>
                   <Search />
@@ -147,7 +147,7 @@ const matchesSearch =
                 />
               </InputGroup>
             </Col>
-            <Col md={4}>
+            <Col xs={12} md={4}>
               <InputGroup>
                 <InputGroup.Text>
                   <Calendar />
@@ -160,7 +160,7 @@ const matchesSearch =
               </InputGroup>
               <Form.Text className="text-muted">Mes (opcional). Vacío lista todas.</Form.Text>
             </Col>
-            <Col md={4}>
+            <Col xs={12} md={4}>
               <InputGroup>
                 <InputGroup.Text>
                   <Funnel />
@@ -220,7 +220,7 @@ const matchesSearch =
           </div>
         </Card.Body>
       </Card>
-    </Container>
+    </div>
         
   );
 };

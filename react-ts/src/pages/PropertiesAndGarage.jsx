@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Spinner, Row, Col, Container, Badge, Button, Modal, Table, Alert } from "react-bootstrap";
+import { Card, Spinner, Row, Col, Badge, Button, Modal, Table, Alert } from "react-bootstrap";
 import { apiFetch } from "../api/clients";
 import { deleteProperty } from "../api/property";
 import CreatePropertyModal from "../components/CreatePropertyModal";
@@ -272,16 +272,15 @@ const PropertiesAndGarages = () => {
   if (loading) return <Spinner animation="border" className="m-5" />;
 
   return (
-    <div className="bg-light py-4">
-    <Container className="mt-4">
+    <div>
       {error && (
         <Alert variant="danger" className="mb-3" dismissible onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
       <section className="mb-5">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-            <h2>Propiedades</h2>
+        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+            <h2 className="h4 mb-0">Propiedades</h2>
             <Button variant="primary" onClick={() => setShowCreateModal(true)}>
               + Nueva Propiedad
             </Button>
@@ -303,8 +302,8 @@ const PropertiesAndGarages = () => {
       </section>
 
       <section>
-        <div className="d-flex justify-content-between align-items-center mb-3">
-        <h2 className="mb-4">Garages para alquilar</h2>
+        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+        <h2 className="h4 mb-0">Garages para alquilar</h2>
 
         <Button variant="outline-primary" onClick={() => setShowCreateGarageModal(true)}>
           + Nuevo Garage
@@ -457,7 +456,6 @@ const PropertiesAndGarages = () => {
         onSaved={loadData}
       />
 
-    </Container>
     </div>
   );
 };

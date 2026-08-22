@@ -135,14 +135,14 @@ const confirmDelete = (item) => {
   });
 
 return (
-  <div className="container mt-4">
+  <div>
     <div className="card">
       <div className="card-header bg-white border-bottom-0">
         <h1 className="h4 mb-0">Gestión de Personas</h1>
       </div>
       
-      <div className="card-body">
-        <ul className="nav nav-tabs mb-4">
+      <div className="card-body px-2 px-sm-3">
+        <ul className="nav nav-tabs mb-4 flex-nowrap overflow-auto">
           <li className="nav-item">
             <button 
               className={`nav-link ${activeTab === "owners" ? "active" : ""}`}
@@ -168,8 +168,8 @@ return (
             </button>
           </li>
         </ul>
-        <div className="d-flex justify-content-between mb-4">
-          <div className="input-group" style={{width: "300px"}}>
+        <div className="page-toolbar mb-4">
+          <div className="input-group">
             <span className="input-group-text bg-white">
               <Search size={16} />
             </span>
@@ -192,31 +192,32 @@ return (
         </div>
         <div className="list-group">
           {filteredList.map((item) => (
-            <div key={item.id} className="list-group-item p-4 border-0 shadow-sm mb-3 rounded">
-              <div className="d-flex justify-content-between align-items-start">
-                <div>
+            <div key={item.id} className="list-group-item p-3 p-md-4 border-0 shadow-sm mb-3 rounded">
+              <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-start gap-3">
+                <div className="min-width-0">
                   <h5 className="mb-2">{item.name}</h5>
                   {item.phone && (
-                    <div className="d-flex align-items-center mb-1">
+                    <div className="d-flex align-items-center mb-1 flex-wrap">
                       <span className="badge bg-light text-dark me-2">Teléfono</span>
                       <span>{item.phone}</span>
                     </div>
                   )}
                   {item.email && (
-                    <div className="d-flex align-items-center">
+                    <div className="d-flex align-items-start flex-wrap">
                       <span className="badge bg-light text-dark me-2">Email</span>
-                      <span>{item.email}</span>
+                      <span className="text-break-all">{item.email}</span>
                     </div>
                   )}
                 </div>
-                <div>
+                <div className="person-card-actions">
                 <button 
-                  className="btn btn-sm btn-outline-secondary me-2"
+                  className="btn btn-sm btn-outline-secondary"
                   onClick={() => handleEdit(item)}
                 >
                   Editar
                 </button>
                   <button
+                    className="btn btn-sm btn-outline-danger"
                     disabled={deletingId === item.id}
                     onClick={() => confirmDelete(item)}
                   >
@@ -229,7 +230,7 @@ return (
                 </div>
               </div>
               {item.direction && (
-                <div className="mt-3">
+                <div className="mt-3 text-break-all">
                   <span className="badge bg-light text-dark me-2">Dirección</span>
                   <span>{item.direction}</span>
                 </div>
