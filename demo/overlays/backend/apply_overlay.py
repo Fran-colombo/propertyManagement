@@ -3,7 +3,6 @@ from pathlib import Path
 
 ROOT = Path("/app")
 MAIN = ROOT / "main.py"
-DATABASE = ROOT / "database.py"
 
 
 def must_replace(path: Path, old: str, new: str) -> None:
@@ -14,11 +13,6 @@ def must_replace(path: Path, old: str, new: str) -> None:
 
 
 def main() -> None:
-    must_replace(
-        DATABASE,
-        'os.path.join(os.path.dirname(__file__), "..", "properties_data", "properties.db")',
-        'os.path.join("/app", "properties_data", "properties.db")',
-    )
     must_replace(
         MAIN,
         "app.include_router(contract_history_controller.router)\n",

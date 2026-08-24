@@ -1,12 +1,25 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models.base import Base 
+from models.base import Base
 
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "properties_data", "properties.db")
-DB_PATH = os.path.abspath(DB_PATH)
-DATA_DIR = os.path.dirname(DB_PATH)
+def _resolve_data_dir() -> str:
+    """Docker copies back/ to /app and mounts the volume at /app/properties_data.
+    Locally the SQLite file lives at repo_root/properties_data."""
+    override = os.getenv("PROPERTIES_DATA_DIR", "").strip()
+    if override:
+        return os.path.abspath(override)
+    here = os.path.dirname(os.path.abspath(__file__))
+    next_to_app = os.path.join(here, "properties_data")
+    repo_root = os.path.join(here, "..", "properties_data")
+    if os.path.isdir(next_to_app):
+        return os.path.abspath(next_to_app)
+    return os.path.abspath(repo_root)
+
+
+DATA_DIR = _resolve_data_dir()
+DB_PATH = os.path.join(DATA_DIR, "properties.db")
 UPLOADS_ROOT = os.path.join(DATA_DIR, "uploads")
 
 db_folder = os.path.dirname(DB_PATH)
@@ -38,6 +51,7 @@ def init_db():
     from models.transaction_history import TransactionHistory  # noqa: F401
     from models.contract_termination import ContractTermination  # noqa: F401
     from models.contract_history import ContractHistory  # noqa: F401
+    from models.user_model import User  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_columns()

@@ -9,8 +9,8 @@ db = app / "database.py"
 main = app / "main.py"
 
 text = db.read_text(encoding="utf-8")
-old = 'os.path.join(os.path.dirname(__file__), "..", "properties_data", "properties.db")'
-new = f'os.path.join(r"{data}", "properties.db")'
+old = "DATA_DIR = _resolve_data_dir()"
+new = f"DATA_DIR = os.path.abspath(r\"{data}\")"
 if old not in text:
     raise SystemExit("database.py snippet missing")
 db.write_text(text.replace(old, new, 1), encoding="utf-8")
