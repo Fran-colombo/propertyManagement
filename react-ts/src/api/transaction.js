@@ -15,3 +15,11 @@ export async function getAllTransactions() {
 export async function getTransactionsByPeriod(periodId) {
   return await apiFetch(`/transactions/period/${periodId}`);
 }
+
+export async function registerCreditNote(periodId, data) {
+  return await apiFetch(`/transactions/${periodId}/credit-notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}

@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
-import { Card, Table, Badge, Form, InputGroup, Row, Col, Spinner, Alert } from "react-bootstrap";
+import { Card, Table, Badge, Form, InputGroup, Row, Col, Spinner, Alert, Button } from "react-bootstrap";
 import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-bootstrap-icons";
-import { getAllTransactions } from "../api/transaction";
+import { getAllTransactions, registerCreditNote } from "../api/transaction";
+import CreditNoteModal from "../components/CreditNoteModal";
 
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftMonth(value, delta) {
+  const [y, m] = (value || currentMonthValue()).split("-").map(Number);
+  const date = new Date(y, m - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 
 const Transactions = () => {
   const [transactions, setTransactions] = useState([]);
@@ -10,34 +21,35 @@ const Transactions = () => {
   const [methodFilter, setMethodFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState(currentMonthValue);
+  const [creditTx, setCreditTx] = useState(null);
+
+  const loadTransactions = async () => {
+    try {
+      setLoading(true);
+      const data = await getAllTransactions();
+      setTransactions(data || []);
+    } catch (err) {
+      console.error("Error al cargar transacciones", err);
+      setError(err.message || "No se pudieron cargar las transacciones");
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const data = await getAllTransactions();
-        setTransactions(data || []);
-      } catch (err) {
-        console.error("Error al cargar transacciones", err);
-        setError(err.message || "No se pudieron cargar las transacciones");
-        setTransactions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTransactions();
+    loadTransactions();
   }, []);
 
   const filteredTransactions = transactions.filter((transaction) => {
-const search = searchTerm.toLowerCase();
+    const search = searchTerm.toLowerCase();
 
-const matchesSearch =
-  transaction.contract?.tenant?.name?.toLowerCase().includes(search) ||
-  transaction.contract?.owner?.name?.toLowerCase().includes(search) ||
-  transaction.contract?.property_direction?.toLowerCase().includes(search) ||
-  transaction.notes?.toLowerCase().includes(search);
-
+    const matchesSearch =
+      transaction.contract?.tenant?.name?.toLowerCase().includes(search) ||
+      transaction.contract?.owner?.name?.toLowerCase().includes(search) ||
+      transaction.contract?.property_direction?.toLowerCase().includes(search) ||
+      transaction.notes?.toLowerCase().includes(search);
 
     const matchesDate =
       !dateFilter || String(transaction.date || "").includes(dateFilter);
@@ -69,6 +81,8 @@ const matchesSearch =
         return <Badge bg="success" className="d-flex align-items-center">{getPaymentMethodIcon(method)}{method}</Badge>;
       case "transferencia":
         return <Badge bg="primary" className="d-flex align-items-center">{getPaymentMethodIcon(method)}{method}</Badge>;
+      case "nota_credito":
+        return <Badge bg="danger" className="d-flex align-items-center">{getPaymentMethodIcon(method)}Nota de crédito</Badge>;
       default:
         return <Badge bg="secondary" className="d-flex align-items-center">{getPaymentMethodIcon(method)}{method || "Otro"}</Badge>;
     }
@@ -76,22 +90,46 @@ const matchesSearch =
 
   const getStatusBadge = (status) => {
     switch (status?.toLowerCase()) {
+      case "pagado":
       case "completado":
         return <Badge bg="success">{status}</Badge>;
+      case "parcial":
       case "pendiente":
         return <Badge bg="warning" text="dark">{status}</Badge>;
       case "cancelado":
+      case "contrato_terminado":
         return <Badge bg="danger">{status}</Badge>;
       default:
         return <Badge bg="secondary">{status || "N/A"}</Badge>;
     }
   };
 
+  const renderNotes = (notes, method) => {
+    const text = notes || "";
+    const isAdvance = /adelanto/i.test(text);
+    const isCredit = method === "nota_credito" || /nota de crédito/i.test(text);
+    return (
+      <div className="text-break" style={{ maxWidth: 280 }}>
+        {isAdvance && <Badge bg="info" className="me-1">Adelanto</Badge>}
+        {isCredit && <Badge bg="danger" className="me-1">Crédito</Badge>}
+        <span>{text || "—"}</span>
+      </div>
+    );
+  };
+
+  const handleCredit = async (periodId, data) => {
+    try {
+      await registerCreditNote(periodId, data);
+      setCreditTx(null);
+      await loadTransactions();
+    } catch (err) {
+      setError(err.message || "No se pudo registrar la nota de crédito");
+    }
+  };
+
   if (loading) return <Spinner animation="border" className="m-5" />;
 
   return (
-    
-
     <div>
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError("")}>
@@ -121,7 +159,9 @@ const matchesSearch =
             <Col xs={12} md={4}>
               <div className="mb-3 mb-md-0">
                 <p className="text-muted mb-1">Monto Total</p>
-                <h3 className="mb-0 text-success">${totalAmount.toLocaleString()}</h3>
+                <h3 className={`mb-0 ${totalAmount < 0 ? "text-danger" : "text-success"}`}>
+                  ${totalAmount.toLocaleString()}
+                </h3>
               </div>
             </Col>
             <Col md={4} className="d-flex justify-content-end">
@@ -149,6 +189,12 @@ const matchesSearch =
             </Col>
             <Col xs={12} md={4}>
               <InputGroup>
+                <Button
+                  variant="outline-secondary"
+                  onClick={() => setDateFilter((v) => shiftMonth(v || currentMonthValue(), -1))}
+                >
+                  ‹
+                </Button>
                 <InputGroup.Text>
                   <Calendar />
                 </InputGroup.Text>
@@ -157,8 +203,26 @@ const matchesSearch =
                   value={dateFilter}
                   onChange={(e) => setDateFilter(e.target.value)}
                 />
+                <Button
+                  variant="outline-secondary"
+                  onClick={() => setDateFilter((v) => shiftMonth(v || currentMonthValue(), 1))}
+                >
+                  ›
+                </Button>
               </InputGroup>
-              <Form.Text className="text-muted">Mes (opcional). Vacío lista todas.</Form.Text>
+              <Form.Text className="text-muted">
+                Mes actual por defecto. Vacío lista todas.
+              </Form.Text>
+              {dateFilter && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="p-0 ms-2"
+                  onClick={() => setDateFilter("")}
+                >
+                  Ver todas
+                </Button>
+              )}
             </Col>
             <Col xs={12} md={4}>
               <InputGroup>
@@ -173,6 +237,7 @@ const matchesSearch =
                   <option value="efectivo">Efectivo</option>
                   <option value="transferencia">Transferencia</option>
                   <option value="cheque">Cheque</option>
+                  <option value="nota_credito">Nota de crédito</option>
                 </Form.Select>
               </InputGroup>
             </Col>
@@ -198,6 +263,7 @@ const matchesSearch =
                   <th>Estado</th>
                   <th>Total del Período</th>
                   <th>Pagado</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,12 +273,25 @@ const matchesSearch =
                     <td>{transaction.contract?.property_direction}</td>
                     <td>{transaction.contract?.owner?.name || "N/A"}</td>
                     <td>{transaction.contract?.tenant?.name || "N/A"}</td>
-                    <td>${transaction.amount.toLocaleString()}</td>
+                    <td className={transaction.amount < 0 ? "text-danger" : ""}>
+                      ${transaction.amount.toLocaleString()}
+                    </td>
                     <td>{getPaymentMethodBadge(transaction.method)}</td>
-                    <td>{transaction.notes || "-"}</td>
+                    <td>{renderNotes(transaction.notes, transaction.method)}</td>
                     <td>{getStatusBadge(transaction.period?.payment_status)}</td>
                     <td>${transaction.period?.total_amount?.toLocaleString() || "-"}</td>
                     <td>${transaction.period?.amount_paid?.toLocaleString() || "-"}</td>
+                    <td>
+                      {transaction.amount > 0 && transaction.period?.id && (
+                        <Button
+                          variant="outline-danger"
+                          size="sm"
+                          onClick={() => setCreditTx(transaction)}
+                        >
+                          Nota de crédito
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -220,8 +299,13 @@ const matchesSearch =
           </div>
         </Card.Body>
       </Card>
+      <CreditNoteModal
+        show={!!creditTx}
+        transaction={creditTx}
+        onHide={() => setCreditTx(null)}
+        onSave={handleCredit}
+      />
     </div>
-        
   );
 };
 

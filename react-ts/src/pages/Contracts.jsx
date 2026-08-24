@@ -76,7 +76,7 @@ const ContractsTable = () => {
       setShowPayModal(false);
     } catch (err) {
       console.error("Payment error:", err);
-      setError("Error al registrar el pago.");
+      setError(err.message || "Error al registrar el pago.");
     }
   };
 

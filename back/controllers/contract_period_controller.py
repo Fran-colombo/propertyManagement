@@ -16,9 +16,11 @@ from utils.proration import period_total
 router = APIRouter(prefix="/periods", tags=["Contract Periods"])
 
 class PaymentData(BaseModel):
-    amount: float
+    amount: float = Field(gt=0)
     method: str
     reference: Optional[str] = None
+    overpay_reason: Optional[str] = None
+    overpay_note: Optional[str] = None
 
 
 @router.post("/{period_id}/pay")
