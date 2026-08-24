@@ -23,11 +23,13 @@ export async function apiFetch(endpoint, options = {}) {
     if (!contentType.includes("application/json")) {
       const text = await response.text();
       console.error("Non-JSON response:", text);
-      throw new Error(
-        response.status === 502
-          ? "El servidor no respondió (502). Revisá que el backend esté arriba."
-          : `Expected JSON but got: ${contentType || "unknown"}`
-      );
+      if (response.status === 502) {
+        throw new Error("El servidor no respondió (502). Revisá que el backend esté arriba.");
+      }
+      if (response.status >= 500) {
+        throw new Error("Error interno del servidor. Revisá los logs del backend.");
+      }
+      throw new Error(text?.slice(0, 180) || `Respuesta inválida (${response.status})`);
     }
 
     if (!response.ok) {

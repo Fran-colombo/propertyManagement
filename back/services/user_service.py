@@ -34,9 +34,40 @@ def create_user(db: Session, user_data: CreateUser):
     )
     return user_repo.create(db, new_user)
 
+def _role_value(user: User) -> str:
+    role = getattr(user, "role", None)
+    if role is None:
+        return RoleEnum.user.value
+    return role.value if hasattr(role, "value") else str(role)
+
+
 def authenticate(db: Session, email: str, password: str):
-    user = user_repo.get_by_email(db, email)
-    if not user or not bcrypt_context.verify(password, user.password):
+    try:
+        user = user_repo.get_by_email(db, email)
+    except Exception as e:
+        print(f"[auth] ERROR loading user {email}: {e}", flush=True)
+        db.rollback()
+        return None
+    if not user or user.status != 1:
+        return None
+
+    admin_email = os.getenv("ADMIN_USER_EMAIL", "").strip()
+    admin_password = os.getenv("ADMIN_USER_PASSWORD", "").strip()
+
+    try:
+        valid = bcrypt_context.verify(password, user.password)
+    except Exception as e:
+        print(f"[auth] ERROR verifying password for {email}: {e}", flush=True)
+        valid = False
+        if admin_email and email == admin_email and password == admin_password:
+            user.password = bcrypt_context.hash(password)
+            user.role = RoleEnum.admin
+            user.status = 1
+            db.commit()
+            print(f"[auth] Rehashed admin password for {email}", flush=True)
+            return user
+
+    if not valid:
         return None
     return user
 

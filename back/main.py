@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from database import SessionLocal, init_db, UPLOADS_ROOT
 
 init_db()
@@ -15,6 +16,14 @@ app = FastAPI()
 bg_scheduler = BackgroundScheduler()
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    print(f"[unhandled] {request.method} {request.url.path}: {exc}", flush=True)
+    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -26,6 +35,10 @@ _default_origins = [
     "http://127.0.0.1:3000",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://69.197.176.243:10046",
+    "http://69.197.176.243:10047",
 ]
 _extra = os.getenv("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in _extra.split(",") if o.strip()] or list(_default_origins)

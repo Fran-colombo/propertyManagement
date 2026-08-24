@@ -20,11 +20,20 @@ def register(user: CreateUser, db: db_dependency):
 
 @router.post("/login", response_model=Token)
 def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency):
-    user = user_service.authenticate(db, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = user_service.generate_token(user.email, user.id, user.role.value)
-    return {"access_token": token, "token_type": "bearer"}
+    try:
+        user = user_service.authenticate(db, form_data.username, form_data.password)
+        if not user:
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        token = user_service.generate_token(user.email, user.id, role)
+        if isinstance(token, bytes):
+            token = token.decode("utf-8")
+        return {"access_token": token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[login] ERROR: {e}", flush=True)
+        raise HTTPException(status_code=500, detail="Error interno al iniciar sesión")
 
 @router.delete("/user/id/{user_id}")
 def delete_user_by_id(user_id: int, db: db_dependency):
