@@ -4,8 +4,10 @@
 .env.production
 .env.demo
 
-# Data (keep on server; don't overwrite casually from git)
-# properties_data/*.db
+# SQLite + uploads: cada entorno (local / VPS) tiene el suyo.
+# Si se versiona properties.db, git pull pisa la base de producción.
+properties_data/*
+!properties_data/.gitkeep
 
 # Python / Node
 **/__pycache__/
