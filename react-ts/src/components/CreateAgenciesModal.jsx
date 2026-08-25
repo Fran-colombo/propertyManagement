@@ -1,20 +1,59 @@
 import { useState } from "react"
 import { createAgency } from "../api/real_agency"
-
+import FeedbackModal from "./FeedbackModal"
 
 export default function AgencyModal({ onClose, onSave }) {
   const [formData, setFormData] = useState({ name: "", direction: "" })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+  const [feedback, setFeedback] = useState(null)
+  const [formVisible, setFormVisible] = useState(true)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
   const handleSubmit = async () => {
-    await createAgency(formData)
-    onSave()
+    if (!formData.name || !formData.direction) {
+      setError("Completá todos los campos")
+      return
+    }
+    try {
+      setSaving(true)
+      setError("")
+      await createAgency(formData)
+      setFormVisible(false)
+      setFeedback({
+        variant: "success",
+        title: "Agencia creada",
+        message: "La agencia se registró correctamente.",
+      })
+    } catch (e) {
+      setFormVisible(false)
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: e.message || "Error al crear la agencia",
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
-return (
+  const closeFeedback = () => {
+    const variant = feedback?.variant
+    setFeedback(null)
+    if (variant === "danger") {
+      setFormVisible(true)
+    } else {
+      onSave()
+      onClose()
+    }
+  }
+
+  return (
+    <>
+    {formVisible && (
   <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
     <div className="modal-dialog modal-dialog-centered">
       <div className="modal-content">
@@ -29,6 +68,7 @@ return (
         </div>
         
         <div className="modal-body p-4">
+          {error && <div className="alert alert-danger">{error}</div>}
           <div className="mb-3">
             <label htmlFor="agencyName" className="form-label">Nombre de la Agencia</label>
             <input 
@@ -56,18 +96,29 @@ return (
           <button 
             className="btn btn-outline-secondary px-4" 
             onClick={onClose}
+            disabled={saving}
           >
             Cancelar
           </button>
           <button 
             className="btn btn-primary px-4" 
             onClick={handleSubmit}
+            disabled={saving}
           >
-            Registrar Agencia
+            {saving ? "Guardando..." : "Registrar Agencia"}
           </button>
         </div>
       </div>
     </div>
   </div>
-)
+    )}
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={closeFeedback}
+    />
+    </>
+  )
 }

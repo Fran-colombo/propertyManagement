@@ -3,6 +3,7 @@ import { Card, Table, Badge, Form, InputGroup, Row, Col, Spinner, Alert, Button 
 import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-bootstrap-icons";
 import { getAllTransactions, registerCreditNote } from "../api/transaction";
 import CreditNoteModal from "../components/CreditNoteModal";
+import FeedbackModal from "../components/FeedbackModal";
 
 function currentMonthValue() {
   const now = new Date();
@@ -23,6 +24,7 @@ const Transactions = () => {
   const [error, setError] = useState("");
   const [dateFilter, setDateFilter] = useState(currentMonthValue);
   const [creditTx, setCreditTx] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
   const loadTransactions = async () => {
     try {
@@ -122,8 +124,18 @@ const Transactions = () => {
       await registerCreditNote(periodId, data);
       setCreditTx(null);
       await loadTransactions();
+      setFeedback({
+        variant: "success",
+        title: "Nota de crédito",
+        message: "La nota de crédito se registró correctamente.",
+      });
     } catch (err) {
-      setError(err.message || "No se pudo registrar la nota de crédito");
+      setCreditTx(null);
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "No se pudo registrar la nota de crédito",
+      });
     }
   };
 
@@ -304,6 +316,13 @@ const Transactions = () => {
         transaction={creditTx}
         onHide={() => setCreditTx(null)}
         onSave={handleCredit}
+      />
+      <FeedbackModal
+        show={!!feedback}
+        variant={feedback?.variant}
+        title={feedback?.title}
+        message={feedback?.message}
+        onClose={() => setFeedback(null)}
       />
     </div>
   );

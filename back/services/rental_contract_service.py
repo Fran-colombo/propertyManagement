@@ -10,15 +10,32 @@ from models.contract import RentalContract
 from models.contract_period import ContractPeriod
 from models.property import Garage, Property
 from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
-from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum
+from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum, IndexTypeEnum
 from utils.proration import is_partial_month, period_total, proration_note, prorate
+from services.ipc_service import get_ipc_for_date, variation_percent, IpcServiceError
+
 
 class RentalContractService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _resolve_base_index(self, contract_data: CreateContractDTO) -> Optional[float]:
+        """For IPC contracts, use provided base or fetch from official API."""
+        if contract_data.currency == CurrencyEnum.DOLARES:
+            return None
+        index_type = contract_data.index_type
+        index_val = getattr(index_type, "value", index_type) if index_type else None
+        if index_val != IndexTypeEnum.IPC.value:
+            return contract_data.base_index_value
 
+        if contract_data.base_index_value is not None:
+            return float(contract_data.base_index_value)
 
+        try:
+            ipc = get_ipc_for_date(contract_data.start_date)
+            return float(ipc["value"])
+        except IpcServiceError:
+            return None
 
     def create_contract(self, contract_data: CreateContractDTO) -> ContractResponse:
         if contract_data.end_date <= contract_data.start_date:
@@ -52,6 +69,11 @@ class RentalContractService:
             property_obj = self.db.query(Property).filter_by(id=contract_dict["property_id"]).first()
             if not property_obj:
                 raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+
+            base_index = self._resolve_base_index(contract_data)
+            contract_dict["base_index_value"] = base_index
+            if base_index is not None:
+                contract_dict["last_index_value"] = base_index
 
             contract = RentalContract(**contract_dict)
             contract.property = property_obj
@@ -99,6 +121,7 @@ class RentalContractService:
             raise HTTPException(status_code=400, detail="El garage ya está alquilado")
 
         try:
+            base_index = self._resolve_base_index(contract_data)
             contract = RentalContract(
                 property_id=None,
                 garage_id=garage.id,
@@ -110,6 +133,8 @@ class RentalContractService:
                 real_agency_id=contract_data.real_agency_id,
                 index_type=contract_data.index_type,
                 frequency_adjustment=contract_data.frequency_adjustment,
+                base_index_value=base_index,
+                last_index_value=base_index,
                 includes_garage=True,
                 fire_insurance=contract_data.fire_insurance,
                 pays_api=contract_data.pays_api,
@@ -241,7 +266,12 @@ class RentalContractService:
             return False
         return months_elapsed % step == 0
 
-    def apply_index(self, contract_id: int, value: float) -> ContractResponse:
+    def apply_index(
+        self,
+        contract_id: int,
+        value: Optional[float] = None,
+        new_index_value: Optional[float] = None,
+    ) -> ContractResponse:
         """Apply a percentage index update to a single contract, forward-only."""
         contract = self.get_contract(contract_id)
 
@@ -255,10 +285,23 @@ class RentalContractService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="El contrato no tiene tipo de índice o frecuencia de ajuste"
             )
+
+        reference = contract.last_index_value or contract.base_index_value
+        resolved_new_index = new_index_value
+
+        if value is None and resolved_new_index is not None and reference:
+            try:
+                value = variation_percent(float(resolved_new_index), float(reference))
+            except ValueError as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        elif value is not None and resolved_new_index is None and reference:
+            # Infer new index from % for storage
+            resolved_new_index = round(float(reference) * (1 + float(value) / 100), 4)
+
         if value is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Debés indicar el porcentaje de variación"
+                detail="Debés indicar el porcentaje de variación o el valor del índice nuevo"
             )
 
         def status_value(period):
@@ -345,6 +388,11 @@ class RentalContractService:
                 # Clear speculative future applications so the next real apply works
                 period.applied_index_value = None
                 period.index_id = None
+
+        if resolved_new_index is not None:
+            contract.last_index_value = float(resolved_new_index)
+        elif contract.base_index_value is None and resolved_new_index is None:
+            pass
 
         self.db.commit()
         self.db.refresh(contract)

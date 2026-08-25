@@ -18,6 +18,7 @@ class CreateContractDTO(BaseModel):
     real_agency_id: Optional[int] = None
     index_type: Optional[IndexTypeEnum] = None
     frequency_adjustment: Optional[AdjustmentFrequencyEnum] = None
+    base_index_value: Optional[float] = None
     includes_garage: bool = False
     garage_id: Optional[int] = None
     real_agency_id: Optional[int] = None
@@ -47,6 +48,8 @@ class ContractResponse(BaseModel):
     base_rent: float
     index_type: Optional[str] = None
     frequency_adjustment: Optional[str] = None
+    base_index_value: Optional[float] = None
+    last_index_value: Optional[float] = None
     includes_garage: bool
     garage_id: Optional[int] = None
     real_agency_id: Optional[int] = None
@@ -72,6 +75,8 @@ class ContractResponse(BaseModel):
             "base_rent": db_contract.base_rent,
             "index_type": db_contract.index_type,
             "frequency_adjustment": db_contract.frequency_adjustment,
+            "base_index_value": getattr(db_contract, "base_index_value", None),
+            "last_index_value": getattr(db_contract, "last_index_value", None),
             "real_agency_id": db_contract.real_agency_id,
             "includes_garage": db_contract.includes_garage,
             "garage_id": db_contract.garage_id,

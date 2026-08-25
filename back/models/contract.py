@@ -23,6 +23,8 @@ class RentalContract(Base):
     base_rent = Column(Float)
     index_type = Column(Enum(IndexTypeEnum), nullable=True)
     frequency_adjustment = Column(Enum(AdjustmentFrequencyEnum), nullable=True)
+    base_index_value = Column(Float, nullable=True)
+    last_index_value = Column(Float, nullable=True)
     includes_garage = Column(Boolean, default=False)
     fire_insurance = Column(Boolean, default=False)
     pays_api = Column(Boolean, default=False)

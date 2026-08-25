@@ -10,3 +10,9 @@ export const updateIndex = async (dto) => {
     body: JSON.stringify(dto),
   });
 };
+
+/** Official IPC from datos.gob.ar (backend proxy). Optional date=YYYY-MM-DD */
+export const getIpc = async (date) => {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+  return await apiFetch(`/indices/ipc${qs}`);
+};

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Button, Form, Alert, Spinner } from "react-bootstrap";
 import { cancelContractDetailed } from "../api/contract";
+import FeedbackModal from "./FeedbackModal";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -24,6 +25,7 @@ export default function CancelContractModal({
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     if (show) {
@@ -31,6 +33,7 @@ export default function CancelContractModal({
       setReceipt(null);
       setError("");
       setSaving(false);
+      setFeedback(null);
     }
   }, [show]);
 
@@ -69,16 +72,33 @@ export default function CancelContractModal({
         receipt,
       });
       onCancelled?.();
-      onHide();
+      setFeedback({
+        variant: "success",
+        title: "Contrato finalizado",
+        message: "El contrato se dio de baja correctamente.",
+      });
     } catch (err) {
-      setError(err.message || "Error al cancelar el contrato");
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "Error al cancelar el contrato",
+      });
     } finally {
       setSaving(false);
     }
   };
 
+  const closeFeedback = () => {
+    const variant = feedback?.variant;
+    setFeedback(null);
+    if (variant !== "danger") {
+      onHide();
+    }
+  };
+
   return (
-    <Modal show={show} onHide={onHide} backdrop="static" centered>
+    <>
+    <Modal show={show && !feedback} onHide={onHide} backdrop="static" centered>
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Finalizar contrato</Modal.Title>
@@ -207,5 +227,13 @@ export default function CancelContractModal({
         </Modal.Footer>
       </Form>
     </Modal>
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={closeFeedback}
+    />
+    </>
   );
 }

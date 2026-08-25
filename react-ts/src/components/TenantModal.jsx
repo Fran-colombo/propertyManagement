@@ -1,11 +1,13 @@
 import { useState } from "react"
 import { createTenant } from "../api/person"
-
+import FeedbackModal from "./FeedbackModal"
 
 export default function TenantModal({ onClose, onSave }) {
   const [formData, setFormData] = useState({ name: "", phone: "", email: "" })
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState(null)
+  const [formVisible, setFormVisible] = useState(true)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -20,16 +22,39 @@ export default function TenantModal({ onClose, onSave }) {
       setSaving(true)
       setError("")
       await createTenant(formData)
-      onSave()
+      setFormVisible(false)
+      setFeedback({
+        variant: "success",
+        title: "Inquilino creado",
+        message: "El inquilino se creó correctamente.",
+      })
     } catch (e) {
       console.error(e)
-      setError(e.message || "Error al crear el inquilino")
+      setFormVisible(false)
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: e.message || "Error al crear el inquilino",
+      })
     } finally {
       setSaving(false)
     }
   }
 
-return (
+  const closeFeedback = () => {
+    const variant = feedback?.variant
+    setFeedback(null)
+    if (variant === "danger") {
+      setFormVisible(true)
+    } else {
+      onSave()
+      onClose()
+    }
+  }
+
+  return (
+    <>
+    {formVisible && (
   <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
     <div className="modal-dialog modal-dialog-centered">
       <div className="modal-content">
@@ -99,5 +124,14 @@ return (
       </div>
     </div>
   </div>
-)
+    )}
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={closeFeedback}
+    />
+    </>
+  )
 }

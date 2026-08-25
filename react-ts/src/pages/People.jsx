@@ -6,6 +6,8 @@ import OwnerModal from "../components/OwnerModal";
 import TenantModal from "../components/TenantModal";
 import AgencyModal from "../components/CreateAgenciesModal";
 import UpdatePersonModal from "../components/UpdatePersonModal";
+import FeedbackModal from "../components/FeedbackModal";
+import { Modal, Button } from "react-bootstrap";
 
 const PeopleAndAgencies = () => {
   const [activeTab, setActiveTab] = useState("owners");
@@ -17,6 +19,8 @@ const PeopleAndAgencies = () => {
   const [deletingId, setDeletingId]  = useState(null)
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
 
    useEffect(() => {
     fetchData();
@@ -49,27 +53,30 @@ const PeopleAndAgencies = () => {
     
     if (response.message) {
       fetchData();
-      alert(response.message);
+      setFeedback({
+        variant: "success",
+        title: "Eliminado",
+        message: response.message,
+      });
     }
   } catch (error) {
     console.error("Error deleting:", error);
-    alert(`Error al eliminar: ${error.message}`);
+    setFeedback({
+      variant: "danger",
+      title: "Error",
+      message: error.message || "Error al eliminar",
+    });
   }finally {
     setDeletingId(null);
+    setPendingDelete(null);
   }
 };
 
 const confirmDelete = (item) => {
-  const itemType = activeTab === "owners" ? "propietario" : 
-                  activeTab === "tenants" ? "inquilino" : "agencia";
-  
-  if (window.confirm(`¿Estás seguro de eliminar al ${itemType} ${item.name}?`)) {
-    handleDelete(item.id);
-  }
+  setPendingDelete(item);
 };
 
   const handlePersonSaved = () => {
-    setShowModal(false);
     fetchData();
   };
 
@@ -258,6 +265,33 @@ return (
           onUpdate={handleUpdate}
         />
       )}
+    <Modal show={!!pendingDelete} onHide={() => setPendingDelete(null)} centered>
+      <Modal.Header closeButton>
+        <Modal.Title>Confirmar eliminación</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        ¿Estás seguro de eliminar a{" "}
+        <strong>{pendingDelete?.name}</strong>?
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+          Cancelar
+        </Button>
+        <Button
+          variant="danger"
+          onClick={() => pendingDelete && handleDelete(pendingDelete.id)}
+        >
+          Eliminar
+        </Button>
+      </Modal.Footer>
+    </Modal>
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={() => setFeedback(null)}
+    />
   </div>
 );
 };

@@ -5,6 +5,8 @@ import { getProperties } from "../api/property";
 import { getOwners, getTenants } from "../api/person";
 import { getGarages } from "../api/garage";
 import { getAllAgencies } from "../api/real_agency";
+import { getIpc } from "../api/index";
+import FeedbackModal from "./FeedbackModal";
 
 const emptyForm = {
   start_date: "",
@@ -17,6 +19,7 @@ const emptyForm = {
   currency: "PESOS",
   index_type: "IPC",
   frequency_adjustment: "TRIMESTRAL",
+  base_index_value: "",
   includes_garage: false,
   garage_only: false,
   fire_insurance: false,
@@ -56,6 +59,8 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   const [parsing, setParsing] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [ipcLoading, setIpcLoading] = useState(false);
+  const [ipcHint, setIpcHint] = useState("");
 
   useEffect(() => {
     if (show) {
@@ -64,9 +69,48 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       setDocumentFile(null);
       setParseWarning("");
       setFeedback(null);
+      setIpcHint("");
       loadData();
     }
   }, [show]);
+
+  useEffect(() => {
+    if (!show) return;
+    if (form.currency === "DOLARES" || form.index_type !== "IPC") {
+      setIpcHint("");
+      return;
+    }
+    let cancelled = false;
+    const loadIpc = async () => {
+      setIpcLoading(true);
+      setIpcHint("");
+      try {
+        const data = await getIpc(form.start_date || undefined);
+        if (cancelled) return;
+        setForm((prev) => ({
+          ...prev,
+          base_index_value: String(data.value),
+        }));
+        setIpcHint(
+          data.period
+            ? `IPC oficial (${data.label || "INDEC"}) · período ${data.period}`
+            : "IPC oficial (INDEC)"
+        );
+      } catch (err) {
+        if (cancelled) return;
+        setIpcHint(
+          err.message ||
+            "No se pudo obtener el IPC. Cargalo a mano."
+        );
+      } finally {
+        if (!cancelled) setIpcLoading(false);
+      }
+    };
+    loadIpc();
+    return () => {
+      cancelled = true;
+    };
+  }, [show, form.currency, form.index_type, form.start_date]);
 
   const loadData = async () => {
     setLoading(true);
@@ -254,6 +298,12 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         index_type: form.currency === "DOLARES" ? null : form.index_type,
         frequency_adjustment:
           form.currency === "DOLARES" ? null : form.frequency_adjustment,
+        base_index_value:
+          form.currency === "DOLARES" || form.index_type !== "IPC"
+            ? null
+            : form.base_index_value !== "" && form.base_index_value != null
+            ? Number(form.base_index_value)
+            : null,
       };
       delete payload.garage_only;
       const created = await createContract(payload);
@@ -468,6 +518,26 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                       <option value="SEMESTRAL">Semestral</option>
                     </Form.Select>
                   </Form.Group>
+
+                  {form.index_type === "IPC" && (
+                    <Form.Group className="mb-2">
+                      <Form.Label>
+                        IPC base {ipcLoading ? "(cargando…)" : ""}
+                      </Form.Label>
+                      <Form.Control
+                        type="number"
+                        step="0.0001"
+                        name="base_index_value"
+                        value={form.base_index_value}
+                        onChange={handleChange}
+                        onWheel={(e) => e.target.blur()}
+                        placeholder="Se completa desde la API oficial"
+                      />
+                      {ipcHint && (
+                        <Form.Text className="text-muted">{ipcHint}</Form.Text>
+                      )}
+                    </Form.Group>
+                  )}
                 </>
               )}
 
@@ -579,21 +649,13 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         </Modal.Footer>
       </Form>
     </Modal>
-    <Modal show={!!feedback} onHide={closeFeedback} centered>
-      <Modal.Header closeButton>
-        <Modal.Title>{feedback?.title}</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        <Alert variant={feedback?.variant || "info"} className="mb-0">
-          {feedback?.message}
-        </Alert>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="primary" onClick={closeFeedback}>
-          Aceptar
-        </Button>
-      </Modal.Footer>
-    </Modal>
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={closeFeedback}
+    />
     </>
   );
 }

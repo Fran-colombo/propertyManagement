@@ -3,6 +3,7 @@ import { Modal, Button, Form, Spinner } from "react-bootstrap";
 import { createGarage } from "../api/garage";
 import { getProperties } from "../api/property";
 import { getOwners } from "../api/person";
+import FeedbackModal from "./FeedbackModal";
 
 const CreateGarageModal = ({ show, onHide, onCreated }) => {
   const [number, setNumber] = useState("");
@@ -12,6 +13,7 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState(null);
 
   const resetForm = () => {
     setNumber("");
@@ -22,6 +24,7 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
 
   useEffect(() => {
     if (show) {
+      setFeedback(null);
       loadData();
     }
   }, [show]);
@@ -62,17 +65,34 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
 
       await createGarage(payload);
       onCreated();
-      onHide();
       resetForm();
+      setFeedback({
+        variant: "success",
+        title: "Garage creado",
+        message: "El garage se creó correctamente.",
+      });
     } catch (err) {
       console.error("Error creando garage:", err);
-      setError(err.message || "Error al crear el garage.");
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "Error al crear el garage.",
+      });
+    }
+  };
+
+  const closeFeedback = () => {
+    const variant = feedback?.variant;
+    setFeedback(null);
+    if (variant !== "danger") {
+      onHide();
     }
   };
 
   return (
+    <>
     <Modal
-      show={show}
+      show={show && !feedback}
       onHide={() => {
         resetForm();
         onHide();
@@ -155,6 +175,14 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
         </Modal.Footer>
       </Form>
     </Modal>
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={closeFeedback}
+    />
+    </>
   );
 };
 

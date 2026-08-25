@@ -79,7 +79,7 @@ def apply_index(
     db: Session = Depends(get_db)
 ):
     service = RentalContractService(db)
-    return service.apply_index(contract_id, dto.value)
+    return service.apply_index(contract_id, dto.value, dto.new_index_value)
 
 
 @router.patch("/{contract_id}", response_model=ContractResponse)

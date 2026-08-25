@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Button, Form, Spinner, Alert } from "react-bootstrap";
 import { createProperty } from "../api/property";
 import { getOwners } from "../api/person";
+import FeedbackModal from "./FeedbackModal";
 
 export default function CreatePropertyModal({ show, onHide, onCreated }) {
   const [form, setForm] = useState({
@@ -14,9 +15,13 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
-    if (show) loadData();
+    if (show) {
+      setFeedback(null);
+      loadData();
+    }
   }, [show]);
 
   const loadData = async () => {
@@ -57,15 +62,32 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
         owner_id: parseInt(form.owner_id, 10),
       });
       onCreated();
-      onHide();
+      setFeedback({
+        variant: "success",
+        title: "Propiedad creada",
+        message: "La propiedad se creó correctamente.",
+      });
     } catch (e) {
-      setError(e.message || "Error al crear la propiedad");
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: e.message || "Error al crear la propiedad",
+      });
       console.error(e);
     }
   };
 
+  const closeFeedback = () => {
+    const variant = feedback?.variant;
+    setFeedback(null);
+    if (variant !== "danger") {
+      onHide();
+    }
+  };
+
   return (
-    <Modal show={show} onHide={onHide} backdrop="static">
+    <>
+    <Modal show={show && !feedback} onHide={onHide} backdrop="static">
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Nueva Propiedad</Modal.Title>
@@ -142,5 +164,13 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
         </Modal.Footer>
       </Form>
     </Modal>
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={closeFeedback}
+    />
+    </>
   );
 }

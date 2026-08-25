@@ -7,6 +7,7 @@ import CreateContractModal from "../components/CreateContractModal";
 import UpdateIndexModal from "../components/UpdateIndexModal";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
+import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
 
 const MONTH_NAMES = [
@@ -33,6 +34,7 @@ const ContractsTable = () => {
   const [filterYear, setFilterYear] = useState(today.getFullYear());
   const [filterMonth, setFilterMonth] = useState(today.getMonth() + 1);
   const [showAllPending, setShowAllPending] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     loadPeriods();
@@ -74,9 +76,19 @@ const ContractsTable = () => {
       await registerPayment(periodId, paymentData);
       loadPeriods();
       setShowPayModal(false);
+      setFeedback({
+        variant: "success",
+        title: "Pago registrado",
+        message: "El pago se registró correctamente.",
+      });
     } catch (err) {
       console.error("Payment error:", err);
-      setError(err.message || "Error al registrar el pago.");
+      setShowPayModal(false);
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "Error al registrar el pago.",
+      });
     }
   };
 
@@ -85,9 +97,19 @@ const ContractsTable = () => {
       await updateTaxes(periodId, taxData);
       loadPeriods();
       setShowTaxesModal(false);
+      setFeedback({
+        variant: "success",
+        title: "Impuestos actualizados",
+        message: "Los impuestos se guardaron correctamente.",
+      });
     } catch (err) {
       console.error("Tax update error:", err);
-      setError("Error al actualizar los impuestos.");
+      setShowTaxesModal(false);
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "Error al actualizar los impuestos.",
+      });
     }
   };
 
@@ -282,6 +304,16 @@ const ContractsTable = () => {
                       Total ${period.total_amount.toLocaleString()} · Pagado $
                       {period.amount_paid.toLocaleString()}
                       {totalTaxes > 0 && ` · Impuestos $${totalTaxes.toLocaleString()}`}
+                      {(period.contract?.last_index_value ?? period.contract?.base_index_value) != null && (
+                        <>
+                          {" "}
+                          · IPC{" "}
+                          {Number(
+                            period.contract.last_index_value ??
+                              period.contract.base_index_value
+                          ).toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                        </>
+                      )}
                     </div>
                     {renderPeriodActions(period)}
                   </Card.Body>
@@ -300,6 +332,7 @@ const ContractsTable = () => {
               <th>Vencimiento</th>
               <th>Monto Base</th>
               <th>Monto Indexado</th>
+              <th>IPC</th>
               <th>Impuestos</th>
               <th>Total</th>
               <th>Pagado</th>
@@ -354,6 +387,15 @@ const ContractsTable = () => {
                       </div>
                     )}
                   </td>
+                  <td>
+                    {(period.contract?.last_index_value ??
+                      period.contract?.base_index_value) != null
+                      ? Number(
+                          period.contract.last_index_value ??
+                            period.contract.base_index_value
+                        ).toLocaleString("es-AR", { maximumFractionDigits: 2 })
+                      : "—"}
+                  </td>
                   <td>${totalTaxes.toLocaleString()}</td>
                   <td>${period.total_amount.toLocaleString()}</td>
                   <td>${period.amount_paid.toLocaleString()}</td>
@@ -388,7 +430,12 @@ const ContractsTable = () => {
   return (
     <div>
       <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
-        <h2 className="h4 mb-0">Períodos Pendientes</h2>
+        <div>
+          <h2 className="h4 mb-0">Períodos Pendientes</h2>
+          <p className="text-muted small mb-0 mt-1">
+            El IPC se actualiza solo a mitad de mes. Cuando toque el ajuste de un contrato, usá <strong>Índice</strong> y confirmá: el alquiler no sube solo.
+          </p>
+        </div>
         <Button variant="primary" onClick={() => setShowCreateModal(true)}>
           Nuevo contrato
         </Button>
@@ -535,6 +582,13 @@ const ContractsTable = () => {
         }}
         contractId={contractToEdit?.id}
         onSaved={loadPeriods}
+      />
+      <FeedbackModal
+        show={!!feedback}
+        variant={feedback?.variant}
+        title={feedback?.title}
+        message={feedback?.message}
+        onClose={() => setFeedback(null)}
       />
     </div>
   );

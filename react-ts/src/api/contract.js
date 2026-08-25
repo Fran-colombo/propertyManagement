@@ -20,10 +20,14 @@ export const createContract = async (contractData) => {
   });
 };
 
-export const applyContractIndex = async (contractId, value) => {
+export const applyContractIndex = async (contractId, value, newIndexValue) => {
+  const body = { value };
+  if (newIndexValue != null && newIndexValue !== "") {
+    body.new_index_value = Number(newIndexValue);
+  }
   return await apiFetch(`/contracts/${contractId}/apply-index`, {
     method: 'POST',
-    body: JSON.stringify({ value }),
+    body: JSON.stringify(body),
   });
 };
 

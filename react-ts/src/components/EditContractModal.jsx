@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert, Spinner } from "react-bootstrap";
 import { getContract, updateContract, uploadContractDocument } from "../api/contract";
 import { mediaUrl } from "../utils/mediaUrl";
+import FeedbackModal from "./FeedbackModal";
 
 const emptyForm = {
   pays_epe: false,
@@ -19,6 +20,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const [file, setFile] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     if (!show || !contractId) return;
@@ -26,6 +28,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
     setFile(null);
     setLoaded(false);
     setForm(emptyForm);
+    setFeedback(null);
     setLoading(true);
     getContract(contractId)
       .then((data) => {
@@ -72,18 +75,35 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         await uploadContractDocument(contractId, file);
       }
       if (onSaved) onSaved();
-      onHide();
+      setFeedback({
+        variant: "success",
+        title: "Contrato actualizado",
+        message: "Los cambios se guardaron correctamente.",
+      });
     } catch (err) {
-      setError(err.message || "No se pudo actualizar el contrato");
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "No se pudo actualizar el contrato",
+      });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const closeFeedback = () => {
+    const variant = feedback?.variant;
+    setFeedback(null);
+    if (variant !== "danger") {
+      onHide();
     }
   };
 
   const documentHref = mediaUrl(form.document_path);
 
   return (
-    <Modal show={show} onHide={onHide} backdrop="static">
+    <>
+    <Modal show={show && !feedback} onHide={onHide} backdrop="static">
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Editar contrato</Modal.Title>
@@ -166,5 +186,13 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         </Modal.Footer>
       </Form>
     </Modal>
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={closeFeedback}
+    />
+    </>
   );
 }

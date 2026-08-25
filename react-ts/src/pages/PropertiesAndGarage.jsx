@@ -6,6 +6,7 @@ import CreatePropertyModal from "../components/CreatePropertyModal";
 import CreateGarageModal from "../components/CreateGarageModal";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
+import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
 
 const PropertiesAndGarages = () => {
@@ -21,6 +22,8 @@ const PropertiesAndGarages = () => {
   const [contractToCancel, setContractToCancel] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [contractToEdit, setContractToEdit] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  const [pendingDeleteProp, setPendingDeleteProp] = useState(null);
 
 
   const findCurrentPeriod = (periods) => {
@@ -89,11 +92,21 @@ const PropertiesAndGarages = () => {
     const response = await deleteProperty(propertyId);
     if (response.message) {
       loadData();
-      alert(response.message);
+      setFeedback({
+        variant: "success",
+        title: "Propiedad eliminada",
+        message: response.message,
+      });
     }
   } catch (error) {
     console.error("Error deleting property:", error);
-    alert(`Error al eliminar propiedad: ${error.message}`);
+    setFeedback({
+      variant: "danger",
+      title: "Error",
+      message: error.message || "Error al eliminar la propiedad",
+    });
+  } finally {
+    setPendingDeleteProp(null);
   }
 };
   const PropertyCard = ({ prop }) => (
@@ -122,11 +135,7 @@ const PropertiesAndGarages = () => {
           variant="outline-danger"
           size="sm"
           className="mb-2"
-          onClick={() => {
-            if (window.confirm(`¿Eliminar la propiedad ${prop.direction}?`)) {
-              handleDeleteProperty(prop.id);
-            }
-          }}
+          onClick={() => setPendingDeleteProp(prop)}
         >
           Eliminar
         </Button>
@@ -454,6 +463,32 @@ const PropertiesAndGarages = () => {
         }}
         contractId={contractToEdit?.id}
         onSaved={loadData}
+      />
+      <Modal show={!!pendingDeleteProp} onHide={() => setPendingDeleteProp(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirmar eliminación</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          ¿Eliminar la propiedad <strong>{pendingDeleteProp?.direction}</strong>?
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setPendingDeleteProp(null)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => pendingDeleteProp && handleDeleteProperty(pendingDeleteProp.id)}
+          >
+            Eliminar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+      <FeedbackModal
+        show={!!feedback}
+        variant={feedback?.variant}
+        title={feedback?.title}
+        message={feedback?.message}
+        onClose={() => setFeedback(null)}
       />
 
     </div>

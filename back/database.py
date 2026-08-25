@@ -74,6 +74,8 @@ def _ensure_sqlite_columns():
         },
         "rental_contracts": {
             "document_path": "TEXT",
+            "base_index_value": "FLOAT",
+            "last_index_value": "FLOAT",
         },
         "contract_periods": {
             "termination_note": "TEXT",
