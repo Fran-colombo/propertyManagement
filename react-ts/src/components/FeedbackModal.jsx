@@ -2,7 +2,7 @@ import { Modal, Button, Alert } from "react-bootstrap";
 
 /**
  * Result modal for success / error / warning after an action.
- * @param {{ show: boolean, variant?: 'success'|'danger'|'warning'|'info', title?: string, message?: string, onClose: () => void }} props
+ * Renders above other Bootstrap modals.
  */
 export default function FeedbackModal({
   show,
@@ -12,7 +12,13 @@ export default function FeedbackModal({
   onClose,
 }) {
   return (
-    <Modal show={show} onHide={onClose} centered>
+    <Modal
+      show={show}
+      onHide={onClose}
+      centered
+      backdrop="static"
+      style={{ zIndex: 1060 }}
+    >
       <Modal.Header closeButton>
         <Modal.Title>{title}</Modal.Title>
       </Modal.Header>

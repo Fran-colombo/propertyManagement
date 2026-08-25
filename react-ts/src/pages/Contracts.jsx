@@ -562,6 +562,7 @@ const ContractsTable = () => {
           setSelectedPeriod(null);
         }}
         contract={selectedPeriod?.contract}
+        currentRent={selectedPeriod?.indexed_amount}
         onUpdate={loadPeriods}
       />
       <CancelContractModal

@@ -64,6 +64,7 @@ class RentalContractService:
 
         try:
             contract_dict = contract_data.dict(exclude_unset=True)
+            contract_dict.pop("mark_past_as_paid", None)
             garage = self._handle_garage_assignment(contract_dict)
 
             property_obj = self.db.query(Property).filter_by(id=contract_dict["property_id"]).first()
@@ -87,6 +88,8 @@ class RentalContractService:
             self.db.flush()
 
             self._generate_contract_periods(contract)
+            if getattr(contract_data, "mark_past_as_paid", False):
+                self._mark_past_periods_paid(contract)
 
             self.db.refresh(contract)
             all_contract = ContractHistory(
@@ -147,6 +150,8 @@ class RentalContractService:
             self.db.add(contract)
             self.db.flush()
             self._generate_contract_periods(contract)
+            if getattr(contract_data, "mark_past_as_paid", False):
+                self._mark_past_periods_paid(contract)
             self.db.refresh(contract)
 
             address = f"Garage N° {garage.number}"
@@ -249,6 +254,26 @@ class RentalContractService:
         self.db.add_all(periods)
         self.db.commit()
         return periods
+
+    def _mark_past_periods_paid(self, contract: RentalContract):
+        """Mark periods that already ended before today as paid (full amount)."""
+        today = date.today()
+        periods = (
+            self.db.query(ContractPeriod)
+            .filter(ContractPeriod.contract_id == contract.id)
+            .all()
+        )
+        for period in periods:
+            if period.end_date < today:
+                period.payment_status = PaymentStatusEnum.PAGADO
+                period.amount_paid = period.total_amount or 0
+                period.payment_method = period.payment_method or "carga_inicial"
+                period.payment_reference = (
+                    period.payment_reference
+                    or "Marcado como pagado al crear el contrato (período anterior)"
+                )
+                self.db.add(period)
+        self.db.commit()
 
     def _should_apply_index(self, period_start: date, contract_start: date, freq_enum: AdjustmentFrequencyEnum):
         months_elapsed = (period_start.year - contract_start.year) * 12 + (period_start.month - contract_start.month)

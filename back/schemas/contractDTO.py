@@ -27,6 +27,7 @@ class CreateContractDTO(BaseModel):
     pays_tgi: bool = False
     pays_epe: bool = False
     notes: Optional[str] = None
+    mark_past_as_paid: bool = False
 
 class UpdateContractDTO(BaseModel):
     fire_insurance: Optional[bool] = None

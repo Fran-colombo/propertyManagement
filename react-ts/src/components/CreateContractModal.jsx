@@ -20,6 +20,7 @@ const emptyForm = {
   index_type: "IPC",
   frequency_adjustment: "TRIMESTRAL",
   base_index_value: "",
+  mark_past_as_paid: false,
   includes_garage: false,
   garage_only: false,
   fire_insurance: false,
@@ -304,6 +305,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
             : form.base_index_value !== "" && form.base_index_value != null
             ? Number(form.base_index_value)
             : null,
+        mark_past_as_paid: !!form.mark_past_as_paid,
       };
       delete payload.garage_only;
       const created = await createContract(payload);
@@ -311,7 +313,6 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         try {
           await uploadContractDocument(created.id, documentFile);
         } catch (uploadErr) {
-          onCreated();
           setFeedback({
             variant: "warning",
             title: "Contrato creado",
@@ -322,11 +323,12 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
           return;
         }
       }
-      onCreated();
       setFeedback({
         variant: "success",
         title: "Contrato creado",
-        message: "El contrato se creó correctamente.",
+        message: form.mark_past_as_paid
+          ? "El contrato se creó correctamente. Los períodos anteriores a hoy quedaron marcados como pagados."
+          : "El contrato se creó correctamente.",
       });
     } catch (err) {
       setFeedback({
@@ -343,6 +345,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
     const variant = feedback?.variant;
     setFeedback(null);
     if (variant !== "danger") {
+      onCreated?.();
       onHide();
     }
   };
@@ -522,7 +525,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                   {form.index_type === "IPC" && (
                     <Form.Group className="mb-2">
                       <Form.Label>
-                        IPC base {ipcLoading ? "(cargando…)" : ""}
+                        Valor IPC base {ipcLoading ? "(cargando…)" : ""}
                       </Form.Label>
                       <Form.Control
                         type="number"
@@ -531,8 +534,12 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                         value={form.base_index_value}
                         onChange={handleChange}
                         onWheel={(e) => e.target.blur()}
-                        placeholder="Se completa desde la API oficial"
+                        placeholder="Valor del índice (ej. 12078), no es un %"
                       />
+                      <Form.Text className="text-muted d-block">
+                        No es un porcentaje: es el número grande del INDEC (ej.
+                        12.078). El % de aumento se carga después en Índice.
+                      </Form.Text>
                       {ipcHint && (
                         <Form.Text className="text-muted">{ipcHint}</Form.Text>
                       )}
@@ -540,6 +547,25 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                   )}
                 </>
               )}
+
+              {form.start_date &&
+                new Date(form.start_date) <
+                  new Date(new Date().toDateString()) && (
+                  <Alert variant="warning" className="mt-2">
+                    <Form.Check
+                      type="checkbox"
+                      id="mark_past_as_paid"
+                      name="mark_past_as_paid"
+                      checked={!!form.mark_past_as_paid}
+                      onChange={handleChange}
+                      label="Los períodos anteriores a hoy ya están pagados"
+                    />
+                    <Form.Text className="text-muted d-block mt-1">
+                      Si marcás esto, esos meses quedan como PAGADO. Si no,
+                      quedan pendientes para cobrar.
+                    </Form.Text>
+                  </Alert>
+                )}
 
               {!form.garage_only && (
                 <Form.Check
