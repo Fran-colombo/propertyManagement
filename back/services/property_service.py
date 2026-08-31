@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from schemas.contract_periodDTO import ContractPeriodResponse
 from models.property import Property
-from schemas.propertyDTO import CreatePropertyDTO, GarageResponse, OwnerSimpleResponse, PropertyResponse, RentalContractWithPeriodsResponse, TenantSimpleResponse
+from schemas.propertyDTO import CreatePropertyDTO, UpdatePropertyDTO, GarageResponse, OwnerSimpleResponse, PropertyResponse, RentalContractWithPeriodsResponse, TenantSimpleResponse
 from repositories.property_repository import PropertyRepository
 
 class PropertyService:
@@ -40,6 +40,39 @@ class PropertyService:
                 detail="Propiedad no encontrada"
             )
         return self._map_to_response(prop)
+
+    def update_property(self, prop_id: int, data: UpdatePropertyDTO) -> PropertyResponse:
+        prop = self.repo.get_by_id(prop_id)
+        if not prop:
+            raise HTTPException(
+                status_code=404,
+                detail="Propiedad no encontrada"
+            )
+        updates = data.model_dump(exclude_unset=True)
+        if not updates:
+            return self._map_to_response(prop)
+        if "owner_id" in updates:
+            owner = self.repo.get_owner_by_id(updates["owner_id"])
+            if not owner:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El dueño indicado no existe"
+                )
+        if "direction" in updates and not (updates["direction"] or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="La dirección no puede estar vacía"
+            )
+        try:
+            updated = self.repo.update_property(prop, data)
+            return self._map_to_response(updated)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al actualizar propiedad: {str(e)}"
+            )
 
     def delete_property(self, property_id: int) -> dict:
         prop = self.repo.get_by_id(property_id)

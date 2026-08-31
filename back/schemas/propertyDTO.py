@@ -47,6 +47,19 @@ class CreatePropertyDTO(BaseModel):
         return v
 
 
+class UpdatePropertyDTO(BaseModel):
+    direction: Optional[str] = None
+    floor: Optional[str] = None
+    apartment: Optional[str] = None
+    owner_id: Optional[int] = None
+
+    @validator('owner_id')
+    def owner_id_must_be_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("El ID del dueño debe ser positivo")
+        return v
+
+
 class PropertyCreateResponse(BaseModel):
     id: int
     direction: str

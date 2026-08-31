@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 class CreateTransactionDTO(BaseModel):
@@ -75,5 +75,17 @@ class TransactionResponseDTO(BaseModel):
         orm_mode = True
 
 class TransactionHistoryResponse(TransactionResponseDTO):
+    currency: str = "PESOS"
+
     class Config:
-        extra = "ignore"  
+        extra = "ignore"
+
+
+class PaginatedTransactionHistoryResponse(BaseModel):
+    items: List[TransactionHistoryResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+    total_pesos: float
+    total_dolares: float  

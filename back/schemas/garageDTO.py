@@ -8,6 +8,12 @@ class GarageCreate(BaseModel):
     property_id: Optional[int] = None
 
 
+class GarageUpdate(BaseModel):
+    number: Optional[str] = None
+    owner_id: Optional[int] = None
+    property_id: Optional[int] = None
+
+
 class GarageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

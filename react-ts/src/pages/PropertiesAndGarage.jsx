@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Card, Spinner, Row, Col, Badge, Button, Modal, Table, Alert } from "react-bootstrap";
+import { useEffect, useMemo, useState } from "react";
+import { Card, Spinner, Row, Col, Badge, Button, Modal, Table, Alert, Form } from "react-bootstrap";
 import { apiFetch } from "../api/clients";
 import { deleteProperty } from "../api/property";
 import CreatePropertyModal from "../components/CreatePropertyModal";
@@ -9,9 +9,23 @@ import EditContractModal from "../components/EditContractModal";
 import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
 
+const OCCUPANCY_ALL = "all";
+const OCCUPANCY_RENTED = "rented";
+const OCCUPANCY_AVAILABLE = "available";
+
+function matchesOccupancy(isRented, filter) {
+  if (filter === OCCUPANCY_RENTED) return isRented;
+  if (filter === OCCUPANCY_AVAILABLE) return !isRented;
+  return true;
+}
+
 const PropertiesAndGarages = () => {
   const [properties, setProperties] = useState([]);
-  const [garageAlone, setGarageAlone] = useState([]);
+  const [garages, setGarages] = useState([]);
+  const [propertyOccupancy, setPropertyOccupancy] = useState(OCCUPANCY_ALL);
+  const [garageOccupancy, setGarageOccupancy] = useState(OCCUPANCY_ALL);
+  const [editingProperty, setEditingProperty] = useState(null);
+  const [editingGarage, setEditingGarage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showPeriodsModal, setShowPeriodsModal] = useState(false);
@@ -48,8 +62,6 @@ const PropertiesAndGarages = () => {
 
       const propertiesList = propertiesData || [];
       const garagesList = garagesData || [];
-      // Free garages: not rented — even if linked to a property (rentable separately)
-      const rentableGarages = garagesList.filter((g) => !g.rental_contract_id);
 
       const processedProperties = propertiesList.map(property => {
         const currentPeriod = property.rental_contract 
@@ -72,12 +84,12 @@ const PropertiesAndGarages = () => {
       });
 
       setProperties(processedProperties);
-      setGarageAlone(rentableGarages);
+      setGarages(garagesList);
     } catch (err) {
       console.error("Error loading data:", err);
       setError("Error al cargar los datos. Por favor intenta nuevamente.");
       setProperties([]);
-      setGarageAlone([]);
+      setGarages([]);
     } finally {
       setLoading(false);
     }
@@ -86,6 +98,37 @@ const PropertiesAndGarages = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  const filteredProperties = useMemo(
+    () => properties.filter((p) => matchesOccupancy(Boolean(p.rental_contract), propertyOccupancy)),
+    [properties, propertyOccupancy]
+  );
+
+  const filteredGarages = useMemo(
+    () => garages.filter((g) => matchesOccupancy(Boolean(g.rental_contract_id), garageOccupancy)),
+    [garages, garageOccupancy]
+  );
+
+  const occupancyEmptyMessage = (kind, filter, hasAny) => {
+    if (!hasAny) {
+      return kind === "propiedad"
+        ? "No tenés propiedades todavía. Podés crear una con el botón de arriba."
+        : "No hay garages todavía. Podés crear uno con el botón de arriba.";
+    }
+    if (filter === OCCUPANCY_RENTED) {
+      return kind === "propiedad"
+        ? "No hay propiedades alquiladas."
+        : "No hay garages alquilados.";
+    }
+    if (filter === OCCUPANCY_AVAILABLE) {
+      return kind === "propiedad"
+        ? "No hay propiedades disponibles."
+        : "No hay garages disponibles.";
+    }
+    return kind === "propiedad"
+      ? "No hay propiedades para mostrar."
+      : "No hay garages para mostrar.";
+  };
 
   const handleDeleteProperty = async (propertyId) => {
   try {
@@ -131,6 +174,14 @@ const PropertiesAndGarages = () => {
             <span className="text-muted">Sin piso/departamento</span>
           )}
         </p>
+        <Button
+          variant="outline-secondary"
+          size="sm"
+          className="mb-2 me-2"
+          onClick={() => setEditingProperty(prop)}
+        >
+          Editar
+        </Button>
         <Button
           variant="outline-danger"
           size="sm"
@@ -270,10 +321,18 @@ const PropertiesAndGarages = () => {
         )}
         <Badge
           bg={garage.rental_contract_id ? "secondary" : "info"}
-          className="mt-auto align-self-start"
+          className="mt-auto align-self-start mb-2"
         >
           {garage.rental_contract_id ? "Alquilado" : "Disponible para alquilar"}
         </Badge>
+        <Button
+          variant="outline-secondary"
+          size="sm"
+          className="align-self-start"
+          onClick={() => setEditingGarage(garage)}
+        >
+          Editar
+        </Button>
       </Card.Body>
     </Card>
   );
@@ -290,18 +349,30 @@ const PropertiesAndGarages = () => {
       <section className="mb-5">
         <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
             <h2 className="h4 mb-0">Propiedades</h2>
-            <Button variant="primary" onClick={() => setShowCreateModal(true)}>
-              + Nueva Propiedad
-            </Button>
+            <div className="d-flex flex-wrap gap-2 align-items-center">
+              <Form.Select
+                value={propertyOccupancy}
+                onChange={(e) => setPropertyOccupancy(e.target.value)}
+                style={{ width: "auto" }}
+                aria-label="Filtrar propiedades"
+              >
+                <option value={OCCUPANCY_ALL}>Todos</option>
+                <option value={OCCUPANCY_RENTED}>Alquilados</option>
+                <option value={OCCUPANCY_AVAILABLE}>Disponibles</option>
+              </Form.Select>
+              <Button variant="primary" onClick={() => setShowCreateModal(true)}>
+                + Nueva Propiedad
+              </Button>
+            </div>
           </div>
 
-        {properties.length === 0 ? (
+        {filteredProperties.length === 0 ? (
           <Alert variant="info">
-            No tenés propiedades todavía. Podés crear una con el botón de arriba.
+            {occupancyEmptyMessage("propiedad", propertyOccupancy, properties.length > 0)}
           </Alert>
         ) : (
           <Row xs={1} md={2} lg={3}>
-            {properties.map(prop => (
+            {filteredProperties.map(prop => (
               <Col key={prop.id} className="mb-4">
                 <PropertyCard prop={prop} />
               </Col>
@@ -312,19 +383,31 @@ const PropertiesAndGarages = () => {
 
       <section>
         <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
-        <h2 className="h4 mb-0">Garages para alquilar</h2>
+        <h2 className="h4 mb-0">Garages</h2>
 
-        <Button variant="outline-primary" onClick={() => setShowCreateGarageModal(true)}>
-          + Nuevo Garage
-        </Button>
+        <div className="d-flex flex-wrap gap-2 align-items-center">
+          <Form.Select
+            value={garageOccupancy}
+            onChange={(e) => setGarageOccupancy(e.target.value)}
+            style={{ width: "auto" }}
+            aria-label="Filtrar garages"
+          >
+            <option value={OCCUPANCY_ALL}>Todos</option>
+            <option value={OCCUPANCY_RENTED}>Alquilados</option>
+            <option value={OCCUPANCY_AVAILABLE}>Disponibles</option>
+          </Form.Select>
+          <Button variant="outline-primary" onClick={() => setShowCreateGarageModal(true)}>
+            + Nuevo Garage
+          </Button>
+        </div>
       </div>
-        {garageAlone.length === 0 ? (
+        {filteredGarages.length === 0 ? (
           <Alert variant="info">
-            No hay garages libres para alquilar. Podés crear uno con el botón de arriba.
+            {occupancyEmptyMessage("garage", garageOccupancy, garages.length > 0)}
           </Alert>
         ) : (
           <Row xs={1} md={2} lg={3}>
-            {garageAlone.map(garage => (
+            {filteredGarages.map(garage => (
               <Col key={garage.id} className="mb-4">
                 <GarageCard garage={garage} />
               </Col>
@@ -433,14 +516,22 @@ const PropertiesAndGarages = () => {
         </Modal.Footer>
       </Modal>
       <CreatePropertyModal 
-          show={showCreateModal}
-          onHide={() => setShowCreateModal(false)}
+          show={showCreateModal || !!editingProperty}
+          onHide={() => {
+            setShowCreateModal(false);
+            setEditingProperty(null);
+          }}
           onCreated={loadData}
+          property={editingProperty}
         />
         <CreateGarageModal 
-          show={showCreateGarageModal}
-          onHide={() => setShowCreateGarageModal(false)}
+          show={showCreateGarageModal || !!editingGarage}
+          onHide={() => {
+            setShowCreateGarageModal(false);
+            setEditingGarage(null);
+          }}
           onCreated={loadData}
+          garage={editingGarage}
         />
       <CancelContractModal
         show={showCancelModal}

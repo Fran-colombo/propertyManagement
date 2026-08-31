@@ -85,6 +85,9 @@ def _ensure_sqlite_columns():
         "contract_terminations": {
             "waive_remaining_rent": "BOOLEAN DEFAULT 0",
         },
+        "transaction_history": {
+            "currency": "TEXT",
+        },
     }
 
     with engine.begin() as conn:
@@ -95,4 +98,21 @@ def _ensure_sqlite_columns():
             for col, col_type in cols.items():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+
+        if "transaction_history" in inspector.get_table_names():
+            conn.execute(
+                text(
+                    """
+                    UPDATE transaction_history
+                    SET currency = COALESCE((
+                        SELECT rental_contracts.currency
+                        FROM contract_periods
+                        JOIN rental_contracts
+                          ON rental_contracts.id = contract_periods.contract_id
+                        WHERE contract_periods.id = transaction_history.period_id
+                    ), 'PESOS')
+                    WHERE currency IS NULL OR TRIM(currency) = ''
+                    """
+                )
+            )
 

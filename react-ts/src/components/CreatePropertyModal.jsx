@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import { Modal, Button, Form, Spinner, Alert } from "react-bootstrap";
-import { createProperty } from "../api/property";
+import { createProperty, updateProperty } from "../api/property";
 import { getOwners } from "../api/person";
 import FeedbackModal from "./FeedbackModal";
 
-export default function CreatePropertyModal({ show, onHide, onCreated }) {
-  const [form, setForm] = useState({
-    direction: "",
-    floor: "",
-    apartment: "",
-    owner_id: ""
-  });
+const emptyForm = {
+  direction: "",
+  floor: "",
+  apartment: "",
+  owner_id: "",
+};
+
+export default function CreatePropertyModal({ show, onHide, onCreated, property = null }) {
+  const isEdit = Boolean(property?.id);
+  const [form, setForm] = useState(emptyForm);
 
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,9 +23,20 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
   useEffect(() => {
     if (show) {
       setFeedback(null);
+      setError("");
+      if (property) {
+        setForm({
+          direction: property.direction || "",
+          floor: property.floor || "",
+          apartment: property.apartment || "",
+          owner_id: property.owner?.id ? String(property.owner.id) : "",
+        });
+      } else {
+        setForm(emptyForm);
+      }
       loadData();
     }
-  }, [show]);
+  }, [show, property]);
 
   const loadData = async () => {
     setLoading(true);
@@ -55,23 +69,35 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
       return;
     }
 
+    const payload = {
+      ...form,
+      owner_id: parseInt(form.owner_id, 10),
+    };
+
     try {
       setError("");
-      await createProperty({
-        ...form,
-        owner_id: parseInt(form.owner_id, 10),
-      });
-      onCreated();
-      setFeedback({
-        variant: "success",
-        title: "Propiedad creada",
-        message: "La propiedad se creó correctamente.",
-      });
+      if (isEdit) {
+        await updateProperty(property.id, payload);
+        onCreated();
+        setFeedback({
+          variant: "success",
+          title: "Propiedad actualizada",
+          message: "La propiedad se actualizó correctamente.",
+        });
+      } else {
+        await createProperty(payload);
+        onCreated();
+        setFeedback({
+          variant: "success",
+          title: "Propiedad creada",
+          message: "La propiedad se creó correctamente.",
+        });
+      }
     } catch (e) {
       setFeedback({
         variant: "danger",
         title: "Error",
-        message: e.message || "Error al crear la propiedad",
+        message: e.message || (isEdit ? "Error al actualizar la propiedad" : "Error al crear la propiedad"),
       });
       console.error(e);
     }
@@ -90,7 +116,7 @@ export default function CreatePropertyModal({ show, onHide, onCreated }) {
     <Modal show={show && !feedback} onHide={onHide} backdrop="static">
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
-          <Modal.Title>Nueva Propiedad</Modal.Title>
+          <Modal.Title>{isEdit ? "Editar propiedad" : "Nueva Propiedad"}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {loading ? (

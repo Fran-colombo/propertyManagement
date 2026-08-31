@@ -1,5 +1,5 @@
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -9,8 +9,12 @@ from database import get_db
 from models.contract_period import ContractPeriod
 from models.transactions import Transaction
 from schemas.enums.enums import PaymentStatusEnum
-from services.transaction_service import TransactionService
-from schemas.transactionDTO import TransactionHistoryResponse, TransactionResponseDTO
+from services.transaction_service import TransactionService, normalize_currency
+from schemas.transactionDTO import (
+    TransactionHistoryResponse,
+    TransactionResponseDTO,
+    PaginatedTransactionHistoryResponse,
+)
 from utils.contract_display import contract_location_label, contract_owner
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
@@ -82,6 +86,7 @@ def _add_ledger_entry(
             period_total_amount=period.total_amount,
             period_amount_paid=min(new_paid, period.total_amount or 0),
             period_payment_status=new_status,
+            currency=normalize_currency(getattr(contract, "currency", None) if contract else None),
         )
     )
 
@@ -220,10 +225,30 @@ def register_credit_note(period_id: int, data: CreditNoteData, db: Session = Dep
     }
 
 
-@router.get("/", response_model=List[TransactionHistoryResponse])
-def get_transactions(db: Session = Depends(get_db)):
+@router.get("/", response_model=PaginatedTransactionHistoryResponse)
+def get_transactions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    q: Optional[str] = Query(None),
+    month: Optional[str] = Query(None, description="YYYY-MM, vacío lista todas"),
+    method: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    if month:
+        parts = month.split("-")
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            raise HTTPException(status_code=400, detail="El mes debe ser YYYY-MM")
+        month_num = int(parts[1])
+        if month_num < 1 or month_num > 12:
+            raise HTTPException(status_code=400, detail="Mes inválido")
     service = TransactionService(db)
-    return service.get_all_history()
+    return service.get_paginated_history(
+        page=page,
+        page_size=page_size,
+        q=q,
+        month=month or None,
+        method=method or None,
+    )
 
 
 @router.get("/period/{period_id}", response_model=List[TransactionHistoryResponse])

@@ -8,8 +8,20 @@ export async function registerTransaction(periodId, paymentData) {
   });
 }
 
-export async function getAllTransactions() {
-  return await apiFetch("/transactions/");
+export async function getAllTransactions({
+  page = 1,
+  pageSize = 20,
+  q,
+  month,
+  method,
+} = {}) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  if (q) params.set("q", q);
+  if (month) params.set("month", month);
+  if (method) params.set("method", method);
+  return await apiFetch(`/transactions/?${params.toString()}`);
 }
 
 export async function getTransactionsByPeriod(periodId) {

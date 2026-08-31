@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from schemas.garageDTO import GarageCreate, GarageRead
+from schemas.garageDTO import GarageCreate, GarageRead, GarageUpdate
 from services import garage_service
 from typing import List
 
@@ -17,4 +17,11 @@ def list_garages(db: Session = Depends(get_db)):
 
 @router.get("/{garage_id}", response_model=GarageRead)
 def get_garage(garage_id: int, db: Session = Depends(get_db)):
-    return garage_service.get_garage(db, garage_id)
+    garage = garage_service.get_garage(db, garage_id)
+    if not garage:
+        raise HTTPException(status_code=404, detail="Garage no encontrado")
+    return garage
+
+@router.put("/{garage_id}", response_model=GarageRead)
+def update_garage(garage_id: int, garage: GarageUpdate, db: Session = Depends(get_db)):
+    return garage_service.update_garage(db, garage_id, garage)

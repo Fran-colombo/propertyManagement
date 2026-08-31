@@ -1,13 +1,104 @@
 from datetime import date
+from math import ceil
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
+
 from models.transaction_history import TransactionHistory
 from models.transactions import Transaction
-from schemas.transactionDTO import TransactionHistoryResponse, TransactionResponseDTO, SimpleUser, ContractInfo, PeriodInfo
-from sqlalchemy.orm import Session
+from schemas.transactionDTO import (
+    TransactionHistoryResponse,
+    TransactionResponseDTO,
+    SimpleUser,
+    ContractInfo,
+    PeriodInfo,
+    PaginatedTransactionHistoryResponse,
+)
+
+
+def normalize_currency(value) -> str:
+    if hasattr(value, "value"):
+        value = value.value
+    text = str(value or "PESOS").strip().upper()
+    if text in ("DOLARES", "USD", "DOLAR"):
+        return "DOLARES"
+    return "PESOS"
+
 
 class TransactionService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _history_filters(self, q: str | None, month: str | None, method: str | None):
+        filters = []
+        if q and q.strip():
+            term = f"%{q.strip().lower()}%"
+            filters.append(
+                or_(
+                    func.lower(func.coalesce(TransactionHistory.tenant_name, "")).like(term),
+                    func.lower(func.coalesce(TransactionHistory.owner_name, "")).like(term),
+                    func.lower(func.coalesce(TransactionHistory.property_direction, "")).like(term),
+                    func.lower(func.coalesce(TransactionHistory.notes, "")).like(term),
+                )
+            )
+        if month:
+            year_s, month_s = month.split("-")
+            year, month_num = int(year_s), int(month_s)
+            start = date(year, month_num, 1)
+            end = date(year + 1, 1, 1) if month_num == 12 else date(year, month_num + 1, 1)
+            filters.append(TransactionHistory.date >= start)
+            filters.append(TransactionHistory.date < end)
+        if method and method.strip():
+            filters.append(func.lower(TransactionHistory.method) == method.strip().lower())
+        return filters
+
+    def get_paginated_history(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        q: str | None = None,
+        month: str | None = None,
+        method: str | None = None,
+    ) -> PaginatedTransactionHistoryResponse:
+        page = max(1, page)
+        page_size = min(max(1, page_size), 100)
+        query = self.db.query(TransactionHistory)
+        filters = self._history_filters(q, month, method)
+        if filters:
+            query = query.filter(*filters)
+
+        total = query.count()
+        currency_norm = func.upper(func.coalesce(TransactionHistory.currency, "PESOS"))
+        is_usd = currency_norm == "DOLARES"
+        total_dolares = float(
+            query.filter(is_usd)
+            .with_entities(func.coalesce(func.sum(TransactionHistory.amount), 0.0))
+            .scalar()
+            or 0
+        )
+        total_pesos = float(
+            query.filter(~is_usd)
+            .with_entities(func.coalesce(func.sum(TransactionHistory.amount), 0.0))
+            .scalar()
+            or 0
+        )
+
+        items = (
+            query.order_by(TransactionHistory.date.desc(), TransactionHistory.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        pages = ceil(total / page_size) if page_size and total else 0
+        return PaginatedTransactionHistoryResponse(
+            items=[self._history_to_dto(record) for record in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+            total_pesos=float(total_pesos or 0),
+            total_dolares=float(total_dolares or 0),
+        )
 
     def get_all_history(self) -> list[TransactionHistoryResponse]:
         """Obtiene todas las transacciones del historial"""
@@ -23,12 +114,16 @@ class TransactionService:
 
     def _history_to_dto(self, record: TransactionHistory) -> TransactionHistoryResponse:
         """Convierte un registro de historial a DTO"""
+        total_amount = record.period_total_amount or 0
+        amount_paid = record.period_amount_paid or 0
+        fallback_date = record.date or date.today()
         return TransactionHistoryResponse(
             id=record.transaction_id,
-            amount=record.amount,
-            date=record.date,
+            amount=record.amount or 0,
+            date=fallback_date,
             method=record.method,
             notes=record.notes,
+            currency=normalize_currency(record.currency),
             contract=ContractInfo(
                 id=record.contract_id or 0,
                 owner=SimpleUser(id=record.owner_id or 0, name=record.owner_name or "Sin dueño"),
@@ -36,14 +131,14 @@ class TransactionService:
                 property_direction=record.property_direction or "Sin dirección"
             ),
             period=PeriodInfo(
-                id=record.period_id,
-                start_date=record.period_start_date,
-                end_date=record.period_end_date,
-                due_date=record.period_due_date,
-                total_amount=record.period_total_amount,
-                payment_status=record.period_payment_status,
-                amount_paid=record.period_amount_paid,  
-                remaining_amount=record.period_total_amount - record.period_amount_paid
+                id=record.period_id or 0,
+                start_date=record.period_start_date or fallback_date,
+                end_date=record.period_end_date or fallback_date,
+                due_date=record.period_due_date or fallback_date,
+                total_amount=total_amount,
+                payment_status=record.period_payment_status or "",
+                amount_paid=amount_paid,
+                remaining_amount=total_amount - amount_paid
             )
         )
 

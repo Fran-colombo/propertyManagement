@@ -25,4 +25,5 @@ class TransactionHistory(Base):
     period_total_amount = Column(Float)
     
     period_amount_paid = Column(Float)  
-    period_payment_status = Column(String)  
+    period_payment_status = Column(String)
+    currency = Column(String, default="PESOS")  

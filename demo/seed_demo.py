@@ -308,5 +308,10 @@ def _mark_past_periods_paid(db: Session, today: date) -> None:
                 period_total_amount=amount,
                 period_amount_paid=amount,
                 period_payment_status=PaymentStatusEnum.PAGADO.value,
+                currency=(
+                    contract.currency.value
+                    if contract and getattr(contract.currency, "value", None)
+                    else (str(contract.currency) if contract and contract.currency else "PESOS")
+                ),
             )
         )

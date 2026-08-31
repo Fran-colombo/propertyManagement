@@ -14,6 +14,16 @@ export async function createProperty(propertyData) {
   });
 }
 
+export async function updateProperty(id, propertyData) {
+  return await apiFetch(`/properties/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(propertyData),
+  });
+}
+
 export async function getPropertyById(id){
   return await apiFetch(`/properties/${id}`)
 }

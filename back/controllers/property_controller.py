@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
-from schemas.propertyDTO import CreatePropertyDTO, PropertyResponse
+from schemas.propertyDTO import CreatePropertyDTO, UpdatePropertyDTO, PropertyResponse
 from services.property_service import PropertyService
 
 router = APIRouter(prefix="/properties", tags=["Properties"])
@@ -33,6 +33,14 @@ def get_property_by_id(
     service: PropertyService = Depends(get_service)
 ):
     return service.get_property_by_id(prop_id)
+
+@router.put("/{prop_id}", response_model=PropertyResponse)
+def update_property(
+    prop_id: int,
+    property_data: UpdatePropertyDTO,
+    service: PropertyService = Depends(get_service)
+):
+    return service.update_property(prop_id, property_data)
 
 @router.delete("/{property_id}")
 def delete_property(

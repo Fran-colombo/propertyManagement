@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Card, Table, Badge, Form, InputGroup, Row, Col, Spinner, Alert, Button } from "react-bootstrap";
+import { Card, Table, Badge, Form, InputGroup, Row, Col, Spinner, Alert, Button, Pagination } from "react-bootstrap";
 import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-bootstrap-icons";
 import { getAllTransactions, registerCreditNote } from "../api/transaction";
 import CreditNoteModal from "../components/CreditNoteModal";
 import FeedbackModal from "../components/FeedbackModal";
+
+const PAGE_SIZE = 20;
 
 function currentMonthValue() {
   const now = new Date();
@@ -16,25 +18,66 @@ function shiftMonth(value, delta) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function isDollars(currency) {
+  const value = String(currency || "PESOS").toUpperCase();
+  return value === "DOLARES" || value === "USD" || value === "DOLAR";
+}
+
+function formatMoney(amount, currency) {
+  const n = Number(amount) || 0;
+  const prefix = isDollars(currency) ? "U$S" : "$";
+  return `${prefix} ${n.toLocaleString("es-AR")}`;
+}
+
 const Transactions = () => {
   const [transactions, setTransactions] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dateFilter, setDateFilter] = useState(currentMonthValue);
   const [creditTx, setCreditTx] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(0);
+  const [totalPesos, setTotalPesos] = useState(0);
+  const [totalDolares, setTotalDolares] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, dateFilter, methodFilter]);
 
   const loadTransactions = async () => {
     try {
       setLoading(true);
-      const data = await getAllTransactions();
-      setTransactions(data || []);
+      setError("");
+      const data = await getAllTransactions({
+        page,
+        pageSize: PAGE_SIZE,
+        q: debouncedSearch || undefined,
+        month: dateFilter || undefined,
+        method: methodFilter || undefined,
+      });
+      setTransactions(data?.items || []);
+      setTotal(data?.total || 0);
+      setPages(data?.pages || 0);
+      setTotalPesos(data?.total_pesos || 0);
+      setTotalDolares(data?.total_dolares || 0);
     } catch (err) {
       console.error("Error al cargar transacciones", err);
       setError(err.message || "No se pudieron cargar las transacciones");
       setTransactions([]);
+      setTotal(0);
+      setPages(0);
+      setTotalPesos(0);
+      setTotalDolares(0);
     } finally {
       setLoading(false);
     }
@@ -42,29 +85,7 @@ const Transactions = () => {
 
   useEffect(() => {
     loadTransactions();
-  }, []);
-
-  const filteredTransactions = transactions.filter((transaction) => {
-    const search = searchTerm.toLowerCase();
-
-    const matchesSearch =
-      transaction.contract?.tenant?.name?.toLowerCase().includes(search) ||
-      transaction.contract?.owner?.name?.toLowerCase().includes(search) ||
-      transaction.contract?.property_direction?.toLowerCase().includes(search) ||
-      transaction.notes?.toLowerCase().includes(search);
-
-    const matchesDate =
-      !dateFilter || String(transaction.date || "").includes(dateFilter);
-    const matchesMethod =
-      !methodFilter ||
-      String(transaction.method || "").toLowerCase() === methodFilter;
-
-    return matchesSearch && matchesDate && matchesMethod;
-  });
-
-  const totalAmount = filteredTransactions.reduce(
-    (sum, transaction) => sum + transaction.amount, 0
-  );
+  }, [page, debouncedSearch, dateFilter, methodFilter]);
 
   const getPaymentMethodIcon = (method) => {
     switch (method?.toLowerCase()) {
@@ -139,7 +160,12 @@ const Transactions = () => {
     }
   };
 
-  if (loading) return <Spinner animation="border" className="m-5" />;
+  const pageItems = [];
+  const windowStart = Math.max(1, page - 2);
+  const windowEnd = Math.min(pages, windowStart + 4);
+  for (let p = windowStart; p <= windowEnd; p += 1) {
+    pageItems.push(p);
+  }
 
   return (
     <div>
@@ -162,21 +188,29 @@ const Transactions = () => {
       <Card className="mb-4">
         <Card.Body>
           <Row className="align-items-center">
-            <Col xs={12} md={4}>
+            <Col xs={12} md={3}>
               <div className="mb-3 mb-md-0">
                 <p className="text-muted mb-1">Total de Transacciones</p>
-                <h3 className="mb-0">{filteredTransactions.length}</h3>
+                <h3 className="mb-0">{total}</h3>
               </div>
             </Col>
             <Col xs={12} md={4}>
               <div className="mb-3 mb-md-0">
-                <p className="text-muted mb-1">Monto Total</p>
-                <h3 className={`mb-0 ${totalAmount < 0 ? "text-danger" : "text-success"}`}>
-                  ${totalAmount.toLocaleString()}
+                <p className="text-muted mb-1">Total pesos</p>
+                <h3 className={`mb-0 ${totalPesos < 0 ? "text-danger" : "text-success"}`}>
+                  {formatMoney(totalPesos, "PESOS")}
                 </h3>
               </div>
             </Col>
-            <Col md={4} className="d-flex justify-content-end">
+            <Col xs={12} md={4}>
+              <div className="mb-3 mb-md-0">
+                <p className="text-muted mb-1">Total dólares</p>
+                <h3 className={`mb-0 ${totalDolares < 0 ? "text-danger" : "text-success"}`}>
+                  {formatMoney(totalDolares, "DOLARES")}
+                </h3>
+              </div>
+            </Col>
+            <Col md={1} className="d-none d-md-flex justify-content-end">
               <div className="bg-primary bg-opacity-10 p-3 rounded">
                 <Cash size={24} className="text-primary" />
               </div>
@@ -261,55 +295,107 @@ const Transactions = () => {
           <h5 className="mb-0">Historial de Transacciones</h5>
         </Card.Header>
         <Card.Body className="p-0">
-          <div className="table-responsive">
-            <Table striped hover className="mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th>Fecha</th>
-                  <th>Dirección</th>
-                  <th>Dueño</th>
-                  <th>Inquilino</th>
-                  <th>Monto</th>
-                  <th>Método</th>
-                  <th>Notas</th>
-                  <th>Estado</th>
-                  <th>Total del Período</th>
-                  <th>Pagado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTransactions.map((transaction) => (
-                  <tr key={transaction.id}>
-                    <td>{new Date(transaction.date).toLocaleDateString("es-AR")}</td>
-                    <td>{transaction.contract?.property_direction}</td>
-                    <td>{transaction.contract?.owner?.name || "N/A"}</td>
-                    <td>{transaction.contract?.tenant?.name || "N/A"}</td>
-                    <td className={transaction.amount < 0 ? "text-danger" : ""}>
-                      ${transaction.amount.toLocaleString()}
-                    </td>
-                    <td>{getPaymentMethodBadge(transaction.method)}</td>
-                    <td>{renderNotes(transaction.notes, transaction.method)}</td>
-                    <td>{getStatusBadge(transaction.period?.payment_status)}</td>
-                    <td>${transaction.period?.total_amount?.toLocaleString() || "-"}</td>
-                    <td>${transaction.period?.amount_paid?.toLocaleString() || "-"}</td>
-                    <td>
-                      {transaction.amount > 0 && transaction.period?.id && (
-                        <Button
-                          variant="outline-danger"
-                          size="sm"
-                          onClick={() => setCreditTx(transaction)}
-                        >
-                          Nota de crédito
-                        </Button>
-                      )}
-                    </td>
+          {loading ? (
+            <div className="d-flex justify-content-center py-5">
+              <Spinner animation="border" />
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <Table striped hover className="mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Dirección</th>
+                    <th>Dueño</th>
+                    <th>Inquilino</th>
+                    <th>Monto</th>
+                    <th>Moneda</th>
+                    <th>Método</th>
+                    <th>Notas</th>
+                    <th>Estado</th>
+                    <th>Total del Período</th>
+                    <th>Pagado</th>
+                    <th>Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
-          </div>
+                </thead>
+                <tbody>
+                  {transactions.map((transaction) => {
+                    const currency = transaction.currency || "PESOS";
+                    return (
+                      <tr key={transaction.id}>
+                        <td>{new Date(transaction.date).toLocaleDateString("es-AR")}</td>
+                        <td>{transaction.contract?.property_direction}</td>
+                        <td>{transaction.contract?.owner?.name || "N/A"}</td>
+                        <td>{transaction.contract?.tenant?.name || "N/A"}</td>
+                        <td className={transaction.amount < 0 ? "text-danger" : ""}>
+                          {formatMoney(transaction.amount, currency)}
+                        </td>
+                        <td>
+                          <Badge bg={isDollars(currency) ? "info" : "secondary"}>
+                            {isDollars(currency) ? "USD" : "Pesos"}
+                          </Badge>
+                        </td>
+                        <td>{getPaymentMethodBadge(transaction.method)}</td>
+                        <td>{renderNotes(transaction.notes, transaction.method)}</td>
+                        <td>{getStatusBadge(transaction.period?.payment_status)}</td>
+                        <td>{formatMoney(transaction.period?.total_amount, currency)}</td>
+                        <td>{formatMoney(transaction.period?.amount_paid, currency)}</td>
+                        <td>
+                          {transaction.amount > 0 && transaction.period?.id && (
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => setCreditTx(transaction)}
+                            >
+                              Nota de crédito
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!transactions.length && (
+                    <tr>
+                      <td colSpan={12} className="text-center text-muted py-4">
+                        No hay transacciones para este filtro.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </Table>
+            </div>
+          )}
         </Card.Body>
+        {!loading && (
+          <Card.Footer className="bg-white">
+            <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+              <small className="text-muted">
+                {total} transacción{total === 1 ? "" : "es"}
+              </small>
+              {pages > 1 && (
+                <Pagination className="mb-0">
+                  <Pagination.Prev
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  />
+                  {pageItems.map((p) => (
+                    <Pagination.Item
+                      key={p}
+                      active={p === page}
+                      onClick={() => setPage(p)}
+                    >
+                      {p}
+                    </Pagination.Item>
+                  ))}
+                  <Pagination.Next
+                    disabled={page >= pages}
+                    onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                  />
+                </Pagination>
+              )}
+            </div>
+          </Card.Footer>
+        )}
       </Card>
       <CreditNoteModal
         show={!!creditTx}

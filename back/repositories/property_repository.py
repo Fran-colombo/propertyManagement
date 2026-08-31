@@ -1,6 +1,6 @@
 from typing import List
 from sqlalchemy.orm import Session, joinedload
-from schemas.propertyDTO import CreatePropertyDTO
+from schemas.propertyDTO import CreatePropertyDTO, UpdatePropertyDTO
 from models.property import Property, Garage
 from models.contract import RentalContract
 from models.person import Owner
@@ -63,6 +63,24 @@ class PropertyRepository:
             )
             .first()
         )
+
+    def get_owner_by_id(self, owner_id: int) -> Owner | None:
+        return (
+            self.db.query(Owner)
+            .filter(Owner.id == owner_id, Owner.status == 1)
+            .first()
+        )
+
+    def update_property(self, property_obj: Property, data: UpdatePropertyDTO) -> Property:
+        try:
+            updates = data.model_dump(exclude_unset=True)
+            for field, value in updates.items():
+                setattr(property_obj, field, value)
+            self.db.commit()
+            return self.get_by_id(property_obj.id) or property_obj
+        except Exception as e:
+            self.db.rollback()
+            raise ValueError(f"Error al actualizar propiedad: {str(e)}")
 
     def soft_delete(self, property_obj: Property) -> None:
         try:

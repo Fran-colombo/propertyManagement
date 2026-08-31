@@ -15,3 +15,11 @@ export async function getGarages() {
 export async function getGarageById(id) {
   return await apiFetch(`/garages/${id}`);
 }
+
+export async function updateGarage(id, data) {
+  return await apiFetch(`/garages/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}

@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, joinedload
-from models.property import Garage
-from schemas.garageDTO import GarageCreate, GarageRead
+from models.property import Garage, Property
+from models.person import Owner
+from schemas.garageDTO import GarageCreate, GarageRead, GarageUpdate
 
 
 class GarageRepository:
@@ -37,9 +38,33 @@ class GarageRepository:
                 joinedload(Garage.property),
                 joinedload(Garage.rental_contract),
             )
-            .filter(Garage.id == garage_id)
+            .filter(Garage.id == garage_id, Garage.status == 1)
             .first()
         )
+
+    @staticmethod
+    def get_active_owner(db: Session, owner_id: int):
+        return (
+            db.query(Owner)
+            .filter(Owner.id == owner_id, Owner.status == 1)
+            .first()
+        )
+
+    @staticmethod
+    def get_active_property(db: Session, property_id: int):
+        return (
+            db.query(Property)
+            .filter(Property.id == property_id, Property.status == 1)
+            .first()
+        )
+
+    @staticmethod
+    def update(db: Session, garage: Garage, data: GarageUpdate):
+        updates = data.model_dump(exclude_unset=True)
+        for field, value in updates.items():
+            setattr(garage, field, value)
+        db.commit()
+        return GarageRepository.get_garage_by_id(db, garage.id)
 
 
 def to_garage_read(garage: Garage) -> GarageRead:

@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
-import { createGarage } from "../api/garage";
+import { createGarage, updateGarage } from "../api/garage";
 import { getProperties } from "../api/property";
 import { getOwners } from "../api/person";
 import FeedbackModal from "./FeedbackModal";
 
-const CreateGarageModal = ({ show, onHide, onCreated }) => {
+const CreateGarageModal = ({ show, onHide, onCreated, garage = null }) => {
+  const isEdit = Boolean(garage?.id);
   const [number, setNumber] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [propertyId, setPropertyId] = useState("");
@@ -25,9 +26,17 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
   useEffect(() => {
     if (show) {
       setFeedback(null);
+      if (garage) {
+        setNumber(garage.number || "");
+        setOwnerId(garage.owner_id ? String(garage.owner_id) : "");
+        setPropertyId(garage.property_id ? String(garage.property_id) : "");
+        setError("");
+      } else {
+        resetForm();
+      }
       loadData();
     }
-  }, [show]);
+  }, [show, garage]);
 
   const loadData = async () => {
     setLoading(true);
@@ -63,20 +72,30 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
         property_id: propertyId ? Number(propertyId) : null,
       };
 
-      await createGarage(payload);
-      onCreated();
-      resetForm();
-      setFeedback({
-        variant: "success",
-        title: "Garage creado",
-        message: "El garage se creó correctamente.",
-      });
+      if (isEdit) {
+        await updateGarage(garage.id, payload);
+        onCreated();
+        setFeedback({
+          variant: "success",
+          title: "Garage actualizado",
+          message: "El garage se actualizó correctamente.",
+        });
+      } else {
+        await createGarage(payload);
+        onCreated();
+        resetForm();
+        setFeedback({
+          variant: "success",
+          title: "Garage creado",
+          message: "El garage se creó correctamente.",
+        });
+      }
     } catch (err) {
-      console.error("Error creando garage:", err);
+      console.error("Error guardando garage:", err);
       setFeedback({
         variant: "danger",
         title: "Error",
-        message: err.message || "Error al crear el garage.",
+        message: err.message || (isEdit ? "Error al actualizar el garage." : "Error al crear el garage."),
       });
     }
   };
@@ -99,7 +118,7 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
       }}
     >
       <Modal.Header closeButton>
-        <Modal.Title>Crear Garage</Modal.Title>
+        <Modal.Title>{isEdit ? "Editar garage" : "Crear Garage"}</Modal.Title>
       </Modal.Header>
       <Form onSubmit={handleSubmit}>
         <Modal.Body>
@@ -170,7 +189,7 @@ const CreateGarageModal = ({ show, onHide, onCreated }) => {
             Cancelar
           </Button>
           <Button type="submit" variant="primary" disabled={!number || !ownerId}>
-            Crear
+            Guardar
           </Button>
         </Modal.Footer>
       </Form>
