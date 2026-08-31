@@ -22,6 +22,10 @@ class PaymentData(BaseModel):
     overpay_reason: Optional[str] = None
     overpay_note: Optional[str] = None
     received_by: Optional[str] = "DUENO"
+    apply_late_fee: bool = False
+    late_fee_mode: Optional[str] = None
+    late_fee_daily_rate: Optional[float] = Field(None, ge=0)
+    late_fee_amount: Optional[float] = Field(None, ge=0)
 
 
 @router.post("/{period_id}/pay")

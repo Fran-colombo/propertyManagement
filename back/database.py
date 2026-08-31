@@ -55,6 +55,7 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_columns()
+    _patch_period_due_dates()
 
 
 def _ensure_sqlite_columns():
@@ -85,6 +86,7 @@ def _ensure_sqlite_columns():
             "termination_note": "TEXT",
             "is_prorated": "BOOLEAN DEFAULT 0",
             "proration_note": "TEXT",
+            "late_fee_amount": "FLOAT DEFAULT 0",
         },
         "contract_terminations": {
             "waive_remaining_rent": "BOOLEAN DEFAULT 0",
@@ -140,4 +142,44 @@ def _ensure_sqlite_columns():
                     """
                 )
             )
+
+
+def _patch_period_due_dates():
+    """Move due dates to the 10th of each month and refresh overdue status."""
+    from datetime import date, timedelta
+    from models.contract_period import ContractPeriod
+    from schemas.enums.enums import PaymentStatusEnum
+    from utils.proration import period_due_date
+
+    db = SessionLocal()
+    try:
+        today = date.today()
+        week = today + timedelta(days=7)
+        open_statuses = {
+            PaymentStatusEnum.PENDIENTE.value,
+            PaymentStatusEnum.POR_VENCER.value,
+            PaymentStatusEnum.VENCIDO.value,
+        }
+        for period in db.query(ContractPeriod).all():
+            if period.start_date and period.end_date:
+                period.due_date = period_due_date(period.start_date, period.end_date)
+            status = (
+                period.payment_status.value
+                if hasattr(period.payment_status, "value")
+                else period.payment_status
+            )
+            if status not in open_statuses or not period.due_date:
+                continue
+            if period.due_date < today:
+                period.payment_status = PaymentStatusEnum.VENCIDO
+            elif period.due_date <= week:
+                period.payment_status = PaymentStatusEnum.POR_VENCER
+            else:
+                period.payment_status = PaymentStatusEnum.PENDIENTE
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"[db] due-date patch skipped: {e}", flush=True)
+    finally:
+        db.close()
 

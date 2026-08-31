@@ -2,13 +2,43 @@ import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert } from "react-bootstrap";
 import FeedbackModal from "./FeedbackModal";
 
+function parseISODate(value) {
+  if (!value) return null;
+  const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function round2(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function money(n) {
+  return Number(n || 0).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+const DEFAULT_DAILY_RATE = 2.5;
+
 export default function PayPeriodModal({ show, onHide, period, onPay }) {
-  const remaining = Math.max(
+  const dueDate = parseISODate(period?.due_date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysOverdue =
+    dueDate && dueDate < today
+      ? Math.round((today - dueDate) / 86400000)
+      : 0;
+  const existingFee = Number(period?.late_fee_amount || 0);
+  const remainingNow = Math.max(
     0,
     (period?.total_amount || 0) - (period?.amount_paid || 0)
   );
+  const unpaidPrincipal = Math.max(0, remainingNow - existingFee);
+
   const [paymentData, setPaymentData] = useState({
-    amount: remaining,
+    amount: remainingNow,
     method: "transferencia",
     reference: "",
     received_by: "INTERMEDIARIO",
@@ -19,10 +49,26 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
   const [overpayError, setOverpayError] = useState("");
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [chargeLateFee, setChargeLateFee] = useState(false);
+  const [feeMode, setFeeMode] = useState("daily");
+  const [dailyRate, setDailyRate] = useState(DEFAULT_DAILY_RATE);
+  const [customFee, setCustomFee] = useState("");
+
+  const dailyFee = round2(
+    unpaidPrincipal * (Number(dailyRate) || 0) / 100 * daysOverdue
+  );
+  const selectedFee = chargeLateFee
+    ? feeMode === "custom"
+      ? round2(Number(customFee) || 0)
+      : dailyFee
+    : existingFee;
+  const remainingAfterFee = chargeLateFee
+    ? round2(unpaidPrincipal + selectedFee)
+    : remainingNow;
 
   useEffect(() => {
     setPaymentData({
-      amount: Math.max(0, (period?.total_amount || 0) - (period?.amount_paid || 0)),
+      amount: remainingNow,
       method: "transferencia",
       reference: "",
       received_by: "INTERMEDIARIO",
@@ -33,9 +79,18 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     setOverpayError("");
     setFeedback(null);
     setSaving(false);
+    setChargeLateFee(false);
+    setFeeMode("daily");
+    setDailyRate(DEFAULT_DAILY_RATE);
+    setCustomFee("");
   }, [period, show]);
 
-  const extra = round2((paymentData.amount || 0) - remaining);
+  useEffect(() => {
+    if (!show) return;
+    setPaymentData((prev) => ({ ...prev, amount: remainingAfterFee }));
+  }, [show, chargeLateFee, feeMode, dailyRate, customFee, remainingAfterFee]);
+
+  const extra = round2((paymentData.amount || 0) - remainingAfterFee);
   const isOverpay = extra > 0.009;
 
   const submitPayment = async (payload) => {
@@ -60,13 +115,26 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     }
   };
 
+  const buildPayload = (base) => {
+    const payload = { ...base };
+    if (chargeLateFee && daysOverdue > 0) {
+      payload.apply_late_fee = true;
+      payload.late_fee_mode = feeMode;
+      payload.late_fee_daily_rate = Number(dailyRate) || DEFAULT_DAILY_RATE;
+      if (feeMode === "custom") {
+        payload.late_fee_amount = round2(Number(customFee) || 0);
+      }
+    }
+    return payload;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (isOverpay) {
       setOverpayOpen(true);
       return;
     }
-    submitPayment(paymentData);
+    submitPayment(buildPayload(paymentData));
   };
 
   const confirmOverpay = () => {
@@ -79,16 +147,21 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
       return;
     }
     setOverpayError("");
-    submitPayment({
-      ...paymentData,
-      overpay_reason: overpayReason,
-      overpay_note: overpayNote.trim() || undefined,
-    });
+    submitPayment(
+      buildPayload({
+        ...paymentData,
+        overpay_reason: overpayReason,
+        overpay_note: overpayNote.trim() || undefined,
+      })
+    );
     setOverpayOpen(false);
   };
 
   const periodRent = period?.period_rent ?? period?.indexed_amount;
   const fullRent = period?.indexed_amount;
+  const dueLabel = dueDate
+    ? dueDate.toLocaleDateString("es-AR")
+    : "—";
 
   return (
     <>
@@ -103,13 +176,86 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               <strong>Alquiler proporcional.</strong>{" "}
               {period.proration_note || "Este mes no se ocupa completo."}
               <div className="mt-2">
-                Alquiler mensual: ${Number(fullRent || 0).toLocaleString()}
+                Alquiler mensual: ${money(fullRent)}
                 <br />
-                Este período: ${Number(periodRent || 0).toLocaleString()}
+                Este período: ${money(periodRent)}
                 <br />
-                Total a pagar: ${Number(period?.total_amount || 0).toLocaleString()}
+                Total a pagar: ${money(period?.total_amount)}
               </div>
               Si pagás ese total, queda <strong>PAGADO</strong> (no es un pago parcial).
+            </Alert>
+          )}
+          <p className="small text-muted mb-3">
+            Vencimiento: <strong>{dueLabel}</strong>
+            {daysOverdue > 0 && (
+              <> · {daysOverdue} día{daysOverdue === 1 ? "" : "s"} de atraso</>
+            )}
+          </p>
+          {daysOverdue > 0 && (
+            <Alert variant="warning" className="small">
+              <Form.Check
+                type="checkbox"
+                id="charge-late-fee"
+                label="Cobrar recargo por atraso"
+                checked={chargeLateFee}
+                onChange={(e) => setChargeLateFee(e.target.checked)}
+              />
+              <Form.Text className="text-muted d-block mb-2">
+                Por defecto no se cobra. Si lo marcás, podés usar 2,5% por día o un monto fijo.
+              </Form.Text>
+              {chargeLateFee && (
+                <>
+                  <Form.Check
+                    type="radio"
+                    id="fee-daily"
+                    name="feeMode"
+                    className="mb-2"
+                    label={`2,5% por día (${daysOverdue} × ${String(dailyRate).replace(".", ",")} % × $${money(unpaidPrincipal)} = $${money(dailyFee)})`}
+                    checked={feeMode === "daily"}
+                    onChange={() => setFeeMode("daily")}
+                  />
+                  {feeMode === "daily" && (
+                    <Form.Group className="mb-2 ms-4">
+                      <Form.Label className="small mb-1">% por día</Form.Label>
+                      <Form.Control
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={dailyRate}
+                        onChange={(e) => setDailyRate(e.target.value)}
+                        style={{ maxWidth: 120 }}
+                      />
+                    </Form.Group>
+                  )}
+                  <Form.Check
+                    type="radio"
+                    id="fee-custom"
+                    name="feeMode"
+                    className="mb-2"
+                    label="Otro monto (lo estipulo yo)"
+                    checked={feeMode === "custom"}
+                    onChange={() => setFeeMode("custom")}
+                  />
+                  {feeMode === "custom" && (
+                    <Form.Group className="mb-2 ms-4">
+                      <Form.Label className="small mb-1">Recargo</Form.Label>
+                      <Form.Control
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={customFee}
+                        onChange={(e) => setCustomFee(e.target.value)}
+                        placeholder="Monto del recargo"
+                      />
+                    </Form.Group>
+                  )}
+                  <div>
+                    Recargo: <strong>${money(selectedFee)}</strong>
+                    {" · "}
+                    Total a cobrar: <strong>${money(remainingAfterFee)}</strong>
+                  </div>
+                </>
+              )}
             </Alert>
           )}
           <Form.Group className="mb-3">
@@ -126,7 +272,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               required
             />
             <Form.Text className="text-muted">
-              Saldo de este período: ${Number(remaining).toLocaleString()}
+              Saldo de este período: ${money(remainingAfterFee)}
             </Form.Text>
           </Form.Group>
           
@@ -194,11 +340,11 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
       </Modal.Header>
       <Modal.Body>
         <Alert variant="warning" className="small">
-          Saldo del período: ${Number(remaining).toLocaleString()}
+          Saldo del período: ${money(remainingAfterFee)}
           <br />
-          Monto cargado: ${Number(paymentData.amount || 0).toLocaleString()}
+          Monto cargado: ${money(paymentData.amount)}
           <br />
-          Excedente: <strong>${Number(extra).toLocaleString()}</strong>
+          Excedente: <strong>${money(extra)}</strong>
         </Alert>
         <p className="mb-2">¿Cuál es el motivo?</p>
         {overpayError && <Alert variant="danger" className="py-2">{overpayError}</Alert>}
@@ -255,8 +401,4 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     />
     </>
   );
-}
-
-function round2(value) {
-  return Math.round(Number(value || 0) * 100) / 100;
 }

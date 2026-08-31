@@ -66,7 +66,8 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
     (active.tgi ? Number(taxData.tgi) || 0 : 0) +
     (active.api ? Number(taxData.api) || 0 : 0) +
     (active.fire_insurance ? Number(taxData.fire_insurance) || 0 : 0);
-  const total = rent + taxSum;
+  const lateFee = Number(period?.late_fee_amount || 0);
+  const total = rent + taxSum + lateFee;
 
   return (
     <>
@@ -159,7 +160,8 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
           )}
           {(active.epe || active.tgi || active.api || active.fire_insurance) && (
             <Alert variant="secondary" className="mb-0 py-2">
-              Alquiler ${money(rent)} + servicios ${money(taxSum)} ={" "}
+              Alquiler ${money(rent)} + servicios ${money(taxSum)}
+              {lateFee > 0 ? ` + recargo $${money(lateFee)}` : ""} ={" "}
               <strong>total ${money(total)}</strong>
             </Alert>
           )}

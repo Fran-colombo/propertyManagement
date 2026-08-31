@@ -9,6 +9,13 @@ import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
 import { mediaUrl } from "../utils/mediaUrl";
 
+function parseISODate(value) {
+  if (!value) return null;
+  const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
@@ -200,9 +207,14 @@ const ContractsTable = () => {
         (taxes.tgi || 0) +
         (taxes.api || 0) +
         (taxes.fire_insurance || 0);
-      const dueDate = new Date(period.due_date);
+      const dueDate = parseISODate(period.due_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
       const isOverdue =
-        dueDate < new Date() && period.payment_status !== "PAGADO";
+        !!dueDate &&
+        dueDate < today &&
+        period.payment_status !== "PAGADO" &&
+        period.payment_status !== "CONTRATO_TERMINADO";
       const tenant = period.contract?.tenant;
       const propertyAddress =
         period.contract?.property?.direction ||
@@ -264,12 +276,22 @@ const ContractsTable = () => {
                       )}
                     </div>
                     <div className="small mb-2">
-                      <strong>Vencimiento:</strong> {dueDate.toLocaleDateString()}
+                      <strong>Vencimiento:</strong>{" "}
+                      {dueDate ? dueDate.toLocaleDateString("es-AR") : "—"}
+                      {isOverdue && period.days_overdue > 0 && (
+                        <span className="text-danger">
+                          {" "}
+                          ({period.days_overdue} día
+                          {period.days_overdue === 1 ? "" : "s"})
+                        </span>
+                      )}
                     </div>
                     <div className="small mb-3">
                       Total ${period.total_amount.toLocaleString()} · Pagado $
                       {period.amount_paid.toLocaleString()}
                       {totalTaxes > 0 && ` · Impuestos $${totalTaxes.toLocaleString()}`}
+                      {Number(period.late_fee_amount) > 0 &&
+                        ` · Recargo $${Number(period.late_fee_amount).toLocaleString()}`}
                       {(period.contract?.last_index_value ?? period.contract?.base_index_value) != null && (
                         <>
                           {" "}
@@ -341,7 +363,17 @@ const ContractsTable = () => {
                       </div>
                     )}
                   </td>
-                  <td>{dueDate.toLocaleDateString()}</td>
+                  <td>
+                    {dueDate ? dueDate.toLocaleDateString("es-AR") : "—"}
+                    {isOverdue && period.days_overdue > 0 && (
+                      <div>
+                        <small className="text-danger">
+                          {period.days_overdue} día
+                          {period.days_overdue === 1 ? "" : "s"} de atraso
+                        </small>
+                      </div>
+                    )}
+                  </td>
                   <td>${period.base_rent.toLocaleString()}</td>
                   <td>
                     ${period.indexed_amount.toLocaleString()}
@@ -363,7 +395,17 @@ const ContractsTable = () => {
                       : "—"}
                   </td>
                   <td>${totalTaxes.toLocaleString()}</td>
-                  <td>${period.total_amount.toLocaleString()}</td>
+                  <td>
+                    ${period.total_amount.toLocaleString()}
+                    {Number(period.late_fee_amount) > 0 && (
+                      <div>
+                        <small className="text-muted">
+                          Incluye recargo $
+                          {Number(period.late_fee_amount).toLocaleString()}
+                        </small>
+                      </div>
+                    )}
+                  </td>
                   <td>${period.amount_paid.toLocaleString()}</td>
                   <td>
                     <span

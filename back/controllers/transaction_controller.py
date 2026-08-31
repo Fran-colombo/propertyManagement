@@ -16,6 +16,14 @@ from schemas.transactionDTO import (
     PaginatedTransactionHistoryResponse,
 )
 from utils.contract_display import contract_location_label, contract_owner
+from utils.proration import (
+    DEFAULT_LATE_FEE_DAILY_PERCENT,
+    days_overdue,
+    late_fee_from_daily_rate,
+    period_rent,
+    period_tax_total,
+    period_total,
+)
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -34,6 +42,33 @@ def _payment_status(amount_paid: float, total_amount: float) -> str:
 
 def _period_label(period: ContractPeriod) -> str:
     return f"{period.start_date.strftime('%d/%m/%Y')} - {period.end_date.strftime('%d/%m/%Y')}"
+
+
+def _apply_late_fee_if_requested(period: ContractPeriod, payment: PaymentData) -> Optional[float]:
+    if not payment.apply_late_fee:
+        return None
+    days = days_overdue(period.due_date)
+    if days <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El período no está vencido; no corresponde recargo.",
+        )
+    principal = period_rent(period) + period_tax_total(period)
+    unpaid_principal = max(0.0, principal - (period.amount_paid or 0))
+    mode = (payment.late_fee_mode or "daily").strip().lower()
+    if mode == "custom":
+        fee = round(float(payment.late_fee_amount or 0), 2)
+    else:
+        rate = (
+            payment.late_fee_daily_rate
+            if payment.late_fee_daily_rate is not None
+            else DEFAULT_LATE_FEE_DAILY_PERCENT
+        )
+        fee = late_fee_from_daily_rate(unpaid_principal, days, rate)
+    period.late_fee_amount = fee
+    rent_base = period.indexed_amount if period.indexed_amount is not None else period.base_rent
+    period.total_amount = period_total(period, rent_base)
+    return fee
 
 
 def _join_notes(*parts: Optional[str]) -> Optional[str]:
@@ -145,11 +180,17 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
     if _status_value(period.payment_status) == PaymentStatusEnum.PAGADO.value:
         raise HTTPException(status_code=400, detail="Este período ya está pagado")
 
+    fee = _apply_late_fee_if_requested(period, payment)
     remaining = max(0.0, (period.total_amount or 0) - (period.amount_paid or 0))
     extra = round(payment.amount - remaining, 2)
     reason = (payment.overpay_reason or "").strip().lower() or None
     extra_note = (payment.overpay_note or "").strip()
     reference = payment.reference
+    if fee:
+        reference = _join_notes(
+            reference,
+            f"Recargo por atraso ${fee:,.2f} ({days_overdue(period.due_date)} día(s)).",
+        )
 
     receiver = payment.received_by
 

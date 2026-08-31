@@ -35,6 +35,7 @@ class ContractPeriod(Base):
     termination_note = Column(String, nullable=True)
     is_prorated = Column(Boolean, default=False)
     proration_note = Column(String, nullable=True)
+    late_fee_amount = Column(Float, default=0.0)
 
     transactions = relationship("Transaction", back_populates="period", cascade="all, delete-orphan")
     contract = relationship("RentalContract", back_populates="periods")

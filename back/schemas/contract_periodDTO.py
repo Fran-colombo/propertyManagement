@@ -1,7 +1,7 @@
 from datetime import date
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
-from utils.proration import period_rent
+from utils.proration import period_rent, days_overdue
 from utils.contract_display import contract_location_label
 
 class TenantResponse(BaseModel):
@@ -71,6 +71,8 @@ class ContractPeriodResponse(BaseModel):
     is_prorated: bool = False
     proration_note: Optional[str] = None
     period_rent: Optional[float] = None
+    late_fee_amount: Optional[float] = 0
+    days_overdue: Optional[int] = 0
 
     @classmethod
     def from_orm(cls, period):
@@ -142,6 +144,8 @@ class ContractPeriodResponse(BaseModel):
         period_dict['is_prorated'] = bool(getattr(period, 'is_prorated', False))
         period_dict['proration_note'] = getattr(period, 'proration_note', None)
         period_dict['period_rent'] = period_rent(period)
+        period_dict['late_fee_amount'] = getattr(period, 'late_fee_amount', 0) or 0
+        period_dict['days_overdue'] = days_overdue(getattr(period, 'due_date', None))
         status = getattr(period, 'payment_status', None)
         period_dict['payment_status'] = status.value if hasattr(status, 'value') else status
         period_dict.pop('_sa_instance_state', None)

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert, Spinner } from "react-bootstrap";
 import { getContract, updateContract, uploadContractDocument } from "../api/contract";
+import { getAllAgencies } from "../api/real_agency";
 import { mediaUrl } from "../utils/mediaUrl";
 import FeedbackModal from "./FeedbackModal";
 
 const emptyForm = {
+  real_agency_id: "",
   pays_epe: false,
   pays_tgi: false,
   pays_api: false,
@@ -46,6 +48,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [feedback, setFeedback] = useState(null);
+  const [agencies, setAgencies] = useState([]);
 
   useEffect(() => {
     if (!show || !contractId) return;
@@ -55,9 +58,11 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
     setForm(emptyForm);
     setFeedback(null);
     setLoading(true);
-    getContract(contractId)
-      .then((data) => {
+    Promise.all([getContract(contractId), getAllAgencies()])
+      .then(([data, agencyList]) => {
+        setAgencies(agencyList || []);
         setForm({
+          real_agency_id: data.real_agency_id ?? "",
           pays_epe: !!data.pays_epe,
           pays_tgi: !!data.pays_tgi,
           pays_api: !!data.pays_api,
@@ -94,6 +99,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
     setError("");
     try {
       await updateContract(contractId, {
+        real_agency_id: form.real_agency_id === "" ? null : Number(form.real_agency_id),
         pays_epe: form.pays_epe,
         pays_tgi: form.pays_tgi,
         pays_api: form.pays_api,
@@ -115,7 +121,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         variant: "success",
         title: "Contrato actualizado",
         message:
-          "Los servicios y montos se guardaron. Se actualizó el total de los meses que todavía no están pagados. Los meses ya cobrados no se tocan.",
+          "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.",
       });
     } catch (err) {
       setFeedback({
@@ -156,6 +162,24 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           ) : (
             <>
               {error && <Alert variant="danger">{error}</Alert>}
+              <Form.Group className="mb-3">
+                <Form.Label>Agencia inmobiliaria</Form.Label>
+                <Form.Select
+                  name="real_agency_id"
+                  value={form.real_agency_id ?? ""}
+                  onChange={handleChange}
+                >
+                  <option value="">Sin inmobiliaria</option>
+                  {agencies.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </Form.Select>
+                <Form.Text className="text-muted">
+                  Si lo cargaste sin agencia, podés asignarla ahora. También se puede sacar.
+                </Form.Text>
+              </Form.Group>
               <p className="text-muted small">
                 Activá EPE, TGI, API o el seguro e indicá el monto mensual.
                 Ese valor se suma al alquiler (alquiler + servicios = total) en

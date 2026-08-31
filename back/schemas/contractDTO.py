@@ -34,6 +34,7 @@ class CreateContractDTO(BaseModel):
     mark_past_as_paid: bool = False
 
 class UpdateContractDTO(BaseModel):
+    real_agency_id: Optional[int] = None
     fire_insurance: Optional[bool] = None
     pays_api: Optional[bool] = None
     pays_tgi: Optional[bool] = None

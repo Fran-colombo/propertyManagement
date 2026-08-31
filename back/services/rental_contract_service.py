@@ -8,10 +8,10 @@ from models.contract_history import ContractHistory
 from schemas.contract_periodDTO import ContractPeriodResponse
 from models.contract import RentalContract
 from models.contract_period import ContractPeriod
-from models.property import Garage, Property
+from models.property import Garage, Property, RealAgency
 from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
 from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum, IndexTypeEnum
-from utils.proration import is_partial_month, period_total, proration_note, prorate
+from utils.proration import is_partial_month, period_total, proration_note, prorate, period_due_date
 from services.ipc_service import (
     get_ipc_for_date,
     get_ipc_series,
@@ -256,7 +256,7 @@ class RentalContractService:
                 contract_id=contract.id,
                 start_date=current_start,
                 end_date=current_end,
-                due_date=current_end,
+                due_date=period_due_date(current_start, current_end),
                 base_rent=full_rent,
                 indexed_amount=full_rent,
                 total_amount=period_amount,
@@ -624,6 +624,19 @@ class RentalContractService:
     def update_contract(self, contract_id: int, data: UpdateContractDTO) -> ContractResponse:
         contract = self.get_contract(contract_id)
         payload = data.dict(exclude_unset=True)
+        if "real_agency_id" in payload:
+            agency_id = payload["real_agency_id"]
+            if agency_id:
+                agency = (
+                    self.db.query(RealAgency)
+                    .filter(RealAgency.id == agency_id)
+                    .first()
+                )
+                if not agency:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Agencia inmobiliaria no encontrada",
+                    )
         for field, value in payload.items():
             setattr(contract, field, value)
         self.db.flush()
