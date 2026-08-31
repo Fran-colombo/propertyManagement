@@ -7,7 +7,6 @@ import CreateContractModal from "../components/CreateContractModal";
 import UpdateIndexModal from "../components/UpdateIndexModal";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
-import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
 
 const MONTH_NAMES = [
@@ -34,7 +33,6 @@ const ContractsTable = () => {
   const [filterYear, setFilterYear] = useState(today.getFullYear());
   const [filterMonth, setFilterMonth] = useState(today.getMonth() + 1);
   const [showAllPending, setShowAllPending] = useState(false);
-  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     loadPeriods();
@@ -72,45 +70,13 @@ const ContractsTable = () => {
   };
 
   const handlePayment = async (periodId, paymentData) => {
-    try {
-      await registerPayment(periodId, paymentData);
-      loadPeriods();
-      setShowPayModal(false);
-      setFeedback({
-        variant: "success",
-        title: "Pago registrado",
-        message: "El pago se registró correctamente.",
-      });
-    } catch (err) {
-      console.error("Payment error:", err);
-      setShowPayModal(false);
-      setFeedback({
-        variant: "danger",
-        title: "Error",
-        message: err.message || "Error al registrar el pago.",
-      });
-    }
+    await registerPayment(periodId, paymentData);
+    loadPeriods();
   };
 
   const handleTaxUpdate = async (periodId, taxData) => {
-    try {
-      await updateTaxes(periodId, taxData);
-      loadPeriods();
-      setShowTaxesModal(false);
-      setFeedback({
-        variant: "success",
-        title: "Impuestos actualizados",
-        message: "Los impuestos se guardaron correctamente.",
-      });
-    } catch (err) {
-      console.error("Tax update error:", err);
-      setShowTaxesModal(false);
-      setFeedback({
-        variant: "danger",
-        title: "Error",
-        message: err.message || "Error al actualizar los impuestos.",
-      });
-    }
+    await updateTaxes(periodId, taxData);
+    loadPeriods();
   };
 
   const getFilteredPeriods = () => {
@@ -583,13 +549,6 @@ const ContractsTable = () => {
         }}
         contractId={contractToEdit?.id}
         onSaved={loadPeriods}
-      />
-      <FeedbackModal
-        show={!!feedback}
-        variant={feedback?.variant}
-        title={feedback?.title}
-        message={feedback?.message}
-        onClose={() => setFeedback(null)}
       />
     </div>
   );

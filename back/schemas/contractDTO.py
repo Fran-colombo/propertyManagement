@@ -19,13 +19,17 @@ class CreateContractDTO(BaseModel):
     index_type: Optional[IndexTypeEnum] = None
     frequency_adjustment: Optional[AdjustmentFrequencyEnum] = None
     base_index_value: Optional[float] = None
+    current_index_value: Optional[float] = None
     includes_garage: bool = False
     garage_id: Optional[int] = None
-    real_agency_id: Optional[int] = None
     fire_insurance: bool = False
     pays_api: bool = False
     pays_tgi: bool = False
     pays_epe: bool = False
+    epe_amount: Optional[float] = Field(None, ge=0)
+    tgi_amount: Optional[float] = Field(None, ge=0)
+    api_amount: Optional[float] = Field(None, ge=0)
+    fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
     mark_past_as_paid: bool = False
 
@@ -34,6 +38,10 @@ class UpdateContractDTO(BaseModel):
     pays_api: Optional[bool] = None
     pays_tgi: Optional[bool] = None
     pays_epe: Optional[bool] = None
+    epe_amount: Optional[float] = Field(None, ge=0)
+    tgi_amount: Optional[float] = Field(None, ge=0)
+    api_amount: Optional[float] = Field(None, ge=0)
+    fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
 
 
@@ -58,6 +66,10 @@ class ContractResponse(BaseModel):
     pays_api: bool
     pays_tgi: bool
     pays_epe: bool
+    epe_amount: Optional[float] = None
+    tgi_amount: Optional[float] = None
+    api_amount: Optional[float] = None
+    fire_insurance_amount: Optional[float] = None
     status: int
     notes: Optional[str] = None
     document_path: Optional[str] = None
@@ -86,6 +98,10 @@ class ContractResponse(BaseModel):
             "pays_api": db_contract.pays_api,
             "pays_tgi": db_contract.pays_tgi,
             "pays_epe": db_contract.pays_epe,
+            "epe_amount": getattr(db_contract, "epe_amount", None),
+            "tgi_amount": getattr(db_contract, "tgi_amount", None),
+            "api_amount": getattr(db_contract, "api_amount", None),
+            "fire_insurance_amount": getattr(db_contract, "fire_insurance_amount", None),
             "notes": db_contract.notes,
             "document_path": getattr(db_contract, "document_path", None),
             "active_taxes": {

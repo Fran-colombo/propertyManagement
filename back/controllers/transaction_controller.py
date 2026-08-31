@@ -9,7 +9,7 @@ from database import get_db
 from models.contract_period import ContractPeriod
 from models.transactions import Transaction
 from schemas.enums.enums import PaymentStatusEnum
-from services.transaction_service import TransactionService, normalize_currency
+from services.transaction_service import TransactionService, normalize_currency, normalize_received_by
 from schemas.transactionDTO import (
     TransactionHistoryResponse,
     TransactionResponseDTO,
@@ -47,6 +47,8 @@ def _add_ledger_entry(
     amount: float,
     method: str,
     notes: Optional[str],
+    received_by: Optional[str] = None,
+    remitted_to_owner: Optional[bool] = None,
 ) -> Transaction:
     remaining_before = (period.total_amount or 0) - (period.amount_paid or 0)
     transaction = Transaction(
@@ -65,6 +67,11 @@ def _add_ledger_entry(
     contract = period.contract
     owner = contract_owner(contract)
     tenant = contract.tenant if contract else None
+    receiver = normalize_received_by(received_by)
+    if remitted_to_owner is None:
+        remitted = receiver != "INTERMEDIARIO"
+    else:
+        remitted = bool(remitted_to_owner)
 
     db.add(
         TransactionHistory(
@@ -87,6 +94,9 @@ def _add_ledger_entry(
             period_amount_paid=min(new_paid, period.total_amount or 0),
             period_payment_status=new_status,
             currency=normalize_currency(getattr(contract, "currency", None) if contract else None),
+            received_by=receiver,
+            remitted_to_owner=1 if remitted else 0,
+            remitted_at=date.today() if remitted and receiver == "INTERMEDIARIO" else None,
         )
     )
 
@@ -122,6 +132,8 @@ def _next_open_period(db: Session, period: ContractPeriod) -> Optional[ContractP
 class CreditNoteData(BaseModel):
     amount: float = Field(gt=0)
     notes: str = Field(min_length=3)
+    received_by: Optional[str] = None
+    remitted_to_owner: Optional[bool] = None
 
 
 @router.post("/{period_id}/payments")
@@ -139,6 +151,8 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
     extra_note = (payment.overpay_note or "").strip()
     reference = payment.reference
 
+    receiver = payment.received_by
+
     if extra > 0.009 and reason not in ("adelanto", "otro"):
         raise HTTPException(
             status_code=400,
@@ -151,7 +165,9 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
         )
 
     if extra <= 0.009:
-        _add_ledger_entry(db, period, payment.amount, payment.method, reference)
+        _add_ledger_entry(
+            db, period, payment.amount, payment.method, reference, received_by=receiver
+        )
         db.commit()
         return {
             "message": "Pago registrado correctamente",
@@ -179,12 +195,16 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
             f"Pago del período. Incluye adelanto de ${extra:,.2f} al mes siguiente.",
         )
         if remaining > 0.009:
-            _add_ledger_entry(db, period, remaining, payment.method, current_note)
+            _add_ledger_entry(
+                db, period, remaining, payment.method, current_note, received_by=receiver
+            )
         advance_note = _join_notes(
             f"Adelanto. Sobra de la transferencia del período {_period_label(period)}.",
             reference,
         )
-        _add_ledger_entry(db, nxt, extra, payment.method, advance_note)
+        _add_ledger_entry(
+            db, nxt, extra, payment.method, advance_note, received_by=receiver
+        )
         db.commit()
         return {
             "message": "Pago y adelanto registrados correctamente",
@@ -197,7 +217,9 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
         reference,
         f"Pago de más (${extra:,.2f}): {extra_note}",
     )
-    _add_ledger_entry(db, period, payment.amount, payment.method, overpay_note)
+    _add_ledger_entry(
+        db, period, payment.amount, payment.method, overpay_note, received_by=receiver
+    )
     db.commit()
     return {
         "message": "Pago registrado correctamente",
@@ -217,12 +239,26 @@ def register_credit_note(period_id: int, data: CreditNoteData, db: Session = Dep
             detail="La nota de crédito no puede superar lo pagado en el período.",
         )
     note = _join_notes("Nota de crédito. Se cargó por error.", data.notes)
-    _add_ledger_entry(db, period, -abs(data.amount), "nota_credito", note)
+    _add_ledger_entry(
+        db,
+        period,
+        -abs(data.amount),
+        "nota_credito",
+        note,
+        received_by=data.received_by,
+        remitted_to_owner=data.remitted_to_owner,
+    )
     db.commit()
     return {
         "message": "Nota de crédito registrada",
         "remaining_amount": (period.total_amount or 0) - (period.amount_paid or 0),
     }
+
+
+@router.post("/history/{history_id}/remit", response_model=TransactionHistoryResponse)
+def remit_to_owner(history_id: int, db: Session = Depends(get_db)):
+    service = TransactionService(db)
+    return service.mark_remitted(history_id)
 
 
 @router.get("/", response_model=PaginatedTransactionHistoryResponse)
@@ -232,6 +268,9 @@ def get_transactions(
     q: Optional[str] = Query(None),
     month: Optional[str] = Query(None, description="YYYY-MM, vacío lista todas"),
     method: Optional[str] = Query(None),
+    remittance: Optional[str] = Query(
+        None, description="pending | remitted | owner"
+    ),
     db: Session = Depends(get_db),
 ):
     if month:
@@ -241,6 +280,11 @@ def get_transactions(
         month_num = int(parts[1])
         if month_num < 1 or month_num > 12:
             raise HTTPException(status_code=400, detail="Mes inválido")
+    if remittance and remittance not in ("pending", "remitted", "owner"):
+        raise HTTPException(
+            status_code=400,
+            detail="Rendición inválida. Usá pending, remitted u owner.",
+        )
     service = TransactionService(db)
     return service.get_paginated_history(
         page=page,
@@ -248,6 +292,7 @@ def get_transactions(
         q=q,
         month=month or None,
         method=method or None,
+        remittance=remittance or None,
     )
 
 

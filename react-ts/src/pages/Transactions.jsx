@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, Table, Badge, Form, InputGroup, Row, Col, Spinner, Alert, Button, Pagination } from "react-bootstrap";
 import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-bootstrap-icons";
-import { getAllTransactions, registerCreditNote } from "../api/transaction";
+import { getAllTransactions, registerCreditNote, remitToOwner } from "../api/transaction";
 import CreditNoteModal from "../components/CreditNoteModal";
 import FeedbackModal from "../components/FeedbackModal";
 
@@ -29,11 +29,24 @@ function formatMoney(amount, currency) {
   return `${prefix} ${n.toLocaleString("es-AR")}`;
 }
 
+function isIntermediary(transaction) {
+  return String(transaction?.received_by || "").toUpperCase() === "INTERMEDIARIO";
+}
+
+function isPendingRemit(transaction) {
+  return (
+    isIntermediary(transaction) &&
+    transaction?.remitted_to_owner === false &&
+    Number(transaction?.amount) > 0
+  );
+}
+
 const Transactions = () => {
   const [transactions, setTransactions] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
+  const [remittanceFilter, setRemittanceFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dateFilter, setDateFilter] = useState(currentMonthValue);
@@ -44,6 +57,8 @@ const Transactions = () => {
   const [pages, setPages] = useState(0);
   const [totalPesos, setTotalPesos] = useState(0);
   const [totalDolares, setTotalDolares] = useState(0);
+  const [pendingPesos, setPendingPesos] = useState(0);
+  const [pendingDolares, setPendingDolares] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -52,7 +67,7 @@ const Transactions = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, dateFilter, methodFilter]);
+  }, [debouncedSearch, dateFilter, methodFilter, remittanceFilter]);
 
   const loadTransactions = async () => {
     try {
@@ -64,12 +79,15 @@ const Transactions = () => {
         q: debouncedSearch || undefined,
         month: dateFilter || undefined,
         method: methodFilter || undefined,
+        remittance: remittanceFilter || undefined,
       });
       setTransactions(data?.items || []);
       setTotal(data?.total || 0);
       setPages(data?.pages || 0);
       setTotalPesos(data?.total_pesos || 0);
       setTotalDolares(data?.total_dolares || 0);
+      setPendingPesos(data?.pending_pesos || 0);
+      setPendingDolares(data?.pending_dolares || 0);
     } catch (err) {
       console.error("Error al cargar transacciones", err);
       setError(err.message || "No se pudieron cargar las transacciones");
@@ -78,6 +96,8 @@ const Transactions = () => {
       setPages(0);
       setTotalPesos(0);
       setTotalDolares(0);
+      setPendingPesos(0);
+      setPendingDolares(0);
     } finally {
       setLoading(false);
     }
@@ -85,7 +105,7 @@ const Transactions = () => {
 
   useEffect(() => {
     loadTransactions();
-  }, [page, debouncedSearch, dateFilter, methodFilter]);
+  }, [page, debouncedSearch, dateFilter, methodFilter, remittanceFilter]);
 
   const getPaymentMethodIcon = (method) => {
     switch (method?.toLowerCase()) {
@@ -160,6 +180,24 @@ const Transactions = () => {
     }
   };
 
+  const handleRemit = async (transaction) => {
+    try {
+      await remitToOwner(transaction.history_id);
+      await loadTransactions();
+      setFeedback({
+        variant: "success",
+        title: "Rendido al dueño",
+        message: "Marcaste que ya le pasaste esa plata al dueño.",
+      });
+    } catch (err) {
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "No se pudo marcar la rendición",
+      });
+    }
+  };
+
   const pageItems = [];
   const windowStart = Math.max(1, page - 2);
   const windowEnd = Math.min(pages, windowStart + 4);
@@ -188,13 +226,13 @@ const Transactions = () => {
       <Card className="mb-4">
         <Card.Body>
           <Row className="align-items-center">
-            <Col xs={12} md={3}>
+            <Col xs={12} md={2}>
               <div className="mb-3 mb-md-0">
                 <p className="text-muted mb-1">Total de Transacciones</p>
                 <h3 className="mb-0">{total}</h3>
               </div>
             </Col>
-            <Col xs={12} md={4}>
+            <Col xs={6} md={2}>
               <div className="mb-3 mb-md-0">
                 <p className="text-muted mb-1">Total pesos</p>
                 <h3 className={`mb-0 ${totalPesos < 0 ? "text-danger" : "text-success"}`}>
@@ -202,7 +240,7 @@ const Transactions = () => {
                 </h3>
               </div>
             </Col>
-            <Col xs={12} md={4}>
+            <Col xs={6} md={2}>
               <div className="mb-3 mb-md-0">
                 <p className="text-muted mb-1">Total dólares</p>
                 <h3 className={`mb-0 ${totalDolares < 0 ? "text-danger" : "text-success"}`}>
@@ -210,9 +248,20 @@ const Transactions = () => {
                 </h3>
               </div>
             </Col>
-            <Col md={1} className="d-none d-md-flex justify-content-end">
-              <div className="bg-primary bg-opacity-10 p-3 rounded">
-                <Cash size={24} className="text-primary" />
+            <Col xs={6} md={3}>
+              <div className="mb-3 mb-md-0">
+                <p className="text-muted mb-1">Por rendir al dueño (pesos)</p>
+                <h3 className={`mb-0 ${pendingPesos ? "text-warning" : "text-muted"}`}>
+                  {formatMoney(pendingPesos, "PESOS")}
+                </h3>
+              </div>
+            </Col>
+            <Col xs={6} md={3}>
+              <div className="mb-3 mb-md-0">
+                <p className="text-muted mb-1">Por rendir al dueño (dólares)</p>
+                <h3 className={`mb-0 ${pendingDolares ? "text-warning" : "text-muted"}`}>
+                  {formatMoney(pendingDolares, "DOLARES")}
+                </h3>
               </div>
             </Col>
           </Row>
@@ -270,7 +319,7 @@ const Transactions = () => {
                 </Button>
               )}
             </Col>
-            <Col xs={12} md={4}>
+            <Col xs={12} md={3}>
               <InputGroup>
                 <InputGroup.Text>
                   <Funnel />
@@ -286,6 +335,18 @@ const Transactions = () => {
                   <option value="nota_credito">Nota de crédito</option>
                 </Form.Select>
               </InputGroup>
+            </Col>
+            <Col xs={12} md={3}>
+              <Form.Select
+                value={remittanceFilter}
+                onChange={(e) => setRemittanceFilter(e.target.value)}
+                aria-label="Filtrar rendición"
+              >
+                <option value="">Toda la rendición</option>
+                <option value="pending">Por rendir al dueño</option>
+                <option value="remitted">Ya rendidas</option>
+                <option value="owner">Pagó directo al dueño</option>
+              </Form.Select>
             </Col>
           </Row>
         </Card.Body>
@@ -311,6 +372,7 @@ const Transactions = () => {
                     <th>Monto</th>
                     <th>Moneda</th>
                     <th>Método</th>
+                    <th>Cobró</th>
                     <th>Notas</th>
                     <th>Estado</th>
                     <th>Total del Período</th>
@@ -336,27 +398,52 @@ const Transactions = () => {
                           </Badge>
                         </td>
                         <td>{getPaymentMethodBadge(transaction.method)}</td>
+                        <td>
+                          {!isIntermediary(transaction) ? (
+                            <Badge bg="secondary">Dueño</Badge>
+                          ) : isPendingRemit(transaction) ? (
+                            <Badge bg="warning" text="dark">Por rendir</Badge>
+                          ) : (
+                            <Badge bg="success">
+                              Rendido
+                              {transaction.remitted_at
+                                ? ` ${new Date(transaction.remitted_at).toLocaleDateString("es-AR")}`
+                                : ""}
+                            </Badge>
+                          )}
+                        </td>
                         <td>{renderNotes(transaction.notes, transaction.method)}</td>
                         <td>{getStatusBadge(transaction.period?.payment_status)}</td>
                         <td>{formatMoney(transaction.period?.total_amount, currency)}</td>
                         <td>{formatMoney(transaction.period?.amount_paid, currency)}</td>
                         <td>
-                          {transaction.amount > 0 && transaction.period?.id && (
-                            <Button
-                              variant="outline-danger"
-                              size="sm"
-                              onClick={() => setCreditTx(transaction)}
-                            >
-                              Nota de crédito
-                            </Button>
-                          )}
+                          <div className="d-flex flex-column gap-1">
+                            {isPendingRemit(transaction) && transaction.history_id && (
+                              <Button
+                                variant="outline-success"
+                                size="sm"
+                                onClick={() => handleRemit(transaction)}
+                              >
+                                Ya se lo pasé al dueño
+                              </Button>
+                            )}
+                            {transaction.amount > 0 && transaction.period?.id && (
+                              <Button
+                                variant="outline-danger"
+                                size="sm"
+                                onClick={() => setCreditTx(transaction)}
+                              >
+                                Nota de crédito
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                   {!transactions.length && (
                     <tr>
-                      <td colSpan={12} className="text-center text-muted py-4">
+                      <td colSpan={13} className="text-center text-muted py-4">
                         No hay transacciones para este filtro.
                       </td>
                     </tr>

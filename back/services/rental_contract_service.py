@@ -12,7 +12,13 @@ from models.property import Garage, Property
 from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
 from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum, IndexTypeEnum
 from utils.proration import is_partial_month, period_total, proration_note, prorate
-from services.ipc_service import get_ipc_for_date, variation_percent, IpcServiceError
+from services.ipc_service import (
+    get_ipc_for_date,
+    get_ipc_series,
+    ipc_on_or_before,
+    variation_percent,
+    IpcServiceError,
+)
 
 
 class RentalContractService:
@@ -65,6 +71,7 @@ class RentalContractService:
         try:
             contract_dict = contract_data.dict(exclude_unset=True)
             contract_dict.pop("mark_past_as_paid", None)
+            current_index_value = contract_dict.pop("current_index_value", None)
             garage = self._handle_garage_assignment(contract_dict)
 
             property_obj = self.db.query(Property).filter_by(id=contract_dict["property_id"]).first()
@@ -88,6 +95,8 @@ class RentalContractService:
             self.db.flush()
 
             self._generate_contract_periods(contract)
+            self._catch_up_ipc_adjustments(contract, current_index_value=current_index_value)
+            self._apply_service_amounts(contract)
             if getattr(contract_data, "mark_past_as_paid", False):
                 self._mark_past_periods_paid(contract)
 
@@ -143,6 +152,10 @@ class RentalContractService:
                 pays_api=contract_data.pays_api,
                 pays_tgi=contract_data.pays_tgi,
                 pays_epe=contract_data.pays_epe,
+                epe_amount=contract_data.epe_amount,
+                tgi_amount=contract_data.tgi_amount,
+                api_amount=contract_data.api_amount,
+                fire_insurance_amount=contract_data.fire_insurance_amount,
                 notes=contract_data.notes,
                 status=1,
             )
@@ -150,6 +163,11 @@ class RentalContractService:
             self.db.add(contract)
             self.db.flush()
             self._generate_contract_periods(contract)
+            self._catch_up_ipc_adjustments(
+                contract,
+                current_index_value=contract_data.current_index_value,
+            )
+            self._apply_service_amounts(contract)
             if getattr(contract_data, "mark_past_as_paid", False):
                 self._mark_past_periods_paid(contract)
             self.db.refresh(contract)
@@ -255,7 +273,160 @@ class RentalContractService:
         self.db.commit()
         return periods
 
-    def _mark_past_periods_paid(self, contract: RentalContract):
+    def _apply_service_amounts(
+        self, contract: RentalContract, *, unpaid_only: bool = False
+    ) -> None:
+        """Copy contract service amounts onto periods and rebuild total = rent + services."""
+        periods = (
+            self.db.query(ContractPeriod)
+            .filter(ContractPeriod.contract_id == contract.id)
+            .all()
+        )
+        for period in periods:
+            if unpaid_only and period.payment_status == PaymentStatusEnum.PAGADO:
+                continue
+            period.epe_amount = (contract.epe_amount or 0) if contract.pays_epe else 0
+            period.tgi_amount = (contract.tgi_amount or 0) if contract.pays_tgi else 0
+            period.api_amount = (contract.api_amount or 0) if contract.pays_api else 0
+            period.fire_proof_amount = (
+                (contract.fire_insurance_amount or 0) if contract.fire_insurance else 0
+            )
+            rent_base = (
+                period.indexed_amount
+                if period.indexed_amount is not None
+                else period.base_rent
+            )
+            period.total_amount = period_total(period, rent_base)
+        self.db.commit()
+
+    def _catch_up_ipc_adjustments(
+        self,
+        contract: RentalContract,
+        current_index_value: Optional[float] = None,
+    ) -> None:
+        """Bring a late-loaded contract's rent up to date.
+
+        If the user typed IPC actual, apply the two-point formula
+        alquiler = base * (ipc_actual / ipc_base) from the first checkpoint onward.
+        Otherwise replay official IPC at each past checkpoint.
+        """
+        if contract.currency == CurrencyEnum.DOLARES:
+            return
+        index_val = getattr(contract.index_type, "value", contract.index_type) if contract.index_type else None
+        if index_val != IndexTypeEnum.IPC.value:
+            return
+        if not contract.frequency_adjustment:
+            return
+        base_index = contract.base_index_value or contract.last_index_value
+        if not base_index:
+            return
+
+        today = date.today()
+        if contract.start_date >= today:
+            return
+
+        periods = sorted(
+            self.db.query(ContractPeriod)
+            .filter(ContractPeriod.contract_id == contract.id)
+            .all(),
+            key=lambda p: p.start_date,
+        )
+        checkpoints = [
+            p
+            for p in periods
+            if p.start_date <= today
+            and self._should_apply_index(
+                p.start_date, contract.start_date, contract.frequency_adjustment
+            )
+        ]
+        if not checkpoints:
+            return
+
+        if current_index_value:
+            self._apply_two_point_ipc(
+                contract,
+                periods,
+                checkpoints,
+                float(current_index_value),
+                float(base_index),
+            )
+            return
+
+        try:
+            series = get_ipc_series(contract.start_date, today)
+        except IpcServiceError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "No se pudo obtener el IPC histórico para actualizar el alquiler. "
+                    f"{e}"
+                ),
+            ) from e
+
+        last_index = float(base_index)
+        current_rent = float(contract.base_rent or 0)
+
+        for checkpoint in checkpoints:
+            ipc_row = ipc_on_or_before(series, checkpoint.start_date)
+            if not ipc_row:
+                continue
+            new_index = float(ipc_row["value"])
+            if new_index <= 0 or last_index <= 0:
+                continue
+            if abs(new_index - last_index) < 0.0001:
+                continue
+            try:
+                percent = variation_percent(new_index, last_index)
+            except ValueError:
+                continue
+            current_rent = round(current_rent * (1 + percent / 100), 2)
+            for period in periods:
+                if period.start_date < checkpoint.start_date:
+                    continue
+                period.indexed_amount = current_rent
+                period.total_amount = period_total(period, current_rent)
+                if period.start_date == checkpoint.start_date:
+                    period.applied_index_value = percent
+                    period.index_type = contract.index_type
+            last_index = new_index
+
+        contract.last_index_value = last_index
+        self.db.commit()
+
+    def _apply_two_point_ipc(
+        self,
+        contract: RentalContract,
+        periods: List[ContractPeriod],
+        checkpoints: List[ContractPeriod],
+        current_index: float,
+        base_index: float,
+    ) -> None:
+        """alquiler_hoy = base_rent * (ipc_actual / ipc_base)."""
+        if current_index <= 0 or base_index <= 0:
+            return
+        if abs(current_index - base_index) < 0.0001:
+            contract.last_index_value = current_index
+            self.db.commit()
+            return
+        try:
+            percent = variation_percent(current_index, base_index)
+        except ValueError:
+            return
+        new_rent = round(float(contract.base_rent or 0) * (1 + percent / 100), 2)
+        first = checkpoints[0]
+        last_cp = checkpoints[-1]
+        for period in periods:
+            if period.start_date < first.start_date:
+                continue
+            period.indexed_amount = new_rent
+            period.total_amount = period_total(period, new_rent)
+            if period.start_date == last_cp.start_date:
+                period.applied_index_value = percent
+                period.index_type = contract.index_type
+        contract.last_index_value = current_index
+        self.db.commit()
+
+    def _mark_past_periods_paid(self, contract: RentalContract) -> None:
         """Mark periods that already ended before today as paid (full amount)."""
         today = date.today()
         periods = (
@@ -455,7 +626,8 @@ class RentalContractService:
         payload = data.dict(exclude_unset=True)
         for field, value in payload.items():
             setattr(contract, field, value)
-        self.db.commit()
+        self.db.flush()
+        self._apply_service_amounts(contract, unpaid_only=True)
         self.db.refresh(contract)
         return ContractResponse.from_orm(contract)
 

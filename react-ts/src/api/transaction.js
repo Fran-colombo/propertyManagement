@@ -14,6 +14,7 @@ export async function getAllTransactions({
   q,
   month,
   method,
+  remittance,
 } = {}) {
   const params = new URLSearchParams();
   params.set("page", String(page));
@@ -21,6 +22,7 @@ export async function getAllTransactions({
   if (q) params.set("q", q);
   if (month) params.set("month", month);
   if (method) params.set("method", method);
+  if (remittance) params.set("remittance", remittance);
   return await apiFetch(`/transactions/?${params.toString()}`);
 }
 
@@ -33,5 +35,12 @@ export async function registerCreditNote(periodId, data) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+export async function remitToOwner(historyId) {
+  return await apiFetch(`/transactions/history/${historyId}/remit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
   });
 }

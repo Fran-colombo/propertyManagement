@@ -313,5 +313,7 @@ def _mark_past_periods_paid(db: Session, today: date) -> None:
                     if contract and getattr(contract.currency, "value", None)
                     else (str(contract.currency) if contract and contract.currency else "PESOS")
                 ),
+                received_by="DUENO",
+                remitted_to_owner=1,
             )
         )

@@ -26,4 +26,7 @@ class TransactionHistory(Base):
     
     period_amount_paid = Column(Float)  
     period_payment_status = Column(String)
-    currency = Column(String, default="PESOS")  
+    currency = Column(String, default="PESOS")
+    received_by = Column(String, default="DUENO")
+    remitted_to_owner = Column(Integer, default=1)
+    remitted_at = Column(Date, nullable=True)  

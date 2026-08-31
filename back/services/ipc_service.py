@@ -6,6 +6,7 @@ from typing import Any, Dict
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+import calendar
 import json
 
 # IPC-GBA Nivel General, base Dic-2016=100
@@ -91,6 +92,35 @@ def get_ipc_for_date(target: date) -> Dict[str, Any]:
     if data:
         return _row_to_result(data[-1])
     return get_latest_ipc()
+
+
+def get_ipc_series(start: date, end: date) -> list:
+    """Official IPC rows from start month through end month (inclusive)."""
+    month_start = date(start.year, start.month, 1)
+    last_day = calendar.monthrange(end.year, end.month)[1]
+    month_end = date(end.year, end.month, last_day)
+    data = _fetch_series(
+        start_date=month_start.isoformat(),
+        end_date=month_end.isoformat(),
+    )
+    return [_row_to_result(row) for row in data]
+
+
+def ipc_on_or_before(series: list, target: date) -> Dict[str, Any] | None:
+    """Latest IPC row whose period is on or before the month of `target`."""
+    cutoff = date(target.year, target.month, 1)
+    best = None
+    best_period = None
+    for row in series or []:
+        raw = str(row.get("period") or "")
+        try:
+            period = date.fromisoformat(raw[:10]).replace(day=1)
+        except ValueError:
+            continue
+        if period <= cutoff and (best_period is None or period > best_period):
+            best = row
+            best_period = period
+    return best
 
 
 def variation_percent(new_value: float, reference_value: float) -> float:

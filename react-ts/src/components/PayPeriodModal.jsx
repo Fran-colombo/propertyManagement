@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert } from "react-bootstrap";
+import FeedbackModal from "./FeedbackModal";
 
 export default function PayPeriodModal({ show, onHide, period, onPay }) {
   const remaining = Math.max(
@@ -10,29 +11,53 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     amount: remaining,
     method: "transferencia",
     reference: "",
+    received_by: "INTERMEDIARIO",
   });
   const [overpayOpen, setOverpayOpen] = useState(false);
   const [overpayReason, setOverpayReason] = useState("");
   const [overpayNote, setOverpayNote] = useState("");
   const [overpayError, setOverpayError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     setPaymentData({
       amount: Math.max(0, (period?.total_amount || 0) - (period?.amount_paid || 0)),
       method: "transferencia",
       reference: "",
+      received_by: "INTERMEDIARIO",
     });
     setOverpayOpen(false);
     setOverpayReason("");
     setOverpayNote("");
     setOverpayError("");
+    setFeedback(null);
+    setSaving(false);
   }, [period, show]);
 
   const extra = round2((paymentData.amount || 0) - remaining);
   const isOverpay = extra > 0.009;
 
-  const submitPayment = (payload) => {
-    onPay(period.id, payload);
+  const submitPayment = async (payload) => {
+    setSaving(true);
+    try {
+      await onPay(period.id, payload);
+      setOverpayOpen(false);
+      setFeedback({
+        variant: "success",
+        title: "Pago registrado",
+        message: "El pago se registró correctamente.",
+      });
+    } catch (err) {
+      setOverpayOpen(false);
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "Error al registrar el pago.",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -67,7 +92,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
 
   return (
     <>
-    <Modal show={show && !overpayOpen} onHide={onHide}>
+    <Modal show={show && !overpayOpen && !feedback} onHide={onHide}>
       <Modal.Header closeButton>
         <Modal.Title>Registrar Pago</Modal.Title>
       </Modal.Header>
@@ -120,6 +145,24 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               <option value="cheque">Cheque</option>
             </Form.Select>
           </Form.Group>
+
+          <Form.Group className="mb-3">
+            <Form.Label>¿Quién cobró?</Form.Label>
+            <Form.Select
+              value={paymentData.received_by}
+              onChange={(e) => setPaymentData({
+                ...paymentData,
+                received_by: e.target.value
+              })}
+              required
+            >
+              <option value="INTERMEDIARIO">Yo / intermediario (después se lo paso al dueño)</option>
+              <option value="DUENO">El dueño (le pagaron directo)</option>
+            </Form.Select>
+            <Form.Text className="text-muted">
+              El método es cómo pagó el inquilino. Esto es quién tiene la plata.
+            </Form.Text>
+          </Form.Group>
           
           <Form.Group className="mb-3">
             <Form.Label>Nota / referencia</Form.Label>
@@ -135,11 +178,11 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={onHide}>
+          <Button variant="secondary" onClick={onHide} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit">
-            Registrar Pago
+          <Button variant="primary" type="submit" disabled={saving}>
+            {saving ? "Guardando..." : "Registrar Pago"}
           </Button>
         </Modal.Footer>
       </Form>
@@ -189,14 +232,27 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="outline-secondary" onClick={() => setOverpayOpen(false)}>
+        <Button variant="outline-secondary" onClick={() => setOverpayOpen(false)} disabled={saving}>
           Cancelar
         </Button>
-        <Button variant="primary" onClick={confirmOverpay}>
-          Confirmar
+        <Button variant="primary" onClick={confirmOverpay} disabled={saving}>
+          {saving ? "Guardando..." : "Confirmar"}
         </Button>
       </Modal.Footer>
     </Modal>
+    <FeedbackModal
+      show={!!feedback}
+      variant={feedback?.variant}
+      title={feedback?.title}
+      message={feedback?.message}
+      onClose={() => {
+        const variant = feedback?.variant;
+        setFeedback(null);
+        if (variant !== "danger") {
+          onHide();
+        }
+      }}
+    />
     </>
   );
 }

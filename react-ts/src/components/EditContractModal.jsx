@@ -9,9 +9,34 @@ const emptyForm = {
   pays_tgi: false,
   pays_api: false,
   fire_insurance: false,
+  epe_amount: "",
+  tgi_amount: "",
+  api_amount: "",
+  fire_insurance_amount: "",
   notes: "",
   document_path: null,
 };
+
+const SERVICE_ROWS = [
+  ["pays_epe", "Paga EPE", "epe_amount"],
+  ["pays_tgi", "Paga TGI", "tgi_amount"],
+  ["pays_api", "Paga API", "api_amount"],
+  ["fire_insurance", "Seguro contra incendio", "fire_insurance_amount"],
+];
+
+function optionalAmount(enabled, value) {
+  if (!enabled) return null;
+  if (value === "" || value == null) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function money(n) {
+  return Number(n || 0).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 export default function EditContractModal({ show, onHide, contractId, onSaved }) {
   const [loading, setLoading] = useState(false);
@@ -37,6 +62,10 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           pays_tgi: !!data.pays_tgi,
           pays_api: !!data.pays_api,
           fire_insurance: !!data.fire_insurance,
+          epe_amount: data.epe_amount ?? "",
+          tgi_amount: data.tgi_amount ?? "",
+          api_amount: data.api_amount ?? "",
+          fire_insurance_amount: data.fire_insurance_amount ?? "",
           notes: data.notes || "",
           document_path: data.document_path || null,
         });
@@ -69,6 +98,13 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         pays_tgi: form.pays_tgi,
         pays_api: form.pays_api,
         fire_insurance: form.fire_insurance,
+        epe_amount: optionalAmount(form.pays_epe, form.epe_amount),
+        tgi_amount: optionalAmount(form.pays_tgi, form.tgi_amount),
+        api_amount: optionalAmount(form.pays_api, form.api_amount),
+        fire_insurance_amount: optionalAmount(
+          form.fire_insurance,
+          form.fire_insurance_amount
+        ),
         notes: form.notes,
       });
       if (file) {
@@ -78,7 +114,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
       setFeedback({
         variant: "success",
         title: "Contrato actualizado",
-        message: "Los cambios se guardaron correctamente.",
+        message:
+          "Los servicios y montos se guardaron. Se actualizó el total de los meses que todavía no están pagados. Los meses ya cobrados no se tocan.",
       });
     } catch (err) {
       setFeedback({
@@ -100,6 +137,11 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   };
 
   const documentHref = mediaUrl(form.document_path);
+  const servicesTotal =
+    (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
+    (form.pays_tgi ? Number(form.tgi_amount) || 0 : 0) +
+    (form.pays_api ? Number(form.api_amount) || 0 : 0) +
+    (form.fire_insurance ? Number(form.fire_insurance_amount) || 0 : 0);
 
   return (
     <>
@@ -115,37 +157,44 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
             <>
               {error && <Alert variant="danger">{error}</Alert>}
               <p className="text-muted small">
-                Si te olvidaste de marcar EPE, TGI u otros, podés activarlos acá. Después cargá el monto del mes en Impuestos.
+                Activá EPE, TGI, API o el seguro e indicá el monto mensual.
+                Ese valor se suma al alquiler (alquiler + servicios = total) en
+                los meses pendientes. Si un mes cambia, lo ajustás en Impuestos.
               </p>
-              <Form.Check
-                className="mb-2"
-                label="Paga EPE"
-                name="pays_epe"
-                checked={form.pays_epe}
-                onChange={handleChange}
-              />
-              <Form.Check
-                className="mb-2"
-                label="Paga TGI"
-                name="pays_tgi"
-                checked={form.pays_tgi}
-                onChange={handleChange}
-              />
-              <Form.Check
-                className="mb-2"
-                label="Paga API"
-                name="pays_api"
-                checked={form.pays_api}
-                onChange={handleChange}
-              />
-              <Form.Check
-                className="mb-3"
-                label="Seguro contra incendio"
-                name="fire_insurance"
-                checked={form.fire_insurance}
-                onChange={handleChange}
-              />
-              <Form.Group className="mb-3">
+              {SERVICE_ROWS.map(([checkName, label, amountName]) => (
+                <div
+                  key={checkName}
+                  className="d-flex flex-wrap align-items-center gap-2 mb-2"
+                >
+                  <Form.Check
+                    className="mb-0"
+                    label={label}
+                    name={checkName}
+                    checked={form[checkName]}
+                    onChange={handleChange}
+                  />
+                  {form[checkName] && (
+                    <Form.Control
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name={amountName}
+                      value={form[amountName]}
+                      onChange={handleChange}
+                      onWheel={(e) => e.target.blur()}
+                      placeholder="Monto mensual"
+                      style={{ maxWidth: 180 }}
+                    />
+                  )}
+                </div>
+              ))}
+              {servicesTotal > 0 && (
+                <Alert variant="secondary" className="py-2 small">
+                  Servicios: <strong>${money(servicesTotal)}</strong> (se suman
+                  al alquiler indexado de cada mes pendiente)
+                </Alert>
+              )}
+              <Form.Group className="mb-3 mt-3">
                 <Form.Label>Notas</Form.Label>
                 <Form.Control
                   as="textarea"
@@ -170,7 +219,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
                 />
                 <Form.Text className="text-muted">
-                  Si no lo adjuntaste al crear, podés cargarlo ahora. Solo se guarda el archivo: no cambia fechas, alquiler ni impuestos que ya estén cargados.
+                  Si no lo adjuntaste al crear, podés cargarlo ahora. Solo se guarda el archivo: no cambia fechas ni alquiler.
                 </Form.Text>
               </Form.Group>
             </>

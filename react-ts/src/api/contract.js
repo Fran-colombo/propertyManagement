@@ -82,21 +82,13 @@ export const cancelContractDetailed = async (contractId, data) => {
 
 /** @deprecated use cancelContractDetailed + CancelContractModal */
 export const cancelContract = async (contractId) => {
-  if (!window.confirm("¿Estás seguro que querés cancelar este contrato?")) return;
-  try {
-    await cancelContractDetailed(contractId, {
-      cancelled_by: "PROPIETARIO",
-      reason: "Cancelación rápida sin detalle",
-      effective_date: new Date().toISOString().slice(0, 10),
-      settlement_amount: 0,
-      settlement_direction: "SIN_MONTO",
-    });
-    alert("Contrato cancelado correctamente");
-    await getContracts();
-  } catch (err) {
-    console.error(err);
-    alert(err.message || "Error inesperado al cancelar contrato");
-  }
+  return cancelContractDetailed(contractId, {
+    cancelled_by: "PROPIETARIO",
+    reason: "Cancelación rápida sin detalle",
+    effective_date: new Date().toISOString().slice(0, 10),
+    settlement_amount: 0,
+    settlement_direction: "SIN_MONTO",
+  });
 };
 
 export const getContractHistory = async ({

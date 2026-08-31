@@ -21,6 +21,7 @@ class PaymentData(BaseModel):
     reference: Optional[str] = None
     overpay_reason: Optional[str] = None
     overpay_note: Optional[str] = None
+    received_by: Optional[str] = "DUENO"
 
 
 @router.post("/{period_id}/pay")

@@ -24,7 +24,12 @@ export default function CreditNoteModal({ show, onHide, transaction, onSave }) {
       setError("El monto no puede superar lo pagado en el período.");
       return;
     }
-    onSave(transaction.period.id, { amount, notes: notes.trim() });
+    onSave(transaction.period.id, {
+      amount,
+      notes: notes.trim(),
+      received_by: transaction.received_by,
+      remitted_to_owner: Boolean(transaction.remitted_to_owner),
+    });
   };
 
   return (

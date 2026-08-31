@@ -76,6 +76,10 @@ class TransactionResponseDTO(BaseModel):
 
 class TransactionHistoryResponse(TransactionResponseDTO):
     currency: str = "PESOS"
+    history_id: int = 0
+    received_by: str = "DUENO"
+    remitted_to_owner: bool = True
+    remitted_at: Optional[date] = None
 
     class Config:
         extra = "ignore"
@@ -88,4 +92,6 @@ class PaginatedTransactionHistoryResponse(BaseModel):
     page_size: int
     pages: int
     total_pesos: float
-    total_dolares: float  
+    total_dolares: float
+    pending_pesos: float = 0
+    pending_dolares: float = 0  

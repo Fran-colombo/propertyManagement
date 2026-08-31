@@ -76,6 +76,10 @@ def _ensure_sqlite_columns():
             "document_path": "TEXT",
             "base_index_value": "FLOAT",
             "last_index_value": "FLOAT",
+            "epe_amount": "FLOAT",
+            "tgi_amount": "FLOAT",
+            "api_amount": "FLOAT",
+            "fire_insurance_amount": "FLOAT",
         },
         "contract_periods": {
             "termination_note": "TEXT",
@@ -87,6 +91,9 @@ def _ensure_sqlite_columns():
         },
         "transaction_history": {
             "currency": "TEXT",
+            "received_by": "TEXT DEFAULT 'DUENO'",
+            "remitted_to_owner": "INTEGER DEFAULT 1",
+            "remitted_at": "DATE",
         },
     }
 
@@ -112,6 +119,24 @@ def _ensure_sqlite_columns():
                         WHERE contract_periods.id = transaction_history.period_id
                     ), 'PESOS')
                     WHERE currency IS NULL OR TRIM(currency) = ''
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE transaction_history
+                    SET received_by = 'DUENO'
+                    WHERE received_by IS NULL OR TRIM(received_by) = ''
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE transaction_history
+                    SET remitted_to_owner = 1
+                    WHERE remitted_to_owner IS NULL
                     """
                 )
             )

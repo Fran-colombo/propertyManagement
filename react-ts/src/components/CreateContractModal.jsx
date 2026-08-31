@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Button, Form, Spinner, Alert } from "react-bootstrap";
+import { Modal, Button, Form, Spinner, Alert, Row, Col } from "react-bootstrap";
 import { createContract, parseContractDocument, uploadContractDocument } from "../api/contract";
 import { getProperties } from "../api/property";
 import { getOwners, getTenants } from "../api/person";
@@ -20,6 +20,7 @@ const emptyForm = {
   index_type: "IPC",
   frequency_adjustment: "TRIMESTRAL",
   base_index_value: "",
+  current_index_value: "",
   mark_past_as_paid: false,
   includes_garage: false,
   garage_only: false,
@@ -27,8 +28,26 @@ const emptyForm = {
   pays_api: false,
   pays_tgi: false,
   pays_epe: false,
+  epe_amount: "",
+  tgi_amount: "",
+  api_amount: "",
+  fire_insurance_amount: "",
   notes: "",
 };
+
+function optionalAmount(enabled, value) {
+  if (!enabled) return null;
+  if (value === "" || value == null) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function money(n) {
+  return Number(n || 0).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 function propertyLabel(p) {
   const parts = [p.direction];
@@ -62,6 +81,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   const [submitting, setSubmitting] = useState(false);
   const [ipcLoading, setIpcLoading] = useState(false);
   const [ipcHint, setIpcHint] = useState("");
+  const [ipcCurrentHint, setIpcCurrentHint] = useState("");
 
   useEffect(() => {
     if (show) {
@@ -71,6 +91,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       setParseWarning("");
       setFeedback(null);
       setIpcHint("");
+      setIpcCurrentHint("");
       loadData();
     }
   }, [show]);
@@ -79,23 +100,34 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
     if (!show) return;
     if (form.currency === "DOLARES" || form.index_type !== "IPC") {
       setIpcHint("");
+      setIpcCurrentHint("");
       return;
     }
     let cancelled = false;
     const loadIpc = async () => {
       setIpcLoading(true);
       setIpcHint("");
+      setIpcCurrentHint("");
       try {
-        const data = await getIpc(form.start_date || undefined);
+        const [baseData, currentData] = await Promise.all([
+          getIpc(form.start_date || undefined),
+          getIpc(),
+        ]);
         if (cancelled) return;
         setForm((prev) => ({
           ...prev,
-          base_index_value: String(data.value),
+          base_index_value: String(baseData.value),
+          current_index_value: String(currentData.value),
         }));
         setIpcHint(
-          data.period
-            ? `IPC oficial (${data.label || "INDEC"}) · período ${data.period}`
-            : "IPC oficial (INDEC)"
+          baseData.period
+            ? `IPC de inicio (${baseData.label || "INDEC"}) · período ${baseData.period}`
+            : "IPC de inicio (INDEC)"
+        );
+        setIpcCurrentHint(
+          currentData.period
+            ? `Último IPC publicado · período ${currentData.period}`
+            : "Último IPC publicado (INDEC)"
         );
       } catch (err) {
         if (cancelled) return;
@@ -265,6 +297,39 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
     }
   };
 
+  const ipcPreview = useMemo(() => {
+    const baseRent = Number(form.base_rent);
+    const baseIpc = Number(form.base_index_value);
+    const currentIpc = Number(form.current_index_value);
+    if (
+      form.currency === "DOLARES" ||
+      form.index_type !== "IPC" ||
+      !baseRent ||
+      !baseIpc ||
+      !currentIpc
+    ) {
+      return null;
+    }
+    const percent = ((currentIpc - baseIpc) / baseIpc) * 100;
+    const updated = baseRent * (1 + percent / 100);
+    return { percent, updated };
+  }, [
+    form.currency,
+    form.index_type,
+    form.base_rent,
+    form.base_index_value,
+    form.current_index_value,
+  ]);
+
+  const servicesTotal =
+    (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
+    (form.pays_tgi ? Number(form.tgi_amount) || 0 : 0) +
+    (form.pays_api ? Number(form.api_amount) || 0 : 0) +
+    (form.fire_insurance ? Number(form.fire_insurance_amount) || 0 : 0);
+
+  const rentPreview = ipcPreview?.updated ?? (Number(form.base_rent) || 0);
+  const totalPreview = rentPreview + servicesTotal;
+
   const isValid = () => {
     const hasTarget = form.garage_only
       ? !!form.garage_id
@@ -305,6 +370,19 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
             : form.base_index_value !== "" && form.base_index_value != null
             ? Number(form.base_index_value)
             : null,
+        current_index_value:
+          form.currency === "DOLARES" || form.index_type !== "IPC"
+            ? null
+            : form.current_index_value !== "" && form.current_index_value != null
+            ? Number(form.current_index_value)
+            : null,
+        epe_amount: optionalAmount(form.pays_epe, form.epe_amount),
+        tgi_amount: optionalAmount(form.pays_tgi, form.tgi_amount),
+        api_amount: optionalAmount(form.pays_api, form.api_amount),
+        fire_insurance_amount: optionalAmount(
+          form.fire_insurance,
+          form.fire_insurance_amount
+        ),
         mark_past_as_paid: !!form.mark_past_as_paid,
       };
       delete payload.garage_only;
@@ -523,27 +601,79 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                   </Form.Group>
 
                   {form.index_type === "IPC" && (
-                    <Form.Group className="mb-2">
-                      <Form.Label>
-                        Valor IPC base {ipcLoading ? "(cargando…)" : ""}
-                      </Form.Label>
-                      <Form.Control
-                        type="number"
-                        step="0.0001"
-                        name="base_index_value"
-                        value={form.base_index_value}
-                        onChange={handleChange}
-                        onWheel={(e) => e.target.blur()}
-                        placeholder="Valor del índice (ej. 12078), no es un %"
-                      />
-                      <Form.Text className="text-muted d-block">
-                        No es un porcentaje: es el número grande del INDEC (ej.
-                        12.078). El % de aumento se carga después en Índice.
-                      </Form.Text>
-                      {ipcHint && (
-                        <Form.Text className="text-muted">{ipcHint}</Form.Text>
+                    <>
+                      <Row>
+                        <Col md={6}>
+                          <Form.Group className="mb-2">
+                            <Form.Label>
+                              IPC base {ipcLoading ? "(cargando…)" : ""}
+                            </Form.Label>
+                            <Form.Control
+                              type="number"
+                              step="0.0001"
+                              name="base_index_value"
+                              value={form.base_index_value}
+                              onChange={handleChange}
+                              onWheel={(e) => e.target.blur()}
+                              placeholder="IPC de la fecha de inicio"
+                            />
+                            <Form.Text className="text-muted d-block">
+                              Índice INDEC al <strong>inicio</strong> del
+                              contrato (no es un %).
+                            </Form.Text>
+                            {ipcHint && (
+                              <Form.Text className="text-muted">
+                                {ipcHint}
+                              </Form.Text>
+                            )}
+                          </Form.Group>
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group className="mb-2">
+                            <Form.Label>IPC actual</Form.Label>
+                            <Form.Control
+                              type="number"
+                              step="0.0001"
+                              name="current_index_value"
+                              value={form.current_index_value}
+                              onChange={handleChange}
+                              onWheel={(e) => e.target.blur()}
+                              placeholder="Último IPC publicado"
+                            />
+                            <Form.Text className="text-muted d-block">
+                              Si el contrato arrancó hace meses, cargá el IPC de
+                              hoy y se calcula el alquiler: base × (actual /
+                              base).
+                            </Form.Text>
+                            {ipcCurrentHint && (
+                              <Form.Text className="text-muted">
+                                {ipcCurrentHint}
+                              </Form.Text>
+                            )}
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                      {ipcPreview && (
+                        <Alert variant="info" className="py-2 small">
+                          Variación{" "}
+                          <strong>
+                            {ipcPreview.percent.toLocaleString("es-AR", {
+                              maximumFractionDigits: 2,
+                            })}
+                            %
+                          </strong>
+                          . Alquiler actualizado:{" "}
+                          <strong>${money(ipcPreview.updated)}</strong>
+                          {servicesTotal > 0 && (
+                            <>
+                              {" "}
+                              + servicios ${money(servicesTotal)} ={" "}
+                              <strong>total ${money(totalPreview)}</strong>
+                            </>
+                          )}
+                        </Alert>
                       )}
-                    </Form.Group>
+                    </>
                   )}
                 </>
               )}
@@ -599,30 +729,52 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
               )}
 
               <hr />
-              <Form.Check
-                label="Seguro contra incendio"
-                name="fire_insurance"
-                checked={form.fire_insurance}
-                onChange={handleChange}
-              />
-              <Form.Check
-                label="Paga API"
-                name="pays_api"
-                checked={form.pays_api}
-                onChange={handleChange}
-              />
-              <Form.Check
-                label="Paga TGI"
-                name="pays_tgi"
-                checked={form.pays_tgi}
-                onChange={handleChange}
-              />
-              <Form.Check
-                label="Paga EPE"
-                name="pays_epe"
-                checked={form.pays_epe}
-                onChange={handleChange}
-              />
+              <p className="text-muted small mb-2">
+                Si el inquilino paga un servicio, marcá la casilla y cargá el
+                monto mensual. Se suma al alquiler (alquiler + servicios =
+                total). Después lo podés cambiar mes a mes en Impuestos.
+              </p>
+              {[
+                ["fire_insurance", "Seguro contra incendio", "fire_insurance_amount"],
+                ["pays_api", "Paga API", "api_amount"],
+                ["pays_tgi", "Paga TGI", "tgi_amount"],
+                ["pays_epe", "Paga EPE", "epe_amount"],
+              ].map(([checkName, label, amountName]) => (
+                <div
+                  key={checkName}
+                  className="d-flex flex-wrap align-items-center gap-2 mb-2"
+                >
+                  <Form.Check
+                    className="mb-0"
+                    label={label}
+                    name={checkName}
+                    checked={form[checkName]}
+                    onChange={handleChange}
+                  />
+                  {form[checkName] && (
+                    <Form.Control
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name={amountName}
+                      value={form[amountName]}
+                      onChange={handleChange}
+                      onWheel={(e) => e.target.blur()}
+                      placeholder="Monto mensual"
+                      style={{ maxWidth: 180 }}
+                    />
+                  )}
+                </div>
+              ))}
+              {(form.base_rent || servicesTotal > 0) && (
+                <Alert variant="secondary" className="py-2 small mt-2">
+                  Alquiler ${money(rentPreview)}
+                  {servicesTotal > 0
+                    ? ` + servicios $${money(servicesTotal)}`
+                    : ""}{" "}
+                  = <strong>total ${money(totalPreview)}</strong>
+                </Alert>
+              )}
 
               <Form.Group className="mt-2">
                 <Form.Label>Notas</Form.Label>
