@@ -177,8 +177,21 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
     if not period:
         raise HTTPException(status_code=404, detail="Periodo no encontrado")
 
+    if payment.already_paid:
+        from services.rental_contract_service import RentalContractService
+
+        RentalContractService(db).mark_period_already_collected(period)
+        db.commit()
+        return {
+            "message": "Período marcado como ya cobrado (sin transferencia nueva)",
+            "remaining_amount": 0,
+        }
+
     if _status_value(period.payment_status) == PaymentStatusEnum.PAGADO.value:
         raise HTTPException(status_code=400, detail="Este período ya está pagado")
+
+    if (payment.amount or 0) <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
 
     fee = _apply_late_fee_if_requested(period, payment)
     remaining = max(0.0, (period.total_amount or 0) - (period.amount_paid or 0))

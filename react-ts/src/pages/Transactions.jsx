@@ -126,6 +126,8 @@ const Transactions = () => {
         return <Badge bg="primary" className="d-flex align-items-center">{getPaymentMethodIcon(method)}{method}</Badge>;
       case "nota_credito":
         return <Badge bg="danger" className="d-flex align-items-center">{getPaymentMethodIcon(method)}Nota de crédito</Badge>;
+      case "carga_inicial":
+        return <Badge bg="dark" className="d-flex align-items-center">{getPaymentMethodIcon(method)}Carga inicial</Badge>;
       default:
         return <Badge bg="secondary" className="d-flex align-items-center">{getPaymentMethodIcon(method)}{method || "Otro"}</Badge>;
     }
@@ -333,6 +335,7 @@ const Transactions = () => {
                   <option value="transferencia">Transferencia</option>
                   <option value="cheque">Cheque</option>
                   <option value="nota_credito">Nota de crédito</option>
+                  <option value="carga_inicial">Carga inicial</option>
                 </Form.Select>
               </InputGroup>
             </Col>
@@ -427,7 +430,9 @@ const Transactions = () => {
                                 Ya se lo pasé al dueño
                               </Button>
                             )}
-                            {transaction.amount > 0 && transaction.period?.id && (
+                            {transaction.amount > 0 &&
+                              transaction.period?.id &&
+                              String(transaction.method || "").toLowerCase() !== "carga_inicial" && (
                               <Button
                                 variant="outline-danger"
                                 size="sm"

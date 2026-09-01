@@ -44,6 +44,7 @@ class UpdateContractDTO(BaseModel):
     api_amount: Optional[float] = Field(None, ge=0)
     fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
+    mark_past_as_paid: Optional[bool] = None
 
 
 class ContractResponse(BaseModel):

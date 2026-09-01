@@ -53,6 +53,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
   const [feeMode, setFeeMode] = useState("daily");
   const [dailyRate, setDailyRate] = useState(DEFAULT_DAILY_RATE);
   const [customFee, setCustomFee] = useState("");
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
 
   const dailyFee = round2(
     unpaidPrincipal * (Number(dailyRate) || 0) / 100 * daysOverdue
@@ -87,6 +88,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     setFeeMode("daily");
     setDailyRate(DEFAULT_DAILY_RATE);
     setCustomFee("");
+    setAlreadyPaid(false);
   }, [show]);
 
   useEffect(() => {
@@ -104,8 +106,10 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
       setOverpayOpen(false);
       setFeedback({
         variant: "success",
-        title: "Pago registrado",
-        message: "El pago se registró correctamente.",
+        title: alreadyPaid ? "Marcado como cobrado" : "Pago registrado",
+        message: alreadyPaid
+          ? "El período quedó PAGADO y no se registró una transferencia nueva."
+          : "El pago se registró correctamente.",
       });
     } catch (err) {
       setOverpayOpen(false);
@@ -121,6 +125,11 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
 
   const buildPayload = (base) => {
     const payload = { ...base };
+    if (alreadyPaid) {
+      payload.already_paid = true;
+      payload.method = "carga_inicial";
+      return payload;
+    }
     if (chargeLateFee && daysOverdue > 0) {
       payload.apply_late_fee = true;
       payload.late_fee_mode = feeMode;
@@ -134,7 +143,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (isOverpay) {
+    if (!alreadyPaid && isOverpay) {
       setOverpayOpen(true);
       return;
     }
@@ -214,7 +223,25 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               <> · {daysOverdue} día{daysOverdue === 1 ? "" : "s"} de atraso</>
             )}
           </p>
-          {daysOverdue > 0 && (
+          {period?.end_date && parseISODate(period.end_date) < today && (
+            <Alert variant="info" className="small">
+              <Form.Check
+                type="checkbox"
+                id="already-paid"
+                label="Ya estaba cobrado (no registrar transferencia)"
+                checked={alreadyPaid}
+                onChange={(e) => {
+                  setAlreadyPaid(e.target.checked);
+                  if (e.target.checked) setChargeLateFee(false);
+                }}
+              />
+              <Form.Text className="text-muted d-block">
+                Marcá esto si el mes se había pagado antes de cargar el contrato.
+                El período queda PAGADO y no suma al total de Transacciones.
+              </Form.Text>
+            </Alert>
+          )}
+          {daysOverdue > 0 && !alreadyPaid && (
             <Alert variant="warning" className="small">
               <Form.Check
                 type="checkbox"
@@ -281,6 +308,8 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               )}
             </Alert>
           )}
+          {!alreadyPaid && (
+            <>
           <Form.Group className="mb-3">
             <Form.Label>Monto a Pagar</Form.Label>
             <Form.Control
@@ -345,13 +374,19 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               placeholder="Comprobante, observación..."
             />
           </Form.Group>
+            </>
+          )}
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={onHide} disabled={saving}>
             Cancelar
           </Button>
           <Button variant="primary" type="submit" disabled={saving}>
-            {saving ? "Guardando..." : "Registrar Pago"}
+            {saving
+              ? "Guardando..."
+              : alreadyPaid
+                ? "Marcar como ya cobrado"
+                : "Registrar Pago"}
           </Button>
         </Modal.Footer>
       </Form>

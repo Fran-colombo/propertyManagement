@@ -426,6 +426,49 @@ class RentalContractService:
         contract.last_index_value = current_index
         self.db.commit()
 
+    def _reclassify_period_as_historical(self, period: ContractPeriod) -> None:
+        """Treat existing ledger rows as initial load, not a real cash movement."""
+        from models.transactions import Transaction
+        from models.transaction_history import TransactionHistory
+
+        hist_date = period.due_date or period.end_date or date.today()
+        note = "Ya estaba cobrado (carga inicial). No es una transferencia de ahora."
+        for tx in (
+            self.db.query(Transaction)
+            .filter(Transaction.period_id == period.id)
+            .all()
+        ):
+            method = (tx.method or "").strip().lower()
+            if method == "nota_credito" or (tx.amount or 0) < 0:
+                continue
+            tx.method = "carga_inicial"
+            tx.date = hist_date
+            tx.notes = note if not tx.notes else f"{tx.notes} | {note}"
+        for hist in (
+            self.db.query(TransactionHistory)
+            .filter(TransactionHistory.period_id == period.id)
+            .all()
+        ):
+            method = (hist.method or "").strip().lower()
+            if method == "nota_credito" or (hist.amount or 0) < 0:
+                continue
+            hist.method = "carga_inicial"
+            hist.date = hist_date
+            hist.received_by = "DUENO"
+            hist.remitted_to_owner = 1
+            hist.remitted_at = hist.remitted_at or hist_date
+            hist.notes = note if not hist.notes else f"{hist.notes} | {note}"
+
+    def mark_period_already_collected(self, period: ContractPeriod) -> None:
+        """Mark a period paid without counting it as a new transfer."""
+        today = date.today()
+        period.payment_status = PaymentStatusEnum.PAGADO
+        period.amount_paid = period.total_amount or 0
+        period.payment_method = "carga_inicial"
+        period.payment_reference = "Ya estaba cobrado (carga inicial)"
+        period.payment_date = period.due_date or period.end_date or today
+        self._reclassify_period_as_historical(period)
+
     def _mark_past_periods_paid(self, contract: RentalContract) -> None:
         """Mark periods that already ended before today as paid (full amount)."""
         today = date.today()
@@ -435,15 +478,8 @@ class RentalContractService:
             .all()
         )
         for period in periods:
-            if period.end_date < today:
-                period.payment_status = PaymentStatusEnum.PAGADO
-                period.amount_paid = period.total_amount or 0
-                period.payment_method = period.payment_method or "carga_inicial"
-                period.payment_reference = (
-                    period.payment_reference
-                    or "Marcado como pagado al crear el contrato (período anterior)"
-                )
-                self.db.add(period)
+            if period.end_date and period.end_date < today:
+                self.mark_period_already_collected(period)
         self.db.commit()
 
     def _should_apply_index(self, period_start: date, contract_start: date, freq_enum: AdjustmentFrequencyEnum):
@@ -624,6 +660,7 @@ class RentalContractService:
     def update_contract(self, contract_id: int, data: UpdateContractDTO) -> ContractResponse:
         contract = self.get_contract(contract_id)
         payload = data.dict(exclude_unset=True)
+        mark_past = bool(payload.pop("mark_past_as_paid", False))
         if "real_agency_id" in payload:
             agency_id = payload["real_agency_id"]
             if agency_id:
@@ -641,6 +678,10 @@ class RentalContractService:
             setattr(contract, field, value)
         self.db.flush()
         self._apply_service_amounts(contract, unpaid_only=True)
+        if mark_past:
+            self._mark_past_periods_paid(contract)
+        else:
+            self.db.commit()
         self.db.refresh(contract)
         return ContractResponse.from_orm(contract)
 

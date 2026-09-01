@@ -17,6 +17,7 @@ const emptyForm = {
   fire_insurance_amount: "",
   notes: "",
   document_path: null,
+  mark_past_as_paid: false,
 };
 
 const SERVICE_ROWS = [
@@ -73,6 +74,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           fire_insurance_amount: data.fire_insurance_amount ?? "",
           notes: data.notes || "",
           document_path: data.document_path || null,
+          mark_past_as_paid: false,
         });
         setLoaded(true);
       })
@@ -112,6 +114,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           form.fire_insurance_amount
         ),
         notes: form.notes,
+        mark_past_as_paid: !!form.mark_past_as_paid,
       });
       if (file) {
         await uploadContractDocument(contractId, file);
@@ -120,8 +123,9 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
       setFeedback({
         variant: "success",
         title: "Contrato actualizado",
-        message:
-          "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.",
+        message: form.mark_past_as_paid
+          ? "Los meses anteriores a hoy quedaron como ya cobrados y no se cuentan como transferencias nuevas. Si los habías cargado como pago, se corrigieron."
+          : "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.",
       });
     } catch (err) {
       setFeedback({
@@ -180,6 +184,21 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                   Si lo cargaste sin agencia, podés asignarla ahora. También se puede sacar.
                 </Form.Text>
               </Form.Group>
+              <Alert variant="warning" className="py-2">
+                <Form.Check
+                  type="checkbox"
+                  id="mark_past_as_paid_edit"
+                  name="mark_past_as_paid"
+                  checked={!!form.mark_past_as_paid}
+                  onChange={handleChange}
+                  label="Los períodos anteriores a hoy ya estaban cobrados"
+                />
+                <Form.Text className="text-muted d-block mt-1">
+                  Usalo si al crear el contrato no marcaste que esos meses ya se habían pagado.
+                  Quedan como PAGADO y <strong>no entran en el total de transferencias</strong>.
+                  Si los cargaste con Pagar, se corrigen.
+                </Form.Text>
+              </Alert>
               <p className="text-muted small">
                 Activá EPE, TGI, API o el seguro e indicá el monto mensual.
                 Ese valor se suma al alquiler (alquiler + servicios = total) en

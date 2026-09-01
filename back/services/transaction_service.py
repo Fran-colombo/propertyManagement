@@ -40,6 +40,10 @@ def is_remitted(record: TransactionHistory) -> bool:
     return bool(record.remitted_to_owner)
 
 
+def is_historical_method(method) -> bool:
+    return str(method or "").strip().lower() == "carga_inicial"
+
+
 def pending_remittance_filters():
     received = func.upper(func.coalesce(TransactionHistory.received_by, "DUENO"))
     return [
@@ -82,6 +86,10 @@ class TransactionService:
             filters.append(TransactionHistory.date < end)
         if method and method.strip():
             filters.append(func.lower(TransactionHistory.method) == method.strip().lower())
+        else:
+            filters.append(
+                func.lower(func.coalesce(TransactionHistory.method, "")) != "carga_inicial"
+            )
         remittance = (remittance or "").strip().lower()
         received = func.upper(func.coalesce(TransactionHistory.received_by, "DUENO"))
         if remittance == "pending":
