@@ -75,3 +75,11 @@ body.gradient-bg {
     overflow-y: auto;
   }
 }
+
+.feedback-result-modal {
+  z-index: 2000 !important;
+}
+
+.feedback-result-backdrop {
+  z-index: 1990 !important;
+}

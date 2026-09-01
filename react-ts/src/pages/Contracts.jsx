@@ -116,7 +116,7 @@ const ContractsTable = () => {
     yearOptions.push(y);
   }
 
-  if (loading) return <Spinner animation="border" className="m-5" />;
+  if (loading && periods.length === 0) return <Spinner animation="border" className="m-5" />;
 
   const displayedPeriods = getFilteredPeriods();
   const { withAgency, withoutAgency } = splitPeriodsByAgency(displayedPeriods);

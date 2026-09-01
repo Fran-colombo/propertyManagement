@@ -159,7 +159,7 @@ const UpdateIndexModal = ({ show, onHide, contract, currentRent, onUpdate }) => 
 
   return (
     <>
-      <Modal show={show && !feedback} onHide={onHide} centered>
+      <Modal show={show} onHide={onHide} centered>
         <Modal.Header closeButton>
           <Modal.Title>Aplicar índice</Modal.Title>
         </Modal.Header>

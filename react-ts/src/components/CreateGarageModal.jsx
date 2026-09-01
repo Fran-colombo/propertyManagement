@@ -3,7 +3,7 @@ import { Modal, Button, Form, Spinner } from "react-bootstrap";
 import { createGarage, updateGarage } from "../api/garage";
 import { getProperties } from "../api/property";
 import { getOwners } from "../api/person";
-import FeedbackModal from "./FeedbackModal";
+import { FeedbackView } from "./FeedbackModal";
 
 const CreateGarageModal = ({ show, onHide, onCreated, garage = null }) => {
   const isEdit = Boolean(garage?.id);
@@ -74,7 +74,6 @@ const CreateGarageModal = ({ show, onHide, onCreated, garage = null }) => {
 
       if (isEdit) {
         await updateGarage(garage.id, payload);
-        onCreated();
         setFeedback({
           variant: "success",
           title: "Garage actualizado",
@@ -82,7 +81,6 @@ const CreateGarageModal = ({ show, onHide, onCreated, garage = null }) => {
         });
       } else {
         await createGarage(payload);
-        onCreated();
         resetForm();
         setFeedback({
           variant: "success",
@@ -104,19 +102,33 @@ const CreateGarageModal = ({ show, onHide, onCreated, garage = null }) => {
     const variant = feedback?.variant;
     setFeedback(null);
     if (variant !== "danger") {
+      onCreated?.();
       onHide();
     }
   };
 
   return (
-    <>
     <Modal
-      show={show && !feedback}
+      show={show}
       onHide={() => {
+        if (feedback) {
+          closeFeedback();
+          return;
+        }
         resetForm();
         onHide();
       }}
+      backdrop="static"
     >
+      {feedback ? (
+        <FeedbackView
+          variant={feedback.variant}
+          title={feedback.title}
+          message={feedback.message}
+          onClose={closeFeedback}
+        />
+      ) : (
+      <>
       <Modal.Header closeButton>
         <Modal.Title>{isEdit ? "Editar garage" : "Crear Garage"}</Modal.Title>
       </Modal.Header>
@@ -193,15 +205,9 @@ const CreateGarageModal = ({ show, onHide, onCreated, garage = null }) => {
           </Button>
         </Modal.Footer>
       </Form>
+      </>
+      )}
     </Modal>
-    <FeedbackModal
-      show={!!feedback}
-      variant={feedback?.variant}
-      title={feedback?.title}
-      message={feedback?.message}
-      onClose={closeFeedback}
-    />
-    </>
   );
 };
 

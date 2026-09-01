@@ -1,5 +1,25 @@
 import { Modal, Button, Alert } from "react-bootstrap";
 
+export function FeedbackView({ variant = "info", title = "", message = "", onClose }) {
+  return (
+    <>
+      <Modal.Header closeButton>
+        <Modal.Title>{title}</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        <Alert variant={variant} className="mb-0">
+          {message}
+        </Alert>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="primary" onClick={onClose}>
+          Aceptar
+        </Button>
+      </Modal.Footer>
+    </>
+  );
+}
+
 /**
  * Result modal for success / error / warning after an action.
  * Renders above other Bootstrap modals.
@@ -17,21 +37,17 @@ export default function FeedbackModal({
       onHide={onClose}
       centered
       backdrop="static"
-      style={{ zIndex: 1060 }}
+      enforceFocus={false}
+      restoreFocus={false}
+      className="feedback-result-modal"
+      backdropClassName="feedback-result-backdrop"
     >
-      <Modal.Header closeButton>
-        <Modal.Title>{title}</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        <Alert variant={variant} className="mb-0">
-          {message}
-        </Alert>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="primary" onClick={onClose}>
-          Aceptar
-        </Button>
-      </Modal.Footer>
+      <FeedbackView
+        variant={variant}
+        title={title}
+        message={message}
+        onClose={onClose}
+      />
     </Modal>
   );
 }

@@ -337,7 +337,9 @@ const PropertiesAndGarages = () => {
     </Card>
   );
 
-  if (loading) return <Spinner animation="border" className="m-5" />;
+  if (loading && properties.length === 0 && garages.length === 0) {
+    return <Spinner animation="border" className="m-5" />;
+  }
 
   return (
     <div>

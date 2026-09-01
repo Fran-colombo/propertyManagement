@@ -151,7 +151,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
 
   return (
     <>
-    <Modal show={show && !feedback} onHide={onHide} backdrop="static">
+    <Modal show={show} onHide={onHide} backdrop="static">
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Editar contrato</Modal.Title>

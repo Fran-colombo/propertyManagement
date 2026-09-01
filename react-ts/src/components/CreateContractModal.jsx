@@ -430,7 +430,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
 
   return (
     <>
-    <Modal show={show && !feedback} onHide={onHide} backdrop="static" size="lg" fullscreen="sm-down">
+    <Modal show={show} onHide={onHide} backdrop="static" size="lg" fullscreen="sm-down">
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Nuevo Contrato</Modal.Title>

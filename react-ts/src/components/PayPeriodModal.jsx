@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert } from "react-bootstrap";
-import FeedbackModal from "./FeedbackModal";
+import { FeedbackView } from "./FeedbackModal";
 
 function parseISODate(value) {
   if (!value) return null;
@@ -67,8 +67,12 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     : remainingNow;
 
   useEffect(() => {
+    if (!show) return;
     setPaymentData({
-      amount: remainingNow,
+      amount: Math.max(
+        0,
+        (period?.total_amount || 0) - (period?.amount_paid || 0)
+      ),
       method: "transferencia",
       reference: "",
       received_by: "INTERMEDIARIO",
@@ -83,7 +87,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     setFeeMode("daily");
     setDailyRate(DEFAULT_DAILY_RATE);
     setCustomFee("");
-  }, [period, show]);
+  }, [show]);
 
   useEffect(() => {
     if (!show) return;
@@ -165,7 +169,26 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
 
   return (
     <>
-    <Modal show={show && !overpayOpen && !feedback} onHide={onHide}>
+    <Modal show={show && !overpayOpen} onHide={feedback ? () => {
+        const variant = feedback?.variant;
+        setFeedback(null);
+        if (variant !== "danger") onHide();
+      } : onHide}>
+      {feedback ? (
+        <FeedbackView
+          variant={feedback.variant}
+          title={feedback.title}
+          message={feedback.message}
+          onClose={() => {
+            const variant = feedback?.variant;
+            setFeedback(null);
+            if (variant !== "danger") {
+              onHide();
+            }
+          }}
+        />
+      ) : (
+      <>
       <Modal.Header closeButton>
         <Modal.Title>Registrar Pago</Modal.Title>
       </Modal.Header>
@@ -332,6 +355,8 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
           </Button>
         </Modal.Footer>
       </Form>
+      </>
+      )}
     </Modal>
 
     <Modal show={overpayOpen} onHide={() => setOverpayOpen(false)} centered>
@@ -386,19 +411,6 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
         </Button>
       </Modal.Footer>
     </Modal>
-    <FeedbackModal
-      show={!!feedback}
-      variant={feedback?.variant}
-      title={feedback?.title}
-      message={feedback?.message}
-      onClose={() => {
-        const variant = feedback?.variant;
-        setFeedback(null);
-        if (variant !== "danger") {
-          onHide();
-        }
-      }}
-    />
     </>
   );
 }

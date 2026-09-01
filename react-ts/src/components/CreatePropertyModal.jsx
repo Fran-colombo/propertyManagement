@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Button, Form, Spinner, Alert } from "react-bootstrap";
 import { createProperty, updateProperty } from "../api/property";
 import { getOwners } from "../api/person";
-import FeedbackModal from "./FeedbackModal";
+import { FeedbackView } from "./FeedbackModal";
 
 const emptyForm = {
   direction: "",
@@ -78,7 +78,6 @@ export default function CreatePropertyModal({ show, onHide, onCreated, property 
       setError("");
       if (isEdit) {
         await updateProperty(property.id, payload);
-        onCreated();
         setFeedback({
           variant: "success",
           title: "Propiedad actualizada",
@@ -86,7 +85,6 @@ export default function CreatePropertyModal({ show, onHide, onCreated, property 
         });
       } else {
         await createProperty(payload);
-        onCreated();
         setFeedback({
           variant: "success",
           title: "Propiedad creada",
@@ -107,13 +105,21 @@ export default function CreatePropertyModal({ show, onHide, onCreated, property 
     const variant = feedback?.variant;
     setFeedback(null);
     if (variant !== "danger") {
+      onCreated?.();
       onHide();
     }
   };
 
   return (
-    <>
-    <Modal show={show && !feedback} onHide={onHide} backdrop="static">
+    <Modal show={show} onHide={feedback ? closeFeedback : onHide} backdrop="static">
+      {feedback ? (
+        <FeedbackView
+          variant={feedback.variant}
+          title={feedback.title}
+          message={feedback.message}
+          onClose={closeFeedback}
+        />
+      ) : (
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>{isEdit ? "Editar propiedad" : "Nueva Propiedad"}</Modal.Title>
@@ -189,14 +195,7 @@ export default function CreatePropertyModal({ show, onHide, onCreated, property 
           </Button>
         </Modal.Footer>
       </Form>
+      )}
     </Modal>
-    <FeedbackModal
-      show={!!feedback}
-      variant={feedback?.variant}
-      title={feedback?.title}
-      message={feedback?.message}
-      onClose={closeFeedback}
-    />
-    </>
   );
 }

@@ -98,7 +98,7 @@ export default function CancelContractModal({
 
   return (
     <>
-    <Modal show={show && !feedback} onHide={onHide} backdrop="static" centered>
+    <Modal show={show} onHide={onHide} backdrop="static" centered>
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Finalizar contrato</Modal.Title>

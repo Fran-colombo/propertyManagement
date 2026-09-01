@@ -71,7 +71,7 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
 
   return (
     <>
-    <Modal show={show && !feedback} onHide={onHide} size="lg">
+    <Modal show={show} onHide={onHide} size="lg">
       <Modal.Header closeButton>
         <Modal.Title>Editar Impuestos</Modal.Title>
       </Modal.Header>
