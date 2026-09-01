@@ -5,6 +5,7 @@ import { getProperties } from "../api/property";
 import { Table, Button, Modal, Badge, Alert, Pagination, Form, Row, Col } from "react-bootstrap";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
+import EditPeriodRentModal from "../components/EditPeriodRentModal";
 import { mediaUrl } from "../utils/mediaUrl";
 
 const PAGE_SIZE = 20;
@@ -25,6 +26,7 @@ const AllContracts = () => {
   const [contractToCancel, setContractToCancel] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [contractToEdit, setContractToEdit] = useState(null);
+  const [periodToEditRent, setPeriodToEditRent] = useState(null);
   const [loadingPeriods, setLoadingPeriods] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -386,6 +388,7 @@ const AllContracts = () => {
                   <th>Monto</th>
                   <th>Estado</th>
                   <th>Nota</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -428,6 +431,19 @@ const AllContracts = () => {
                           "—"}
                       </small>
                     </td>
+                    <td>
+                      {period.payment_status !== "CONTRATO_TERMINADO" &&
+                        String(period.contract?.currency || "").toUpperCase() !==
+                          "DOLARES" && (
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          onClick={() => setPeriodToEditRent(period)}
+                        >
+                          Alquiler
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -442,6 +458,14 @@ const AllContracts = () => {
         </Modal.Footer>
       </Modal>
 
+      <EditPeriodRentModal
+        show={!!periodToEditRent}
+        onHide={() => setPeriodToEditRent(null)}
+        period={periodToEditRent}
+        onSaved={() => {
+          if (selectedContract) handleViewDetails(selectedContract);
+        }}
+      />
       <CancelContractModal
         show={showCancelModal}
         onHide={() => {

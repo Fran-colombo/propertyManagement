@@ -72,6 +72,7 @@ class RentalContractService:
             contract_dict = contract_data.dict(exclude_unset=True)
             contract_dict.pop("mark_past_as_paid", None)
             current_index_value = contract_dict.pop("current_index_value", None)
+            historical_rents = contract_dict.pop("historical_rents", None)
             garage = self._handle_garage_assignment(contract_dict)
 
             property_obj = self.db.query(Property).filter_by(id=contract_dict["property_id"]).first()
@@ -95,7 +96,10 @@ class RentalContractService:
             self.db.flush()
 
             self._generate_contract_periods(contract)
-            self._catch_up_ipc_adjustments(contract, current_index_value=current_index_value)
+            if historical_rents:
+                self._apply_historical_rents(contract, historical_rents, sync_payments=False)
+            else:
+                self._catch_up_ipc_adjustments(contract, current_index_value=current_index_value)
             self._apply_service_amounts(contract)
             if getattr(contract_data, "mark_past_as_paid", False):
                 self._mark_past_periods_paid(contract)
@@ -163,10 +167,14 @@ class RentalContractService:
             self.db.add(contract)
             self.db.flush()
             self._generate_contract_periods(contract)
-            self._catch_up_ipc_adjustments(
-                contract,
-                current_index_value=contract_data.current_index_value,
-            )
+            historical_rents = getattr(contract_data, "historical_rents", None)
+            if historical_rents:
+                self._apply_historical_rents(contract, historical_rents, sync_payments=False)
+            else:
+                self._catch_up_ipc_adjustments(
+                    contract,
+                    current_index_value=contract_data.current_index_value,
+                )
             self._apply_service_amounts(contract)
             if getattr(contract_data, "mark_past_as_paid", False):
                 self._mark_past_periods_paid(contract)
@@ -298,6 +306,160 @@ class RentalContractService:
             )
             period.total_amount = period_total(period, rent_base)
         self.db.commit()
+
+    def _status_value(self, status) -> str:
+        return status.value if hasattr(status, "value") else str(status or "")
+
+    def _is_historical_method(self, method) -> bool:
+        return str(method or "").strip().lower() == "carga_inicial"
+
+    def _period_has_real_cash_ledger(self, period: ContractPeriod) -> bool:
+        from models.transactions import Transaction
+
+        txs = (
+            self.db.query(Transaction)
+            .filter(Transaction.period_id == period.id)
+            .all()
+        )
+        for tx in txs:
+            method = str(tx.method or "").strip().lower()
+            if method in ("transferencia", "efectivo", "cheque") and (tx.amount or 0) > 0:
+                return True
+        return False
+
+    def _normalize_historical_rents(self, tiers) -> List[tuple]:
+        rows = []
+        for tier in tiers or []:
+            if hasattr(tier, "from_date"):
+                from_date = tier.from_date
+                amount = tier.indexed_amount
+            elif isinstance(tier, dict):
+                from_date = tier.get("from_date")
+                amount = tier.get("indexed_amount")
+            else:
+                continue
+            if isinstance(from_date, str):
+                from_date = date.fromisoformat(from_date[:10])
+            try:
+                amount = round(float(amount), 2)
+            except (TypeError, ValueError):
+                continue
+            if from_date and amount > 0:
+                rows.append((from_date, amount))
+        rows.sort(key=lambda row: (row[0].year, row[0].month, row[0].day))
+        deduped = []
+        for from_date, amount in rows:
+            key = (from_date.year, from_date.month)
+            if deduped and (deduped[-1][0].year, deduped[-1][0].month) == key:
+                deduped[-1] = (from_date, amount)
+            else:
+                deduped.append((from_date, amount))
+        return deduped
+
+    def _rent_from_tiers(self, tiers: List[tuple], period_start: date) -> Optional[float]:
+        chosen = None
+        period_key = (period_start.year, period_start.month)
+        for from_date, amount in tiers:
+            if (from_date.year, from_date.month) <= period_key:
+                chosen = amount
+            else:
+                break
+        return chosen
+
+    def _sync_period_payment_after_rent_change(self, period: ContractPeriod) -> None:
+        """Keep PAGADO/carga_inicial in sync without creating new transfers."""
+        from models.transactions import Transaction
+        from models.transaction_history import TransactionHistory
+
+        rent_base = (
+            period.indexed_amount
+            if period.indexed_amount is not None
+            else period.base_rent
+        )
+        period.total_amount = period_total(period, rent_base)
+        total = round(period.total_amount or 0, 2)
+        method = str(period.payment_method or "").strip().lower()
+        status = self._status_value(period.payment_status)
+        historical = self._is_historical_method(method) or (
+            status == PaymentStatusEnum.PAGADO.value
+            and not self._period_has_real_cash_ledger(period)
+        )
+
+        if historical:
+            period.amount_paid = total
+            period.payment_status = PaymentStatusEnum.PAGADO
+            txs = (
+                self.db.query(Transaction)
+                .filter(Transaction.period_id == period.id)
+                .all()
+            )
+            positives = [
+                tx
+                for tx in txs
+                if (tx.amount or 0) > 0
+                and str(tx.method or "").strip().lower() != "nota_credito"
+            ]
+            if positives:
+                positives[0].amount = total
+                positives[0].remaining_amount = 0
+                positives[0].method = "carga_inicial"
+            hists = (
+                self.db.query(TransactionHistory)
+                .filter(TransactionHistory.period_id == period.id)
+                .all()
+            )
+            hist_pos = [
+                hist
+                for hist in hists
+                if (hist.amount or 0) > 0
+                and str(hist.method or "").strip().lower() != "nota_credito"
+            ]
+            if hist_pos:
+                hist_pos[0].amount = total
+                hist_pos[0].method = "carga_inicial"
+                hist_pos[0].period_total_amount = total
+                hist_pos[0].period_amount_paid = total
+                hist_pos[0].period_payment_status = PaymentStatusEnum.PAGADO.value
+            return
+
+        if status == PaymentStatusEnum.CONTRATO_TERMINADO.value:
+            return
+
+        paid = round(period.amount_paid or 0, 2)
+        if paid <= 0.009:
+            period.payment_status = PaymentStatusEnum.PENDIENTE
+        elif paid + 0.009 >= total:
+            period.payment_status = PaymentStatusEnum.PAGADO
+        else:
+            period.payment_status = PaymentStatusEnum.PARCIAL
+
+    def _apply_historical_rents(
+        self,
+        contract: RentalContract,
+        tiers,
+        *,
+        sync_payments: bool = True,
+    ) -> None:
+        cur = getattr(contract.currency, "value", contract.currency) if contract.currency else ""
+        if str(cur or "").upper() in ("DOLARES", "USD", "DOLAR"):
+            return
+        normalized = self._normalize_historical_rents(tiers)
+        if not normalized:
+            return
+        periods = (
+            self.db.query(ContractPeriod)
+            .filter(ContractPeriod.contract_id == contract.id)
+            .order_by(ContractPeriod.start_date.asc())
+            .all()
+        )
+        for period in periods:
+            rent = self._rent_from_tiers(normalized, period.start_date)
+            if rent is None:
+                continue
+            period.indexed_amount = rent
+            period.total_amount = period_total(period, rent)
+            if sync_payments:
+                self._sync_period_payment_after_rent_change(period)
 
     def _catch_up_ipc_adjustments(
         self,
@@ -661,6 +823,7 @@ class RentalContractService:
         contract = self.get_contract(contract_id)
         payload = data.dict(exclude_unset=True)
         mark_past = bool(payload.pop("mark_past_as_paid", False))
+        historical_rents = payload.pop("historical_rents", None)
         if "real_agency_id" in payload:
             agency_id = payload["real_agency_id"]
             if agency_id:
@@ -678,12 +841,80 @@ class RentalContractService:
             setattr(contract, field, value)
         self.db.flush()
         self._apply_service_amounts(contract, unpaid_only=True)
+        if historical_rents:
+            self._apply_historical_rents(contract, historical_rents, sync_payments=True)
         if mark_past:
             self._mark_past_periods_paid(contract)
         else:
             self.db.commit()
         self.db.refresh(contract)
         return ContractResponse.from_orm(contract)
+
+    def update_period_rent(
+        self,
+        period_id: int,
+        indexed_amount: float,
+        apply_forward: bool = False,
+    ) -> ContractPeriodResponse:
+        period = (
+            self.db.query(ContractPeriod)
+            .filter(ContractPeriod.id == period_id)
+            .first()
+        )
+        if not period:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Período no encontrado",
+            )
+        contract = period.contract
+        if not contract:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Contrato no encontrado",
+            )
+        cur = getattr(contract.currency, "value", contract.currency) if contract.currency else ""
+        if str(cur or "").upper() in ("DOLARES", "USD", "DOLAR"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Los contratos en dólares no usan tramos de indexación",
+            )
+        amount = round(float(indexed_amount), 2)
+        if amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El alquiler debe ser mayor a 0",
+            )
+        if self._status_value(period.payment_status) == PaymentStatusEnum.CONTRATO_TERMINADO.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede cambiar el alquiler de un período finalizado",
+            )
+
+        targets = [period]
+        if apply_forward:
+            following = (
+                self.db.query(ContractPeriod)
+                .filter(
+                    ContractPeriod.contract_id == contract.id,
+                    ContractPeriod.start_date > period.start_date,
+                )
+                .order_by(ContractPeriod.start_date.asc())
+                .all()
+            )
+            targets.extend(
+                p
+                for p in following
+                if self._status_value(p.payment_status)
+                != PaymentStatusEnum.CONTRATO_TERMINADO.value
+            )
+
+        for target in targets:
+            target.indexed_amount = amount
+            self._sync_period_payment_after_rent_change(target)
+
+        self.db.commit()
+        self.db.refresh(period)
+        return ContractPeriodResponse.from_orm(period)
 
     def attach_document(self, contract_id: int, document_path: str) -> ContractResponse:
         contract = self.get_contract(contract_id)

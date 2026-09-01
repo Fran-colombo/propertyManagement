@@ -55,3 +55,11 @@ export const getPeriodsByMonth = async (year, month) => {
 export const getPeriodsByContract = async (contractId) => {
   return await apiFetch(`/periods/contract/${contractId}/`);
 };
+
+export const updatePeriodRent = async (periodId, data) => {
+  return await apiFetch(`/periods/${periodId}/rent`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+};

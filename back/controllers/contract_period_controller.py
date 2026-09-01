@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from datetime import date
 from models.transactions import Transaction
 
-from schemas.contract_periodDTO import ContractPeriodResponse, PeriodTaxesUpdate
+from schemas.contract_periodDTO import ContractPeriodResponse, PeriodTaxesUpdate, PeriodRentUpdate
 from schemas.enums.enums import PaymentStatusEnum
 from services.contract_period_service import ContractPeriodService
 from utils.proration import period_total
@@ -158,6 +158,18 @@ def update_period_taxes(period_id: int, taxes: PeriodTaxesUpdate, db: Session = 
     db.commit()
     db.refresh(period)
     return ContractPeriodResponse.from_orm(period)
+
+
+@router.patch("/{period_id}/rent", response_model=ContractPeriodResponse)
+def update_period_rent(period_id: int, data: PeriodRentUpdate, db: Session = Depends(get_db)):
+    from services.rental_contract_service import RentalContractService
+
+    return RentalContractService(db).update_period_rent(
+        period_id,
+        data.indexed_amount,
+        data.apply_forward,
+    )
+
 
 @router.get("/contract/{contract_id}/", response_model=List[ContractPeriodResponse])
 def get_all_contract_periods(contract_id: int, db: Session = Depends(get_db)):

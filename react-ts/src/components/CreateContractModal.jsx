@@ -7,6 +7,12 @@ import { getGarages } from "../api/garage";
 import { getAllAgencies } from "../api/real_agency";
 import { getIpc } from "../api/index";
 import FeedbackModal from "./FeedbackModal";
+import HistoricalRentTiers from "./HistoricalRentTiers";
+import {
+  buildDefaultTiers,
+  isPastStart,
+  serializeTiers,
+} from "../utils/historicalRentTiers";
 
 const emptyForm = {
   start_date: "",
@@ -82,6 +88,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   const [ipcLoading, setIpcLoading] = useState(false);
   const [ipcHint, setIpcHint] = useState("");
   const [ipcCurrentHint, setIpcCurrentHint] = useState("");
+  const [rentTiers, setRentTiers] = useState([]);
 
   useEffect(() => {
     if (show) {
@@ -92,6 +99,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       setFeedback(null);
       setIpcHint("");
       setIpcCurrentHint("");
+      setRentTiers([]);
       loadData();
     }
   }, [show]);
@@ -144,6 +152,40 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       cancelled = true;
     };
   }, [show, form.currency, form.index_type, form.start_date]);
+
+  const showRentTiers =
+    form.currency !== "DOLARES" && isPastStart(form.start_date);
+
+  useEffect(() => {
+    if (!show || !showRentTiers) {
+      setRentTiers([]);
+      return;
+    }
+    setRentTiers(
+      buildDefaultTiers(
+        form.start_date,
+        form.frequency_adjustment,
+        form.base_rent
+      )
+    );
+  }, [show, showRentTiers, form.start_date, form.frequency_adjustment]);
+
+  useEffect(() => {
+    if (!showRentTiers) return;
+    setRentTiers((prev) => {
+      if (!prev.length) return prev;
+      return [
+        {
+          ...prev[0],
+          indexed_amount:
+            form.base_rent !== "" && form.base_rent != null
+              ? String(form.base_rent)
+              : prev[0].indexed_amount,
+        },
+        ...prev.slice(1),
+      ];
+    });
+  }, [form.base_rent, showRentTiers]);
 
   const loadData = async () => {
     setLoading(true);
@@ -385,6 +427,10 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         ),
         mark_past_as_paid: !!form.mark_past_as_paid,
       };
+      const serializedTiers = serializeTiers(rentTiers);
+      if (showRentTiers && serializedTiers.length >= 2) {
+        payload.historical_rents = serializedTiers;
+      }
       delete payload.garage_only;
       const created = await createContract(payload);
       if (documentFile && created?.id) {
@@ -641,9 +687,9 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                               placeholder="Último IPC publicado"
                             />
                             <Form.Text className="text-muted d-block">
-                              Si el contrato arrancó hace meses, cargá el IPC de
-                              hoy y se calcula el alquiler: base × (actual /
-                              base).
+                              Referencia del último IPC publicado. Si cargás
+                              tramos abajo, esos alquileres ganan: no se aplica
+                              este índice a todos los meses viejos.
                             </Form.Text>
                             {ipcCurrentHint && (
                               <Form.Text className="text-muted">
@@ -676,6 +722,14 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                     </>
                   )}
                 </>
+              )}
+
+              {showRentTiers && (
+                <HistoricalRentTiers
+                  tiers={rentTiers}
+                  onChange={setRentTiers}
+                  disabled={submitting}
+                />
               )}
 
               {form.start_date &&

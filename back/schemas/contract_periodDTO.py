@@ -49,6 +49,11 @@ class PeriodTaxesUpdate(BaseModel):
     api: Optional[float] = Field(None, ge=0)
     fire_insurance: Optional[float] = Field(None, ge=0)
 
+
+class PeriodRentUpdate(BaseModel):
+    indexed_amount: float = Field(..., gt=0)
+    apply_forward: bool = False
+
 class ContractPeriodResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     

@@ -1,11 +1,14 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
+from typing import List, Optional, Dict
 from datetime import date
 from schemas.enums.enums import IndexTypeEnum, AdjustmentFrequencyEnum, CurrencyEnum
-from typing import Optional, Dict
 
 from schemas.propertyDTO import TenantSimpleResponse
 
+
+class HistoricalRentTier(BaseModel):
+    from_date: date
+    indexed_amount: float = Field(..., gt=0)
 
 
 class CreateContractDTO(BaseModel):
@@ -32,6 +35,7 @@ class CreateContractDTO(BaseModel):
     fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
     mark_past_as_paid: bool = False
+    historical_rents: Optional[List[HistoricalRentTier]] = None
 
 class UpdateContractDTO(BaseModel):
     real_agency_id: Optional[int] = None
@@ -45,6 +49,7 @@ class UpdateContractDTO(BaseModel):
     fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
     mark_past_as_paid: Optional[bool] = None
+    historical_rents: Optional[List[HistoricalRentTier]] = None
 
 
 class ContractResponse(BaseModel):

@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert, Spinner } from "react-bootstrap";
 import { getContract, updateContract, uploadContractDocument } from "../api/contract";
+import { getPeriodsByContract } from "../api/contract_period";
 import { getAllAgencies } from "../api/real_agency";
 import { mediaUrl } from "../utils/mediaUrl";
 import FeedbackModal from "./FeedbackModal";
+import HistoricalRentTiers from "./HistoricalRentTiers";
+import {
+  groupPeriodsIntoTiers,
+  serializeTiers,
+} from "../utils/historicalRentTiers";
 
 const emptyForm = {
   real_agency_id: "",
@@ -50,6 +56,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const [form, setForm] = useState(emptyForm);
   const [feedback, setFeedback] = useState(null);
   const [agencies, setAgencies] = useState([]);
+  const [rentTiers, setRentTiers] = useState([]);
+  const [showRentTiers, setShowRentTiers] = useState(false);
 
   useEffect(() => {
     if (!show || !contractId) return;
@@ -58,10 +66,29 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
     setLoaded(false);
     setForm(emptyForm);
     setFeedback(null);
+    setRentTiers([]);
+    setShowRentTiers(false);
     setLoading(true);
-    Promise.all([getContract(contractId), getAllAgencies()])
-      .then(([data, agencyList]) => {
+    Promise.all([
+      getContract(contractId),
+      getAllAgencies(),
+      getPeriodsByContract(contractId).catch(() => []),
+    ])
+      .then(([data, agencyList, periods]) => {
         setAgencies(agencyList || []);
+        const currency = String(data.currency || "PESOS").toUpperCase();
+        const canEditTiers = currency !== "DOLARES";
+        setShowRentTiers(canEditTiers);
+        let tiers = canEditTiers ? groupPeriodsIntoTiers(periods || []) : [];
+        if (canEditTiers && !tiers.length && data.start_date) {
+          tiers = [
+            {
+              from_date: String(data.start_date).slice(0, 10),
+              indexed_amount: data.base_rent != null ? String(data.base_rent) : "",
+            },
+          ];
+        }
+        setRentTiers(tiers);
         setForm({
           real_agency_id: data.real_agency_id ?? "",
           pays_epe: !!data.pays_epe,
@@ -100,7 +127,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
     setSaving(true);
     setError("");
     try {
-      await updateContract(contractId, {
+      const payload = {
         real_agency_id: form.real_agency_id === "" ? null : Number(form.real_agency_id),
         pays_epe: form.pays_epe,
         pays_tgi: form.pays_tgi,
@@ -115,7 +142,12 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         ),
         notes: form.notes,
         mark_past_as_paid: !!form.mark_past_as_paid,
-      });
+      };
+      const serializedTiers = serializeTiers(rentTiers);
+      if (showRentTiers && serializedTiers.length >= 1) {
+        payload.historical_rents = serializedTiers;
+      }
+      await updateContract(contractId, payload);
       if (file) {
         await uploadContractDocument(contractId, file);
       }
@@ -125,7 +157,9 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         title: "Contrato actualizado",
         message: form.mark_past_as_paid
           ? "Los meses anteriores a hoy quedaron como ya cobrados y no se cuentan como transferencias nuevas. Si los habías cargado como pago, se corrigieron."
-          : "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.",
+          : showRentTiers && serializeTiers(rentTiers).length
+            ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos (incluye meses ya marcados como pagados de carga inicial)."
+            : "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.",
       });
     } catch (err) {
       setFeedback({
@@ -199,6 +233,13 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                   Si los cargaste con Pagar, se corrigen.
                 </Form.Text>
               </Alert>
+              {showRentTiers && (
+                <HistoricalRentTiers
+                  tiers={rentTiers}
+                  onChange={setRentTiers}
+                  disabled={saving}
+                />
+              )}
               <p className="text-muted small">
                 Activá EPE, TGI, API o el seguro e indicá el monto mensual.
                 Ese valor se suma al alquiler (alquiler + servicios = total) en
