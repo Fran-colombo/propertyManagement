@@ -15,6 +15,12 @@ import {
 } from "react-bootstrap";
 import { Calendar, Search } from "react-bootstrap-icons";
 import { collectSaleInstallment, getSales } from "../api/sale";
+import FeedbackModal from "../components/FeedbackModal";
+import {
+  buildCashReceiptText,
+  openCashReceiptPrint,
+  saleInstallmentConcept,
+} from "../utils/cashReceipt";
 
 const PAGE_SIZE = 20;
 
@@ -111,6 +117,7 @@ export default function Sales() {
   const [overpayReason, setOverpayReason] = useState("");
   const [overpayNote, setOverpayNote] = useState("");
   const [overpayError, setOverpayError] = useState("");
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -177,11 +184,14 @@ export default function Sales() {
 
   const sendCollect = async (overpay) => {
     if (!payTarget) return;
+    const target = payTarget;
+    const amount = Number(payForm.amount);
+    const method = payForm.method;
     setSaving(true);
     try {
-      const updated = await collectSaleInstallment(payTarget.sale.id, payTarget.inst.id, {
-        amount: Number(payForm.amount),
-        method: payForm.method,
+      const updated = await collectSaleInstallment(target.sale.id, target.inst.id, {
+        amount,
+        method,
         received_by: payForm.received_by,
         notes: payForm.notes.trim() || undefined,
         overpay_reason: overpay?.reason,
@@ -191,6 +201,15 @@ export default function Sales() {
       setPayTarget(null);
       setCuotasSale(updated);
       await load();
+      if (String(method).toLowerCase() === "efectivo") {
+        const inst = (updated.installments || []).find((row) => row.id === target.inst.id) || target.inst;
+        setFeedback({
+          variant: "success",
+          title: "Pago registrado",
+          message: "El cobro se registró correctamente.",
+          receipt: { sale: updated, inst, amount },
+        });
+      }
     } catch (err) {
       if (overpayOpen) {
         setOverpayError(err.message || "No se pudo registrar el cobro");
@@ -716,6 +735,32 @@ export default function Sales() {
           </Button>
         </Modal.Footer>
       </Modal>
+      <FeedbackModal
+        show={!!feedback}
+        variant={feedback?.variant}
+        title={feedback?.title}
+        message={feedback?.message}
+        onGenerateReceipt={
+          feedback?.receipt
+            ? () => {
+                const { sale, inst, amount } = feedback.receipt;
+                openCashReceiptPrint(
+                  buildCashReceiptText({
+                    payerName: sale.buyer_name,
+                    amount,
+                    currency: sale.currency,
+                    concept: saleInstallmentConcept(sale, inst),
+                    floor: sale.property_floor,
+                    apartment: sale.property_apartment,
+                    direction: sale.property_address || sale.property_direction,
+                    periodDate: inst.due_date,
+                  })
+                );
+              }
+            : undefined
+        }
+        onClose={() => setFeedback(null)}
+      />
     </div>
   );
 }

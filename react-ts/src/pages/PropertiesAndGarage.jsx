@@ -9,6 +9,11 @@ import EditContractModal from "../components/EditContractModal";
 import SellPropertyModal from "../components/SellPropertyModal";
 import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
+import {
+  buildCashReceiptText,
+  openCashReceiptPrint,
+  saleInstallmentConcept,
+} from "../utils/cashReceipt";
 
 const OCCUPANCY_ALL = "all";
 const OCCUPANCY_RENTED = "rented";
@@ -575,11 +580,21 @@ const PropertiesAndGarages = () => {
         show={!!propertyToSell}
         onHide={() => setPropertyToSell(null)}
         property={propertyToSell}
-        onSold={() => {
+        onSold={(result) => {
+          const sale = result?.sale;
+          const method = String(result?.method || "").toLowerCase();
+          const paidRows = result?.paidRows || [];
+          const cashPaid = method === "efectivo" && paidRows.length > 0 && sale;
           setFeedback({
             variant: "success",
             title: "Venta registrada",
             message: "La venta se guardó. Podés ver cuotas en Ventas y el cobro en Transacciones.",
+            receipt: cashPaid
+              ? {
+                  sale,
+                  paidRows,
+                }
+              : null,
           });
           loadData();
         }}
@@ -608,6 +623,40 @@ const PropertiesAndGarages = () => {
         variant={feedback?.variant}
         title={feedback?.title}
         message={feedback?.message}
+        onGenerateReceipt={
+          feedback?.receipt
+            ? () => {
+                const { sale, paidRows } = feedback.receipt;
+                const totalCash = (paidRows || []).reduce(
+                  (sum, row) => sum + Number(row.amount || 0),
+                  0
+                );
+                const first = paidRows?.[0];
+                const inst =
+                  (sale.installments || []).find(
+                    (row) =>
+                      String(row.kind || "cuota") === String(first?.kind || "cuota") &&
+                      Math.abs(Number(row.amount) - Number(first?.amount || 0)) < 0.02
+                  ) || sale.installments?.[0];
+                const concept =
+                  (paidRows || []).length > 1
+                    ? "pago de venta"
+                    : saleInstallmentConcept(sale, inst);
+                openCashReceiptPrint(
+                  buildCashReceiptText({
+                    payerName: sale.buyer_name,
+                    amount: totalCash,
+                    currency: sale.currency,
+                    concept,
+                    floor: sale.property_floor,
+                    apartment: sale.property_apartment,
+                    direction: sale.property_address || sale.property_direction,
+                    periodDate: inst?.due_date || sale.sale_date,
+                  })
+                );
+              }
+            : undefined
+        }
         onClose={() => setFeedback(null)}
       />
 

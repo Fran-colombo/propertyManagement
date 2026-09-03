@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert } from "react-bootstrap";
 import { FeedbackView } from "./FeedbackModal";
+import { getPeriodsByContract } from "../api/contract_period";
+import { buildCashReceiptText, openCashReceiptPrint, rentPeriodConcept } from "../utils/cashReceipt";
 
 function parseISODate(value) {
   if (!value) return null;
@@ -104,12 +106,15 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     try {
       await onPay(period.id, payload);
       setOverpayOpen(false);
+      const cashReceipt = !alreadyPaid && payload.method === "efectivo";
       setFeedback({
         variant: "success",
         title: alreadyPaid ? "Marcado como cobrado" : "Pago registrado",
         message: alreadyPaid
           ? "El período quedó PAGADO y no se registró una transferencia nueva."
           : "El pago se registró correctamente.",
+        amount: payload.amount,
+        cashReceipt,
       });
     } catch (err) {
       setOverpayOpen(false);
@@ -188,6 +193,30 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
           variant={feedback.variant}
           title={feedback.title}
           message={feedback.message}
+          onGenerateReceipt={
+            feedback.cashReceipt
+              ? async () => {
+                  try {
+                    const contractId = period?.contract?.id;
+                    const periods = contractId ? await getPeriodsByContract(contractId) : [];
+                    const text = buildCashReceiptText({
+                      payerName: period?.contract?.tenant?.name,
+                      amount: feedback.amount,
+                      currency: period?.contract?.currency,
+                      concept: rentPeriodConcept(periods, period?.id),
+                      floor: period?.contract?.property?.floor,
+                      apartment: period?.contract?.property?.apartment,
+                      direction: period?.contract?.property?.direction,
+                      garageLabel: period?.contract?.garage_label,
+                      periodDate: period?.start_date,
+                    });
+                    openCashReceiptPrint(text);
+                  } catch (err) {
+                    window.alert(err.message || "No se pudo generar el comprobante.");
+                  }
+                }
+              : undefined
+          }
           onClose={() => {
             const variant = feedback?.variant;
             setFeedback(null);

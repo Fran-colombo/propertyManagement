@@ -51,6 +51,9 @@ class PropertySaleResponse(BaseModel):
     id: int
     property_id: int
     property_direction: str
+    property_address: Optional[str] = None
+    property_floor: Optional[str] = None
+    property_apartment: Optional[str] = None
     seller_owner_id: Optional[int] = None
     seller_name: Optional[str] = None
     buyer_owner_id: Optional[int] = None

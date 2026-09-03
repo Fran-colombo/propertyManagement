@@ -163,7 +163,7 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
     setSaving(true);
     setError("");
     try {
-      await sellProperty(property.id, {
+      const created = await sellProperty(property.id, {
         keep_managing: keepManaging,
         buyer_owner_id: keepManaging ? Number(buyerOwnerId) : null,
         buyer_name: keepManaging ? undefined : buyerName.trim(),
@@ -175,7 +175,13 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
         payment_method: method,
         received_by: receivedBy,
       });
-      if (onSold) onSold();
+      if (onSold) {
+        onSold({
+          sale: created,
+          method,
+          paidRows: rows.filter((row) => row.paid),
+        });
+      }
       onHide();
     } catch (err) {
       setError(err.message || "No se pudo registrar la venta.");

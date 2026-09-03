@@ -1,6 +1,12 @@
 import { Modal, Button, Alert } from "react-bootstrap";
 
-export function FeedbackView({ variant = "info", title = "", message = "", onClose }) {
+export function FeedbackView({
+  variant = "info",
+  title = "",
+  message = "",
+  onClose,
+  onGenerateReceipt,
+}) {
   return (
     <>
       <Modal.Header closeButton>
@@ -10,10 +16,23 @@ export function FeedbackView({ variant = "info", title = "", message = "", onClo
         <Alert variant={variant} className="mb-0">
           {message}
         </Alert>
+        {variant === "success" && onGenerateReceipt && (
+          <p className="mt-3 mb-0">¿Generar comprobante para imprimir?</p>
+        )}
       </Modal.Body>
       <Modal.Footer>
+        {variant === "success" && onGenerateReceipt && (
+          <Button
+            variant="outline-primary"
+            onClick={() => {
+              onGenerateReceipt();
+            }}
+          >
+            Generar comprobante
+          </Button>
+        )}
         <Button variant="primary" onClick={onClose}>
-          Aceptar
+          {onGenerateReceipt ? "No, gracias" : "Aceptar"}
         </Button>
       </Modal.Footer>
     </>
@@ -30,6 +49,7 @@ export default function FeedbackModal({
   title = "",
   message = "",
   onClose,
+  onGenerateReceipt,
 }) {
   return (
     <Modal
@@ -47,6 +67,7 @@ export default function FeedbackModal({
         title={title}
         message={message}
         onClose={onClose}
+        onGenerateReceipt={onGenerateReceipt}
       />
     </Modal>
   );

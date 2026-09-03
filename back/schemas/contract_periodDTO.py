@@ -13,6 +13,8 @@ class TenantResponse(BaseModel):
 class PropertySimpleResponse(BaseModel):
     id: int
     direction: str
+    floor: Optional[str] = None
+    apartment: Optional[str] = None
 
 class AgencySimpleResponse(BaseModel):
     id: int
@@ -89,7 +91,9 @@ class ContractPeriodResponse(BaseModel):
         if contract_obj and contract_obj.property:
             property_dict = {
                 'id': contract_obj.property.id,
-                'direction': contract_obj.property.direction
+                'direction': contract_obj.property.direction,
+                'floor': getattr(contract_obj.property, 'floor', None),
+                'apartment': getattr(contract_obj.property, 'apartment', None),
             }
 
         tenant_dict = None
