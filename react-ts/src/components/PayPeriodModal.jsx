@@ -43,7 +43,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     amount: remainingNow,
     method: "transferencia",
     reference: "",
-    received_by: "INTERMEDIARIO",
+    received_by: "DUENO",
   });
   const [overpayOpen, setOverpayOpen] = useState(false);
   const [overpayReason, setOverpayReason] = useState("");
@@ -78,7 +78,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
       ),
       method: "transferencia",
       reference: "",
-      received_by: "INTERMEDIARIO",
+      received_by: "DUENO",
     });
     setOverpayOpen(false);
     setOverpayReason("");
@@ -383,8 +383,8 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
               })}
               required
             >
-              <option value="INTERMEDIARIO">Yo / intermediario (después se lo paso al dueño)</option>
               <option value="DUENO">El dueño (le pagaron directo)</option>
+              <option value="INTERMEDIARIO">Yo / intermediario (después se lo paso al dueño)</option>
             </Form.Select>
             <Form.Text className="text-muted">
               El método es cómo pagó el inquilino. Esto es quién tiene la plata.

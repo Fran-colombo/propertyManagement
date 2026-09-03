@@ -588,13 +588,39 @@ export default function Sales() {
                           )}
                         </td>
                         <td>
-                          {pending && (
+                          {pending ? (
                             <Button
                               size="sm"
                               variant={overdue ? "danger" : "success"}
                               onClick={() => openPay(cuotasSale, inst)}
                             >
                               Cobrar
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={() => {
+                                try {
+                                  openCashReceiptPrint(
+                                    buildCashReceiptText({
+                                      payerName: cuotasSale.buyer_name,
+                                      amount: inst.amount_paid || inst.amount,
+                                      currency: cuotasSale.currency,
+                                      concept: saleInstallmentConcept(cuotasSale, inst),
+                                      floor: cuotasSale.property_floor,
+                                      apartment: cuotasSale.property_apartment,
+                                      direction: cuotasSale.property_address || cuotasSale.property_direction,
+                                      periodDate: inst.due_date,
+                                      issuedAt: inst.paid_at || inst.due_date,
+                                    })
+                                  );
+                                } catch (err) {
+                                  window.alert(err.message || "No se pudo generar el comprobante.");
+                                }
+                              }}
+                            >
+                              Generar comprobante
                             </Button>
                           )}
                         </td>

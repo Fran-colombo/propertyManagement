@@ -13,6 +13,7 @@ import {
   buildCashReceiptText,
   openCashReceiptPrint,
   saleInstallmentConcept,
+  rentPeriodConcept,
 } from "../utils/cashReceipt";
 
 const OCCUPANCY_ALL = "all";
@@ -516,6 +517,38 @@ const PropertiesAndGarages = () => {
                           >
                             {period.payment_status}
                           </Badge>
+                          {period.payment_status === "PAGADO" && (
+                            <div className="mt-2">
+                              <Button
+                                size="sm"
+                                variant="outline-secondary"
+                                onClick={() => {
+                                  const contract = selectedProperty.rental_contract;
+                                  const periods = contract?.periods || [];
+                                  try {
+                                    openCashReceiptPrint(
+                                      buildCashReceiptText({
+                                        payerName: contract?.tenant?.name,
+                                        amount: period.amount_paid || total,
+                                        currency: contract?.currency,
+                                        concept: rentPeriodConcept(periods, period.id),
+                                        floor: selectedProperty.floor,
+                                        apartment: selectedProperty.apartment,
+                                        direction: selectedProperty.direction,
+                                        garageLabel: contract?.garage_label,
+                                        periodDate: period.start_date,
+                                        issuedAt: period.payment_date || period.start_date,
+                                      })
+                                    );
+                                  } catch (err) {
+                                    window.alert(err.message || "No se pudo generar el comprobante.");
+                                  }
+                                }}
+                              >
+                                Generar comprobante
+                              </Button>
+                            </div>
+                          )}
                           {period.termination_note && (
                             <div>
                               <small className="text-muted">{period.termination_note}</small>

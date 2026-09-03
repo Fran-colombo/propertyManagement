@@ -110,29 +110,72 @@ export function rentPeriodConcept(periods, periodId) {
 }
 
 export function openCashReceiptPrint(text) {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br />");
+  const escape = (value) =>
+    String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const [dateLine = "", , body = "", , sign = ""] = String(text).split("\n");
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <title>Comprobante de cobro</title>
   <style>
-    body { font-family: Georgia, "Times New Roman", serif; margin: 48px; color: #111; }
-    h1 { font-size: 18px; margin-bottom: 32px; }
-    p { font-size: 16px; line-height: 1.7; max-width: 720px; }
-    .actions { margin-top: 32px; }
-    @media print { .actions { display: none; } }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #e8eef4;
+      color: #1b2430;
+    }
+    .page {
+      max-width: 720px;
+      margin: 32px auto;
+      padding: 40px 48px;
+      background: #fff;
+      border: 1px solid #d5dde6;
+      border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(20, 40, 70, 0.12);
+    }
+    h1 {
+      font-size: 22px;
+      margin: 0 0 8px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .rule { height: 2px; background: #1b2430; margin: 0 0 24px; }
+    .date { color: #4a5568; margin-bottom: 20px; }
+    .body { font-size: 16px; line-height: 1.7; }
+    .sign { margin-top: 40px; }
+    .actions { margin-top: 28px; }
+    .actions button {
+      background: #1b4f8a;
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 18px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    @media print {
+      body { background: #fff; }
+      .page { margin: 0; padding: 0; border: 0; box-shadow: none; max-width: none; }
+      .actions { display: none; }
+    }
   </style>
 </head>
 <body>
-  <h1>Comprobante de cobro</h1>
-  <p>${escaped}</p>
-  <div class="actions">
-    <button onclick="window.print()">Imprimir</button>
+  <div class="page">
+    <h1>Comprobante de cobro</h1>
+    <div class="rule"></div>
+    <div class="date">${escape(dateLine)}</div>
+    <div class="body">${escape(body)}</div>
+    <div class="sign">${escape(sign)}</div>
+    <div class="actions">
+      <button onclick="window.print()">Imprimir</button>
+    </div>
   </div>
 </body>
 </html>`;
