@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from models.property import Garage, Property
 from models.person import Owner
 from schemas.garageDTO import GarageCreate, GarageRead, GarageUpdate
@@ -20,12 +21,20 @@ class GarageRepository:
     def get_all_garages(db: Session):
         return (
             db.query(Garage)
+            .outerjoin(Property, Garage.property_id == Property.id)
             .options(
                 joinedload(Garage.owner),
                 joinedload(Garage.property),
                 joinedload(Garage.rental_contract),
             )
             .filter(Garage.status == 1)
+            .filter(
+                or_(
+                    Garage.property_id.is_(None),
+                    Property.management_status.is_(None),
+                    Property.management_status != "SOLD_OUT",
+                )
+            )
             .all()
         )
 

@@ -5,6 +5,8 @@ from models.property import Property, Garage
 from models.contract import RentalContract
 from models.person import Owner
 
+from sqlalchemy import or_
+
 class PropertyRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -36,6 +38,12 @@ class PropertyRepository:
         return (
             self.db.query(Property)
             .filter(Property.status == 1)
+            .filter(
+                or_(
+                    Property.management_status.is_(None),
+                    Property.management_status.in_(("ACTIVE", "DELIVERED")),
+                )
+            )
             .options(
                 joinedload(Property.owner),
                 joinedload(Property.rental_contract)

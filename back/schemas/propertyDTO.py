@@ -97,6 +97,7 @@ class PropertyResponse(BaseModel):
     owner: Optional[OwnerSimpleResponse] = None
     rental_contract: Optional[RentalContractWithPeriodsResponse] = None
     garages: List[GarageResponse] = []
+    management_status: Optional[str] = "ACTIVE"
 
     class Config:
         from_attributes = True

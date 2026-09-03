@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import People from "./pages/People";
 import Transactions from "./pages/Transactions";
 import PropertiesAndGarages from "./pages/PropertiesAndGarage";
+import Sales from "./pages/Sales";
 import ContractsTable from "./pages/Contracts";
 import AllContracts from "./pages/AllContracts";
 import AuthProvider from "../context/AuthProvider";
@@ -46,6 +47,16 @@ function App() {
               <PrivateRoute>
                 <Layout>
                   <PropertiesAndGarages />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/sales"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <Sales />
                 </Layout>
               </PrivateRoute>
             }

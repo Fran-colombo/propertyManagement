@@ -1004,6 +1004,7 @@ class RentalContractService:
         waive_remaining_rent: bool = False,
         receipt_path: str | None = None,
         receipt_original_name: str | None = None,
+        commit: bool = True,
     ):
         from models.contract_termination import (
             ContractTermination,
@@ -1113,7 +1114,10 @@ class RentalContractService:
                 history.settlement_direction = direction.value
                 history.receipt_path = receipt_path
 
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
             return {
                 "message": "Baja registrada correctamente",
                 "contract_id": contract.id,
@@ -1126,8 +1130,10 @@ class RentalContractService:
             }
 
         except HTTPException:
-            self.db.rollback()
+            if commit:
+                self.db.rollback()
             raise
         except Exception as e:
-            self.db.rollback()
+            if commit:
+                self.db.rollback()
             raise HTTPException(status_code=500, detail=f"Error al cancelar el contrato: {str(e)}")

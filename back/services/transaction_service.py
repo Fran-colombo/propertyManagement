@@ -184,7 +184,7 @@ class TransactionService:
         amount_paid = record.period_amount_paid or 0
         fallback_date = record.date or date.today()
         return TransactionHistoryResponse(
-            id=record.transaction_id,
+            id=record.transaction_id or record.id or 0,
             amount=record.amount or 0,
             date=fallback_date,
             method=record.method,
@@ -194,6 +194,7 @@ class TransactionService:
             received_by=normalize_received_by(record.received_by),
             remitted_to_owner=is_remitted(record),
             remitted_at=record.remitted_at,
+            sale_id=record.sale_id,
             contract=ContractInfo(
                 id=record.contract_id or 0,
                 owner=SimpleUser(id=record.owner_id or 0, name=record.owner_name or "Sin dueño"),
