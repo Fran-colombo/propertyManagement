@@ -3,7 +3,8 @@
 .env.local
 .env.production
 .env.demo
-
+.env.production.example
+.env.demo.example
 # SQLite + uploads: cada entorno (local / VPS) tiene el suyo.
 # Si se versiona properties.db, git pull pisa la base de producción.
 properties_data/*
