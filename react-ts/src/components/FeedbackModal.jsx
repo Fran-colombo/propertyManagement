@@ -17,7 +17,7 @@ export function FeedbackView({
           {message}
         </Alert>
         {variant === "success" && onGenerateReceipt && (
-          <p className="mt-3 mb-0">¿Generar comprobantes para imprimir? Salen las dos copias: archivo y cliente.</p>
+          <p className="mt-3 mb-0">¿Generar comprobantes para imprimir? Salen las dos copias en la misma hoja.</p>
         )}
       </Modal.Body>
       <Modal.Footer>

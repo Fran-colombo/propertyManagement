@@ -128,11 +128,10 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;");
 }
 
-function receiptPageHtml({ title, subtitle, dateLine, body, sign }) {
+function receiptBlockHtml({ dateLine, body, sign }) {
   return `
-  <section class="page">
-    <div class="kicker">${escapeHtml(subtitle)}</div>
-    <h1>${escapeHtml(title)}</h1>
+  <section class="receipt">
+    <h1>Recibo</h1>
     <div class="rule"></div>
     <div class="date">${escapeHtml(dateLine)}</div>
     <div class="body">${escapeHtml(body)}</div>
@@ -147,7 +146,7 @@ export function openCashReceiptPrint(data) {
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Comprobantes de cobro</title>
+  <title>Recibo</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -160,7 +159,7 @@ export function openCashReceiptPrint(data) {
     .toolbar {
       max-width: 720px;
       margin: 24px auto 0;
-      text-align: right;
+      text-align: center;
     }
     .toolbar button {
       background: #1b4f8a;
@@ -171,61 +170,54 @@ export function openCashReceiptPrint(data) {
       font-size: 14px;
       cursor: pointer;
     }
-    .page {
+    .sheet {
       max-width: 720px;
       margin: 20px auto 32px;
-      padding: 40px 48px;
+      padding: 36px 40px;
       background: #fff;
       border: 1px solid #d5dde6;
       border-radius: 8px;
       box-shadow: 0 12px 32px rgba(20, 40, 70, 0.12);
     }
-    .kicker {
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #5b6b7c;
-      margin-bottom: 6px;
+    .receipt { text-align: center; }
+    .receipt + .cut { margin: 28px 0; }
+    .cut {
+      border: 0;
+      border-top: 1px dashed #8a97a6;
     }
     h1 {
-      font-size: 22px;
+      font-size: 20px;
       margin: 0 0 8px;
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
-    .rule { height: 2px; background: #1b2430; margin: 0 0 24px; }
-    .date { color: #4a5568; margin-bottom: 20px; }
-    .body { font-size: 16px; line-height: 1.7; }
-    .sign { margin-top: 40px; }
+    .rule { height: 2px; width: 160px; background: #1b2430; margin: 0 auto 18px; }
+    .date { color: #4a5568; margin-bottom: 16px; }
+    .body { font-size: 15px; line-height: 1.7; max-width: 560px; margin: 0 auto; }
+    .sign { margin-top: 28px; }
     @media print {
       body { background: #fff; }
       .toolbar { display: none; }
-      .page {
+      .sheet {
         margin: 0;
-        padding: 0;
+        padding: 12mm 14mm;
         border: 0;
         box-shadow: none;
         max-width: none;
-        page-break-after: always;
       }
-      .page:last-of-type { page-break-after: auto; }
+      .receipt, .sheet { page-break-inside: avoid; page-break-after: auto; }
     }
   </style>
 </head>
 <body>
   <div class="toolbar">
-    <button onclick="window.print()">Imprimir ambas copias</button>
+    <button onclick="window.print()">Imprimir</button>
   </div>
-  ${receiptPageHtml({
-    title: "Comprobante de cobro",
-    subtitle: "Original — archivo",
-    ...archive,
-  })}
-  ${receiptPageHtml({
-    title: "Comprobante de cobro",
-    subtitle: "Copia — se otorga al cliente",
-    ...client,
-  })}
+  <div class="sheet">
+    ${receiptBlockHtml(archive)}
+    <hr class="cut" />
+    ${receiptBlockHtml(client)}
+  </div>
 </body>
 </html>`;
   const popup = window.open("", "_blank");
