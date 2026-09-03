@@ -142,5 +142,6 @@ class PropertyService:
                     ),
                 )
                 for g in prop.garages
-            ]
+            ],
+            management_status=getattr(prop, "management_status", None) or "ACTIVE",
         )

@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
 from schemas.propertyDTO import CreatePropertyDTO, UpdatePropertyDTO, PropertyResponse
+from schemas.saleDTO import PropertySaleResponse, SellPropertyDTO
 from services.property_service import PropertyService
+from services.property_sale_service import PropertySaleService
 
 router = APIRouter(prefix="/properties", tags=["Properties"])
 
@@ -26,6 +28,15 @@ def get_properties(
     RentalContractService(db).release_properties_from_ended_contracts()
     
     return service.get_properties()
+
+@router.post("/{prop_id}/sell", response_model=PropertySaleResponse)
+def sell_property(
+    prop_id: int,
+    data: SellPropertyDTO,
+    db: Session = Depends(get_db),
+):
+    return PropertySaleService(db).sell_property(prop_id, data)
+
 
 @router.get("/{prop_id}", response_model=PropertyResponse)
 def get_property_by_id(

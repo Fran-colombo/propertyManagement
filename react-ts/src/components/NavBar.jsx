@@ -18,6 +18,7 @@ export default function NavigationBar() {
   const navItems = [
     { to: "/people", icon: <People className="me-2" />, label: "Personas" },
     { to: "/properties", icon: <Building className="me-2" />, label: "Propiedades" },
+    { to: "/sales", icon: <CashStack className="me-2" />, label: "Ventas" },
     { to: "/transactions", icon: <CashStack className="me-2" />, label: "Transacciones" },
     { to: "/contracts", icon: <FileEarmarkText className="me-2" />, label: "Contratos activos" },
     { to: "/all-contracts", icon: <FileEarmarkText className="me-2" />, label: "Historial de contratos" },
