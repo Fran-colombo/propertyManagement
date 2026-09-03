@@ -17,7 +17,6 @@ import { Calendar, Search } from "react-bootstrap-icons";
 import { collectSaleInstallment, getSales } from "../api/sale";
 import FeedbackModal from "../components/FeedbackModal";
 import {
-  buildCashReceiptText,
   openCashReceiptPrint,
   saleInstallmentConcept,
 } from "../utils/cashReceipt";
@@ -602,8 +601,7 @@ export default function Sales() {
                               variant="outline-secondary"
                               onClick={() => {
                                 try {
-                                  openCashReceiptPrint(
-                                    buildCashReceiptText({
+                                  openCashReceiptPrint({
                                       payerName: cuotasSale.buyer_name,
                                       amount: inst.amount_paid || inst.amount,
                                       currency: cuotasSale.currency,
@@ -613,8 +611,7 @@ export default function Sales() {
                                       direction: cuotasSale.property_address || cuotasSale.property_direction,
                                       periodDate: inst.due_date,
                                       issuedAt: inst.paid_at || inst.due_date,
-                                    })
-                                  );
+                                    });
                                 } catch (err) {
                                   window.alert(err.message || "No se pudo generar el comprobante.");
                                 }
@@ -770,8 +767,7 @@ export default function Sales() {
           feedback?.receipt
             ? () => {
                 const { sale, inst, amount } = feedback.receipt;
-                openCashReceiptPrint(
-                  buildCashReceiptText({
+                openCashReceiptPrint({
                     payerName: sale.buyer_name,
                     amount,
                     currency: sale.currency,
@@ -780,8 +776,7 @@ export default function Sales() {
                     apartment: sale.property_apartment,
                     direction: sale.property_address || sale.property_direction,
                     periodDate: inst.due_date,
-                  })
-                );
+                  });
               }
             : undefined
         }

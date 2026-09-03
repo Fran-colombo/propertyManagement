@@ -10,7 +10,6 @@ import SellPropertyModal from "../components/SellPropertyModal";
 import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
 import {
-  buildCashReceiptText,
   openCashReceiptPrint,
   saleInstallmentConcept,
   rentPeriodConcept,
@@ -526,8 +525,7 @@ const PropertiesAndGarages = () => {
                                   const contract = selectedProperty.rental_contract;
                                   const periods = contract?.periods || [];
                                   try {
-                                    openCashReceiptPrint(
-                                      buildCashReceiptText({
+                                    openCashReceiptPrint({
                                         payerName: contract?.tenant?.name,
                                         amount: period.amount_paid || total,
                                         currency: contract?.currency,
@@ -538,8 +536,7 @@ const PropertiesAndGarages = () => {
                                         garageLabel: contract?.garage_label,
                                         periodDate: period.start_date,
                                         issuedAt: period.payment_date || period.start_date,
-                                      })
-                                    );
+                                      });
                                   } catch (err) {
                                     window.alert(err.message || "No se pudo generar el comprobante.");
                                   }
@@ -675,8 +672,7 @@ const PropertiesAndGarages = () => {
                   (paidRows || []).length > 1
                     ? "pago de venta"
                     : saleInstallmentConcept(sale, inst);
-                openCashReceiptPrint(
-                  buildCashReceiptText({
+                openCashReceiptPrint({
                     payerName: sale.buyer_name,
                     amount: totalCash,
                     currency: sale.currency,
@@ -685,8 +681,7 @@ const PropertiesAndGarages = () => {
                     apartment: sale.property_apartment,
                     direction: sale.property_address || sale.property_direction,
                     periodDate: inst?.due_date || sale.sale_date,
-                  })
-                );
+                  });
               }
             : undefined
         }

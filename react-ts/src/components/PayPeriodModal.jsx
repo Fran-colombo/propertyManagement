@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert } from "react-bootstrap";
 import { FeedbackView } from "./FeedbackModal";
 import { getPeriodsByContract } from "../api/contract_period";
-import { buildCashReceiptText, openCashReceiptPrint, rentPeriodConcept } from "../utils/cashReceipt";
+import { openCashReceiptPrint, rentPeriodConcept } from "../utils/cashReceipt";
 
 function parseISODate(value) {
   if (!value) return null;
@@ -199,7 +199,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
                   try {
                     const contractId = period?.contract?.id;
                     const periods = contractId ? await getPeriodsByContract(contractId) : [];
-                    const text = buildCashReceiptText({
+                    openCashReceiptPrint({
                       payerName: period?.contract?.tenant?.name,
                       amount: feedback.amount,
                       currency: period?.contract?.currency,
@@ -210,7 +210,6 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
                       garageLabel: period?.contract?.garage_label,
                       periodDate: period?.start_date,
                     });
-                    openCashReceiptPrint(text);
                   } catch (err) {
                     window.alert(err.message || "No se pudo generar el comprobante.");
                   }

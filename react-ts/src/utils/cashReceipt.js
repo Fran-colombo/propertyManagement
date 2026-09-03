@@ -57,33 +57,40 @@ export function unitBuildingLabel({ floor, apartment, direction, garageLabel } =
   return { unidad, edificio };
 }
 
-export function buildCashReceiptText({
-  payerName,
-  amount,
-  currency,
-  concept,
-  floor,
-  apartment,
-  direction,
-  garageLabel,
-  periodDate,
-  issuedAt,
-} = {}) {
-  const currencyWord = isDollars(currency) ? "dólares" : "pesos";
-  const { unidad, edificio } = unitBuildingLabel({
-    floor,
-    apartment,
-    direction,
-    garageLabel,
-  });
-  const letters = amountToSpanish(amount);
-  const money = formatMoney(amount, currency);
+function receiptParts(data = {}) {
+  const currencyWord = isDollars(data.currency) ? "dólares" : "pesos";
+  const { unidad, edificio } = unitBuildingLabel(data);
+  return {
+    dateLine: rosarioDate(data.issuedAt),
+    payerName: data.payerName || "—",
+    amountWords: `${currencyWord} ${amountToSpanish(data.amount)} (${formatMoney(data.amount, data.currency)})`,
+    concept: data.concept || "pago",
+    unidad,
+    edificio,
+    month: monthYearLabel(data.periodDate),
+    sign: "Firma y aclaración: ______________________________",
+  };
+}
+
+export function buildCashReceiptText(data = {}) {
+  const p = receiptParts(data);
   return [
-    rosarioDate(issuedAt),
+    p.dateLine,
     "",
-    `Recibí de ${payerName || "—"} la suma de ${currencyWord} ${letters} (${money}) en concepto de ${concept}, unidad ${unidad}, edificio ${edificio}, mes ${monthYearLabel(periodDate)}.`,
+    `Recibí de ${p.payerName} la suma de ${p.amountWords} en concepto de ${p.concept}, unidad ${p.unidad}, edificio ${p.edificio}, mes ${p.month}.`,
     "",
-    "Firma y aclaración: ______________________________",
+    p.sign,
+  ].join("\n");
+}
+
+export function buildClientReceiptText(data = {}) {
+  const p = receiptParts(data);
+  return [
+    p.dateLine,
+    "",
+    `Se otorga el presente comprobante a ${p.payerName} por haber abonado la suma de ${p.amountWords} en concepto de ${p.concept}, unidad ${p.unidad}, edificio ${p.edificio}, mes ${p.month}.`,
+    "",
+    p.sign,
   ].join("\n");
 }
 
@@ -109,18 +116,38 @@ export function rentPeriodConcept(periods, periodId) {
   return `pago de cuota ${n}/${total}`;
 }
 
-export function openCashReceiptPrint(text) {
-  const escape = (value) =>
-    String(value || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+function splitReceipt(text) {
   const [dateLine = "", , body = "", , sign = ""] = String(text).split("\n");
+  return { dateLine, body, sign };
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function receiptPageHtml({ title, subtitle, dateLine, body, sign }) {
+  return `
+  <section class="page">
+    <div class="kicker">${escapeHtml(subtitle)}</div>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="rule"></div>
+    <div class="date">${escapeHtml(dateLine)}</div>
+    <div class="body">${escapeHtml(body)}</div>
+    <div class="sign">${escapeHtml(sign)}</div>
+  </section>`;
+}
+
+export function openCashReceiptPrint(data) {
+  const archive = splitReceipt(typeof data === "string" ? data : buildCashReceiptText(data));
+  const client = splitReceipt(typeof data === "string" ? data : buildClientReceiptText(data));
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Comprobante de cobro</title>
+  <title>Comprobantes de cobro</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -130,14 +157,35 @@ export function openCashReceiptPrint(text) {
       background: #e8eef4;
       color: #1b2430;
     }
+    .toolbar {
+      max-width: 720px;
+      margin: 24px auto 0;
+      text-align: right;
+    }
+    .toolbar button {
+      background: #1b4f8a;
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 18px;
+      font-size: 14px;
+      cursor: pointer;
+    }
     .page {
       max-width: 720px;
-      margin: 32px auto;
+      margin: 20px auto 32px;
       padding: 40px 48px;
       background: #fff;
       border: 1px solid #d5dde6;
       border-radius: 8px;
       box-shadow: 0 12px 32px rgba(20, 40, 70, 0.12);
+    }
+    .kicker {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #5b6b7c;
+      margin-bottom: 6px;
     }
     h1 {
       font-size: 22px;
@@ -149,34 +197,35 @@ export function openCashReceiptPrint(text) {
     .date { color: #4a5568; margin-bottom: 20px; }
     .body { font-size: 16px; line-height: 1.7; }
     .sign { margin-top: 40px; }
-    .actions { margin-top: 28px; }
-    .actions button {
-      background: #1b4f8a;
-      color: #fff;
-      border: 0;
-      border-radius: 6px;
-      padding: 10px 18px;
-      font-size: 14px;
-      cursor: pointer;
-    }
     @media print {
       body { background: #fff; }
-      .page { margin: 0; padding: 0; border: 0; box-shadow: none; max-width: none; }
-      .actions { display: none; }
+      .toolbar { display: none; }
+      .page {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        box-shadow: none;
+        max-width: none;
+        page-break-after: always;
+      }
+      .page:last-of-type { page-break-after: auto; }
     }
   </style>
 </head>
 <body>
-  <div class="page">
-    <h1>Comprobante de cobro</h1>
-    <div class="rule"></div>
-    <div class="date">${escape(dateLine)}</div>
-    <div class="body">${escape(body)}</div>
-    <div class="sign">${escape(sign)}</div>
-    <div class="actions">
-      <button onclick="window.print()">Imprimir</button>
-    </div>
+  <div class="toolbar">
+    <button onclick="window.print()">Imprimir ambas copias</button>
   </div>
+  ${receiptPageHtml({
+    title: "Comprobante de cobro",
+    subtitle: "Original — archivo",
+    ...archive,
+  })}
+  ${receiptPageHtml({
+    title: "Comprobante de cobro",
+    subtitle: "Copia — se otorga al cliente",
+    ...client,
+  })}
 </body>
 </html>`;
   const popup = window.open("", "_blank");
