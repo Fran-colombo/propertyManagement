@@ -1,19 +1,18 @@
-# Secrets / local env
+# Environment / secrets
 .env
-.env.local
-.env.production
-.env.production.example
-.env.demo
-.env.production.example
-.env.demo.example
-# SQLite + uploads: cada entorno (local / VPS) tiene el suyo.
-# Si se versiona properties.db, git pull pisa la base de producción.
-properties_data/*
-!properties_data/.gitkeep
+.env.*
+!.env.example
+!.env.*.example
 
-# Python / Node
-**/__pycache__/
-**/.venv/
-**/venv/
-**/node_modules/
-**/dist/
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Data
+properties_data/
