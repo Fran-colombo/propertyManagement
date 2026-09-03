@@ -135,14 +135,20 @@ const Transactions = () => {
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status?.toLowerCase()) {
+  const getStatusBadge = (status, method) => {
+    const value = String(status || "").toLowerCase();
+    const isSale = String(method || "").toLowerCase() === "venta";
+    if (value === "pagada" || (isSale && (value === "pagado" || value === "completado"))) {
+      return <Badge bg="success">Pagada</Badge>;
+    }
+    switch (value) {
       case "pagado":
       case "completado":
-        return <Badge bg="success">{status}</Badge>;
+        return <Badge bg="success">Pagado</Badge>;
       case "parcial":
+        return <Badge bg="warning" text="dark">Parcial</Badge>;
       case "pendiente":
-        return <Badge bg="warning" text="dark">{status}</Badge>;
+        return <Badge bg="warning" text="dark">Pendiente</Badge>;
       case "cancelado":
       case "contrato_terminado":
         return <Badge bg="danger">{status}</Badge>;
@@ -374,14 +380,14 @@ const Transactions = () => {
                     <th>Fecha</th>
                     <th>Dirección</th>
                     <th>Dueño</th>
-                    <th>Inquilino</th>
+                    <th>Inquilino / Comprador</th>
                     <th>Monto</th>
                     <th>Moneda</th>
                     <th>Método</th>
                     <th>Cobró</th>
                     <th>Notas</th>
                     <th>Estado</th>
-                    <th>Total del Período</th>
+                    <th>Total período / venta</th>
                     <th>Pagado</th>
                     <th>Acciones</th>
                   </tr>
@@ -389,6 +395,7 @@ const Transactions = () => {
                 <tbody>
                   {transactions.map((transaction) => {
                     const currency = transaction.currency || "PESOS";
+                    const isSale = String(transaction.method || "").toLowerCase() === "venta";
                     return (
                       <tr key={transaction.id}>
                         <td>{new Date(transaction.date).toLocaleDateString("es-AR")}</td>
@@ -419,8 +426,11 @@ const Transactions = () => {
                           )}
                         </td>
                         <td>{renderNotes(transaction.notes, transaction.method)}</td>
-                        <td>{getStatusBadge(transaction.period?.payment_status)}</td>
-                        <td>{formatMoney(transaction.period?.total_amount, currency)}</td>
+                        <td>{getStatusBadge(transaction.period?.payment_status, transaction.method)}</td>
+                        <td>
+                          {isSale && <div className="small text-muted">Venta</div>}
+                          {formatMoney(transaction.period?.total_amount, currency)}
+                        </td>
                         <td>{formatMoney(transaction.period?.amount_paid, currency)}</td>
                         <td>
                           <div className="d-flex flex-column gap-1">

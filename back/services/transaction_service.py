@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from models.property_sale import PropertySale, PropertySalePayment
 from models.transaction_history import TransactionHistory
 from models.transactions import Transaction
 from schemas.transactionDTO import (
@@ -153,9 +154,10 @@ class TransactionService:
             .limit(page_size)
             .all()
         )
+        sale_snaps = self._sale_snapshots({r.sale_id for r in items if r.sale_id})
         pages = ceil(total / page_size) if page_size and total else 0
         return PaginatedTransactionHistoryResponse(
-            items=[self._history_to_dto(record) for record in items],
+            items=[self._history_to_dto(record, sale_snaps.get(record.sale_id)) for record in items],
             total=total,
             page=page,
             page_size=page_size,
@@ -169,19 +171,72 @@ class TransactionService:
     def get_all_history(self) -> list[TransactionHistoryResponse]:
         """Obtiene todas las transacciones del historial"""
         history_records = self.db.query(TransactionHistory).order_by(TransactionHistory.date.desc()).all()
-        return [self._history_to_dto(record) for record in history_records]
+        sale_snaps = self._sale_snapshots({r.sale_id for r in history_records if r.sale_id})
+        return [self._history_to_dto(record, sale_snaps.get(record.sale_id)) for record in history_records]
 
     def get_history_by_period(self, period_id: int) -> list[TransactionHistoryResponse]:
         """Obtiene transacciones del historial por período"""
         history_records = self.db.query(TransactionHistory).filter(
             TransactionHistory.period_id == period_id
         ).order_by(TransactionHistory.date.desc()).all()
-        return [self._history_to_dto(record) for record in history_records]
+        sale_snaps = self._sale_snapshots({r.sale_id for r in history_records if r.sale_id})
+        return [self._history_to_dto(record, sale_snaps.get(record.sale_id)) for record in history_records]
 
-    def _history_to_dto(self, record: TransactionHistory) -> TransactionHistoryResponse:
+    def _sale_snapshots(self, sale_ids: set[int]) -> dict:
+        if not sale_ids:
+            return {}
+        paid_rows = (
+            self.db.query(
+                PropertySalePayment.sale_id,
+                func.coalesce(func.sum(PropertySalePayment.amount_paid), 0.0),
+            )
+            .filter(PropertySalePayment.sale_id.in_(sale_ids))
+            .group_by(PropertySalePayment.sale_id)
+            .all()
+        )
+        paid_by = {sale_id: float(paid or 0) for sale_id, paid in paid_rows}
+        sales = self.db.query(PropertySale).filter(PropertySale.id.in_(sale_ids)).all()
+        snapshots = {}
+        for sale in sales:
+            paid = round(paid_by.get(sale.id, 0.0), 2)
+            total = float(sale.total_amount or 0)
+            if paid + 0.009 >= total:
+                sale_status = "PAGADA"
+            elif paid > 0.009:
+                sale_status = "PARCIAL"
+            else:
+                sale_status = "PENDIENTE"
+            snapshots[sale.id] = {
+                "total": total,
+                "paid": paid,
+                "status": sale_status,
+            }
+            (
+                self.db.query(TransactionHistory)
+                .filter(TransactionHistory.sale_id == sale.id)
+                .update(
+                    {
+                        TransactionHistory.period_amount_paid: paid,
+                        TransactionHistory.period_total_amount: total,
+                        TransactionHistory.period_payment_status: sale_status,
+                    },
+                    synchronize_session=False,
+                )
+            )
+        if snapshots:
+            self.db.commit()
+        return snapshots
+
+    def _history_to_dto(self, record: TransactionHistory, sale_snap: dict | None = None) -> TransactionHistoryResponse:
         """Convierte un registro de historial a DTO"""
-        total_amount = record.period_total_amount or 0
-        amount_paid = record.period_amount_paid or 0
+        if sale_snap:
+            total_amount = sale_snap["total"]
+            amount_paid = sale_snap["paid"]
+            payment_status = sale_snap["status"]
+        else:
+            total_amount = record.period_total_amount or 0
+            amount_paid = record.period_amount_paid or 0
+            payment_status = record.period_payment_status or ""
         fallback_date = record.date or date.today()
         return TransactionHistoryResponse(
             id=record.transaction_id or record.id or 0,
@@ -207,7 +262,7 @@ class TransactionService:
                 end_date=record.period_end_date or fallback_date,
                 due_date=record.period_due_date or fallback_date,
                 total_amount=total_amount,
-                payment_status=record.period_payment_status or "",
+                payment_status=payment_status,
                 amount_paid=amount_paid,
                 remaining_amount=total_amount - amount_paid
             )

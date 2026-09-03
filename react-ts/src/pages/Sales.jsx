@@ -1,8 +1,33 @@
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Form, Modal, Pagination, Spinner, Table } from "react-bootstrap";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Col,
+  Form,
+  InputGroup,
+  Modal,
+  Pagination,
+  Row,
+  Spinner,
+  Table,
+} from "react-bootstrap";
+import { Calendar, Search } from "react-bootstrap-icons";
 import { collectSaleInstallment, getSales } from "../api/sale";
 
 const PAGE_SIZE = 20;
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftMonth(value, delta) {
+  const [y, m] = (value || currentMonthValue()).split("-").map(Number);
+  const date = new Date(y, m - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 
 function isDollars(currency) {
   return String(currency || "PESOS").toUpperCase() === "DOLARES";
@@ -23,6 +48,12 @@ function statusBadge(status) {
   return <Badge bg="secondary">Pendiente</Badge>;
 }
 
+function installmentSummary(sale) {
+  const list = sale.installments || [];
+  const paid = list.filter((inst) => Number(inst.remaining) <= 0.009).length;
+  return `${list.length} cuota${list.length === 1 ? "" : "s"} · ${paid} cobrada${paid === 1 ? "" : "s"}`;
+}
+
 export default function Sales() {
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
@@ -30,6 +61,12 @@ export default function Sales() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState(currentMonthValue);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [managingFilter, setManagingFilter] = useState("");
+  const [cuotasSale, setCuotasSale] = useState(null);
   const [payTarget, setPayTarget] = useState(null);
   const [payForm, setPayForm] = useState({
     amount: "",
@@ -39,14 +76,34 @@ export default function Sales() {
   });
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, dateFilter, statusFilter, managingFilter]);
+
   const load = async () => {
     try {
       setLoading(true);
       setError("");
-      const data = await getSales({ page, pageSize: PAGE_SIZE });
+      const data = await getSales({
+        page,
+        pageSize: PAGE_SIZE,
+        q: debouncedSearch || undefined,
+        status: statusFilter || undefined,
+        keepManaging: managingFilter || undefined,
+        month: dateFilter || undefined,
+      });
       setItems(data?.items || []);
       setTotal(data?.total || 0);
       setPages(data?.pages || 0);
+      if (cuotasSale) {
+        const updated = (data?.items || []).find((sale) => sale.id === cuotasSale.id);
+        if (updated) setCuotasSale(updated);
+      }
     } catch (err) {
       setError(err.message || "No se pudieron cargar las ventas");
       setItems([]);
@@ -57,7 +114,7 @@ export default function Sales() {
 
   useEffect(() => {
     load();
-  }, [page]);
+  }, [page, debouncedSearch, dateFilter, statusFilter, managingFilter]);
 
   const openPay = (sale, inst) => {
     setPayTarget({ sale, inst });
@@ -74,13 +131,14 @@ export default function Sales() {
     if (!payTarget) return;
     setSaving(true);
     try {
-      await collectSaleInstallment(payTarget.sale.id, payTarget.inst.id, {
+      const updated = await collectSaleInstallment(payTarget.sale.id, payTarget.inst.id, {
         amount: Number(payForm.amount),
         method: payForm.method,
         received_by: payForm.received_by,
         notes: payForm.notes.trim() || undefined,
       });
       setPayTarget(null);
+      setCuotasSale(updated);
       await load();
     } catch (err) {
       setError(err.message || "No se pudo registrar el cobro");
@@ -88,6 +146,14 @@ export default function Sales() {
       setSaving(false);
     }
   };
+
+  const pageItems = [];
+  const totalPages = Math.max(pages, 1);
+  const windowStart = Math.max(1, page - 2);
+  const windowEnd = Math.min(totalPages, windowStart + 4);
+  for (let p = windowStart; p <= windowEnd; p += 1) {
+    pageItems.push(p);
+  }
 
   return (
     <div>
@@ -101,6 +167,84 @@ export default function Sales() {
           {error}
         </Alert>
       )}
+      <Card className="mb-4">
+        <Card.Body>
+          <Row className="g-3">
+            <Col xs={12} md={4}>
+              <InputGroup>
+                <InputGroup.Text>
+                  <Search />
+                </InputGroup.Text>
+                <Form.Control
+                  placeholder="Buscar por comprador o propiedad..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </InputGroup>
+            </Col>
+            <Col xs={12} md={4}>
+              <InputGroup>
+                <Button
+                  variant="outline-secondary"
+                  onClick={() => setDateFilter((v) => shiftMonth(v || currentMonthValue(), -1))}
+                >
+                  ‹
+                </Button>
+                <InputGroup.Text>
+                  <Calendar />
+                </InputGroup.Text>
+                <Form.Control
+                  type="month"
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                />
+                <Button
+                  variant="outline-secondary"
+                  onClick={() => setDateFilter((v) => shiftMonth(v || currentMonthValue(), 1))}
+                >
+                  ›
+                </Button>
+              </InputGroup>
+              <Form.Text className="text-muted">
+                Mes actual por defecto. Vacío lista todas.
+              </Form.Text>
+              {dateFilter && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="p-0 ms-2"
+                  onClick={() => setDateFilter("")}
+                >
+                  Ver todas
+                </Button>
+              )}
+            </Col>
+            <Col xs={12} md={2}>
+              <Form.Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                aria-label="Filtrar estado"
+              >
+                <option value="">Todos los estados</option>
+                <option value="PAGADA">Pagada</option>
+                <option value="PARCIAL">Parcial</option>
+                <option value="PENDIENTE">Pendiente</option>
+              </Form.Select>
+            </Col>
+            <Col xs={12} md={2}>
+              <Form.Select
+                value={managingFilter}
+                onChange={(e) => setManagingFilter(e.target.value)}
+                aria-label="Filtrar administración"
+              >
+                <option value="">Toda la cartera</option>
+                <option value="yes">Sigo administrando</option>
+                <option value="no">Fuera de cartera</option>
+              </Form.Select>
+            </Col>
+          </Row>
+        </Card.Body>
+      </Card>
       {loading ? (
         <Spinner animation="border" />
       ) : (
@@ -130,7 +274,7 @@ export default function Sales() {
                     <td>{isDollars(sale.currency) ? "Dólares" : "Pesos"}</td>
                     <td>{money(sale.total_amount, sale.currency)}</td>
                     <td>{money(sale.amount_paid, sale.currency)}</td>
-                    <td>{money(sale.remaining, sale.currency)}</td>
+                    <td>{Number(sale.remaining) <= 0.009 ? "—" : money(sale.remaining, sale.currency)}</td>
                     <td>{statusBadge(sale.status)}</td>
                     <td>
                       {sale.keep_managing ? (
@@ -140,54 +284,131 @@ export default function Sales() {
                       )}
                     </td>
                     <td>
-                      {sale.installments.map((inst) => (
-                        <div key={inst.id} className="d-flex align-items-center gap-2 mb-1">
-                          <small>
-                            {new Date(inst.due_date).toLocaleDateString("es-AR")}{" "}
-                            {money(inst.amount, sale.currency)}
-                            {inst.remaining > 0.009 ? ` · saldo ${money(inst.remaining, sale.currency)}` : " · cobrada"}
-                          </small>
-                          {inst.remaining > 0.009 && (
-                            <Button
-                              size="sm"
-                              variant="outline-success"
-                              onClick={() => openPay(sale, inst)}
-                            >
-                              Cobrar
-                            </Button>
-                          )}
-                        </div>
-                      ))}
+                      <div className="small text-muted mb-1">{installmentSummary(sale)}</div>
+                      <Button
+                        size="sm"
+                        variant="outline-primary"
+                        onClick={() => {
+                          setCuotasSale(sale);
+                          setPayTarget(null);
+                        }}
+                      >
+                        Ver cuotas
+                      </Button>
                     </td>
                   </tr>
                 ))}
                 {!items.length && (
                   <tr>
                     <td colSpan={10} className="text-center text-muted">
-                      Todavía no hay ventas.
+                      No hay ventas para este filtro.
                     </td>
                   </tr>
                 )}
               </tbody>
             </Table>
           </div>
-          <div className="d-flex justify-content-between align-items-center">
+          <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
             <small className="text-muted">
               {total} venta{total === 1 ? "" : "s"}
+              {pages > 0 ? ` · página ${page} de ${totalPages}` : ""}
             </small>
-            {pages > 1 && (
-              <Pagination className="mb-0">
-                <Pagination.Prev disabled={page <= 1} onClick={() => setPage((p) => p - 1)} />
-                <Pagination.Item active>{page}</Pagination.Item>
-                <Pagination.Next
-                  disabled={page >= pages}
-                  onClick={() => setPage((p) => p + 1)}
-                />
-              </Pagination>
-            )}
+            <Pagination className="mb-0">
+              <Pagination.Prev
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              />
+              {pageItems.map((p) => (
+                <Pagination.Item key={p} active={p === page} onClick={() => setPage(p)}>
+                  {p}
+                </Pagination.Item>
+              ))}
+              <Pagination.Next
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              />
+            </Pagination>
           </div>
         </>
       )}
+
+      <Modal
+        show={!!cuotasSale}
+        onHide={() => {
+          setCuotasSale(null);
+          setPayTarget(null);
+        }}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Cuotas — {cuotasSale?.property_direction}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {cuotasSale && (
+            <>
+              <p className="small text-muted mb-3">
+                Comprador: {cuotasSale.buyer_name || "—"} · Total{" "}
+                {money(cuotasSale.total_amount, cuotasSale.currency)} · {statusBadge(cuotasSale.status)}
+              </p>
+              <Table striped bordered hover size="sm" className="mb-0">
+                <thead>
+                  <tr>
+                    <th>Vencimiento</th>
+                    <th>Monto</th>
+                    <th>Pagado</th>
+                    <th>Saldo</th>
+                    <th>Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(cuotasSale.installments || []).map((inst) => {
+                    const pending = Number(inst.remaining) > 0.009;
+                    return (
+                      <tr key={inst.id}>
+                        <td>{new Date(inst.due_date).toLocaleDateString("es-AR")}</td>
+                        <td>{money(inst.amount, cuotasSale.currency)}</td>
+                        <td>{money(inst.amount_paid, cuotasSale.currency)}</td>
+                        <td>{pending ? money(inst.remaining, cuotasSale.currency) : "—"}</td>
+                        <td>
+                          {pending ? (
+                            <Badge bg="warning" text="dark">Pendiente</Badge>
+                          ) : (
+                            <Badge bg="success">Cobrada</Badge>
+                          )}
+                        </td>
+                        <td>
+                          {pending && (
+                            <Button
+                              size="sm"
+                              variant="outline-success"
+                              onClick={() => openPay(cuotasSale, inst)}
+                            >
+                              Cobrar
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setCuotasSale(null);
+              setPayTarget(null);
+            }}
+          >
+            Cerrar
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <Modal show={!!payTarget} onHide={() => setPayTarget(null)} centered>
         <Form onSubmit={submitPay}>

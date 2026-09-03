@@ -3,13 +3,13 @@ from math import ceil
 from typing import Optional
 
 from fastapi import HTTPException, status
+from sqlalchemy import extract, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from models.person import Owner
 from models.property import Property
 from models.property_sale import PropertySale, PropertySalePayment
 from models.transaction_history import TransactionHistory
-from sqlalchemy import func
 from schemas.saleDTO import (
     CollectSalePaymentDTO,
     PaginatedSalesResponse,
@@ -98,9 +98,35 @@ class PropertySaleService:
             raise HTTPException(status_code=404, detail="Venta no encontrada")
         return sale
 
+    def _sale_paid_total(self, sale_id: int) -> float:
+        self.db.flush()
+        return _round2(
+            self.db.query(func.coalesce(func.sum(PropertySalePayment.amount_paid), 0.0))
+            .filter(PropertySalePayment.sale_id == sale_id)
+            .scalar()
+        )
+
+    def _sync_sale_history(self, sale: PropertySale) -> None:
+        paid = self._sale_paid_total(sale.id)
+        status = _sale_payment_status(sale.total_amount or 0, paid)
+        sale.status = status
+        (
+            self.db.query(TransactionHistory)
+            .filter(TransactionHistory.sale_id == sale.id)
+            .update(
+                {
+                    TransactionHistory.period_amount_paid: paid,
+                    TransactionHistory.period_total_amount: sale.total_amount,
+                    TransactionHistory.period_payment_status: status,
+                },
+                synchronize_session=False,
+            )
+        )
+
     def _refresh_sale_status(self, sale: PropertySale) -> None:
-        paid = _round2(sum(inst.amount_paid or 0 for inst in sale.installments))
+        paid = self._sale_paid_total(sale.id)
         sale.status = _sale_payment_status(sale.total_amount or 0, paid)
+        self._sync_sale_history(sale)
 
     def _record_history(
         self,
@@ -117,12 +143,7 @@ class PropertySaleService:
         buyer_name = sale.buyer_name or (sale.buyer.name if sale.buyer else "Comprador")
         receiver = normalize_received_by(received_by)
         remitted = receiver != "INTERMEDIARIO"
-        paid_total = _round2(
-            self.db.query(func.coalesce(func.sum(PropertySalePayment.amount_paid), 0.0))
-            .filter(PropertySalePayment.sale_id == sale.id)
-            .scalar()
-        )
-        remaining = max(0.0, _round2((sale.total_amount or 0) - paid_total))
+        paid_total = self._sale_paid_total(sale.id)
         self.db.add(
             TransactionHistory(
                 transaction_id=None,
@@ -142,7 +163,7 @@ class PropertySaleService:
                 period_due_date=inst.due_date,
                 period_total_amount=sale.total_amount,
                 period_amount_paid=paid_total,
-                period_payment_status=_sale_payment_status(sale.total_amount or 0, _round2((sale.total_amount or 0) - remaining)),
+                period_payment_status=_sale_payment_status(sale.total_amount or 0, paid_total),
                 currency=normalize_currency(sale.currency),
                 received_by=receiver,
                 remitted_to_owner=1 if remitted else 0,
@@ -150,6 +171,8 @@ class PropertySaleService:
                 sale_id=sale.id,
             )
         )
+        self.db.flush()
+        self._sync_sale_history(sale)
 
     def sell_property(self, property_id: int, data: SellPropertyDTO) -> PropertySaleResponse:
         prop = (
@@ -291,13 +314,54 @@ class PropertySaleService:
             )
         return self._to_response(self._load_sale(sale.id))
 
-    def list_sales(self, page: int = 1, page_size: int = 20) -> PaginatedSalesResponse:
+    def list_sales(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        q: Optional[str] = None,
+        sale_status: Optional[str] = None,
+        keep_managing: Optional[str] = None,
+        month: Optional[str] = None,
+    ) -> PaginatedSalesResponse:
         page = max(1, page)
         page_size = min(max(1, page_size), 100)
-        total = self.db.query(PropertySale).count()
+        query = self.db.query(PropertySale)
+
+        if q and q.strip():
+            term = f"%{q.strip().lower()}%"
+            matching_properties = self.db.query(Property.id).filter(
+                or_(
+                    func.lower(func.coalesce(Property.direction, "")).like(term),
+                    func.lower(func.coalesce(Property.floor, "")).like(term),
+                    func.lower(func.coalesce(Property.apartment, "")).like(term),
+                )
+            )
+            query = query.filter(
+                or_(
+                    func.lower(func.coalesce(PropertySale.buyer_name, "")).like(term),
+                    PropertySale.property_id.in_(matching_properties),
+                )
+            )
+
+        if sale_status and sale_status.strip():
+            query = query.filter(func.upper(PropertySale.status) == sale_status.strip().upper())
+
+        managing = (keep_managing or "").strip().lower()
+        if managing in ("yes", "true", "1"):
+            query = query.filter(PropertySale.keep_managing.is_(True))
+        elif managing in ("no", "false", "0"):
+            query = query.filter(PropertySale.keep_managing.is_(False))
+
+        if month and month.strip():
+            year_s, month_s = month.strip().split("-", 1)
+            query = query.filter(
+                extract("year", PropertySale.sale_date) == int(year_s),
+                extract("month", PropertySale.sale_date) == int(month_s),
+            )
+
+        total = query.count()
         items = (
-            self.db.query(PropertySale)
-            .options(
+            query.options(
                 joinedload(PropertySale.property),
                 joinedload(PropertySale.seller),
                 joinedload(PropertySale.buyer),
@@ -308,6 +372,10 @@ class PropertySaleService:
             .limit(page_size)
             .all()
         )
+        for sale in items:
+            self._sync_sale_history(sale)
+        if items:
+            self.db.commit()
         pages = ceil(total / page_size) if page_size and total else 0
         return PaginatedSalesResponse(
             items=[self._to_response(s) for s in items],

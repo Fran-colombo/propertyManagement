@@ -323,11 +323,14 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
             <div className="mb-3">
               <div className="d-flex gap-2 align-items-center mb-2">
                 <Form.Label className="mb-0">Cuotas</Form.Label>
-                <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(3)}>
-                  3 iguales
+                <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(12)}>
+                  12 iguales
                 </Button>
-                <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(6)}>
-                  6 iguales
+                <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(24)}>
+                  24 iguales
+                </Button>
+                <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(36)}>
+                  36 iguales
                 </Button>
                 <Button
                   type="button"
