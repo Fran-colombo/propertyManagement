@@ -32,6 +32,10 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
   const [totalAmount, setTotalAmount] = useState("");
   const [mode, setMode] = useState("contado");
   const [paidNow, setPaidNow] = useState(true);
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [advanceDate, setAdvanceDate] = useState(todayISO());
+  const [advancePaid, setAdvancePaid] = useState(false);
+  const [cuotaCount, setCuotaCount] = useState("12");
   const [installments, setInstallments] = useState([]);
   const [method, setMethod] = useState("transferencia");
   const [receivedBy, setReceivedBy] = useState("DUENO");
@@ -51,6 +55,10 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
     setTotalAmount("");
     setMode("contado");
     setPaidNow(true);
+    setAdvanceAmount("");
+    setAdvanceDate(todayISO());
+    setAdvancePaid(false);
+    setCuotaCount("12");
     setInstallments([]);
     setMethod("transferencia");
     setReceivedBy("DUENO");
@@ -67,13 +75,13 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
     [installments]
   );
   const total = round2(totalAmount);
+  const advance = round2(advanceAmount);
+  const financed = Math.max(0, round2(total - advance));
 
   useEffect(() => {
-    if (mode !== "cuotas" || !total || installments.length) return;
-    setInstallments([
-      { due_date: saleDate, amount: String(total), paid: false },
-    ]);
-  }, [mode, total, saleDate, installments.length]);
+    if (mode !== "cuotas") return;
+    setAdvanceDate((prev) => prev || saleDate);
+  }, [mode, saleDate]);
 
   const handleCreateBuyer = async () => {
     if (!newBuyer.name.trim()) {
@@ -105,16 +113,30 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
           due_date: saleDate,
           amount: total,
           paid: paidNow,
+          kind: "cuota",
         },
       ];
     }
-    return installments
+    const rows = [];
+    if (advance > 0.009) {
+      rows.push({
+        due_date: advanceDate || saleDate,
+        amount: advance,
+        paid: !!advancePaid,
+        kind: "adelanto",
+      });
+    }
+    installments
       .filter((row) => row.due_date && Number(row.amount) > 0)
-      .map((row) => ({
-        due_date: row.due_date,
-        amount: round2(row.amount),
-        paid: !!row.paid,
-      }));
+      .forEach((row) => {
+        rows.push({
+          due_date: row.due_date,
+          amount: round2(row.amount),
+          paid: !!row.paid,
+          kind: "cuota",
+        });
+      });
+    return rows;
   };
 
   const handleSubmit = async (e) => {
@@ -130,8 +152,12 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
       return;
     }
     const sum = round2(rows.reduce((acc, row) => acc + row.amount, 0));
+    if (advance > total + 0.009) {
+      setError("El adelanto no puede ser mayor al total.");
+      return;
+    }
     if (Math.abs(sum - total) > 0.05) {
-      setError(`Las cuotas suman ${sum} y el total es ${total}.`);
+      setError(`El adelanto más las cuotas suman ${sum} y el total es ${total}.`);
       return;
     }
     setSaving(true);
@@ -159,12 +185,18 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
   };
 
   const splitEven = (count) => {
+    if (financed <= 0.009) {
+      setError("Indicá un total mayor al adelanto para generar cuotas.");
+      setInstallments([]);
+      return;
+    }
     const n = Math.max(1, Number(count) || 1);
-    const base = round2(total / n);
+    setCuotaCount(String(n));
+    const base = round2(financed / n);
     const rows = [];
     let acc = 0;
     for (let i = 0; i < n; i += 1) {
-      const amount = i === n - 1 ? round2(total - acc) : base;
+      const amount = i === n - 1 ? round2(financed - acc) : base;
       acc = round2(acc + amount);
       rows.push({
         due_date: addMonthsISO(saleDate, i),
@@ -173,6 +205,15 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
       });
     }
     setInstallments(rows);
+    setError("");
+  };
+
+  const moneyLabel = (amount) => {
+    const prefix = currency === "DOLARES" ? "U$S" : "$";
+    return `${prefix} ${Number(amount || 0).toLocaleString("es-AR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
   };
 
   return (
@@ -321,31 +362,71 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
             />
           ) : (
             <div className="mb-3">
-              <div className="d-flex gap-2 align-items-center mb-2">
-                <Form.Label className="mb-0">Cuotas</Form.Label>
+              <div className="border rounded p-3 mb-3">
+                <div className="fw-semibold mb-2">Adelanto pactado (opcional)</div>
+                <p className="small text-muted mb-2">
+                  No es una cuota. Se resta del total y el resto se parte en cuotas iguales.
+                </p>
+                <Row className="g-2 align-items-end">
+                  <Col md={4}>
+                    <Form.Label>Monto</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={advanceAmount}
+                      onChange={(e) => setAdvanceAmount(e.target.value)}
+                    />
+                  </Col>
+                  <Col md={4}>
+                    <Form.Label>Fecha</Form.Label>
+                    <Form.Control
+                      type="date"
+                      value={advanceDate}
+                      onChange={(e) => setAdvanceDate(e.target.value)}
+                    />
+                  </Col>
+                  <Col md={4} className="d-flex align-items-center pb-2">
+                    <Form.Check
+                      type="checkbox"
+                      id="advance-paid"
+                      checked={advancePaid}
+                      onChange={(e) => setAdvancePaid(e.target.checked)}
+                      label="Ya está cobrado"
+                    />
+                  </Col>
+                </Row>
+              </div>
+              <div className="d-flex flex-wrap gap-2 align-items-end mb-2">
+                <Form.Group>
+                  <Form.Label className="mb-1">Cantidad de cuotas iguales</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min="1"
+                    step="1"
+                    style={{ width: 90 }}
+                    value={cuotaCount}
+                    onChange={(e) => setCuotaCount(e.target.value)}
+                  />
+                </Form.Group>
+                <Button type="button" size="sm" variant="primary" onClick={() => splitEven(cuotaCount)}>
+                  Generar
+                </Button>
                 <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(12)}>
-                  12 iguales
+                  12
                 </Button>
                 <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(24)}>
-                  24 iguales
+                  24
                 </Button>
                 <Button type="button" size="sm" variant="outline-secondary" onClick={() => splitEven(36)}>
-                  36 iguales
+                  36
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline-primary"
-                  onClick={() =>
-                    setInstallments((prev) => [
-                      ...prev,
-                      { due_date: saleDate, amount: "", paid: false },
-                    ])
-                  }
-                >
-                  Agregar
-                </Button>
-                <span className="small text-muted">Suma: {installmentSum}</span>
+              </div>
+              <div className="small text-muted mb-2">
+                {advance > 0.009
+                  ? `Adelanto ${moneyLabel(advance)} + ${installments.length || Number(cuotaCount) || 0} cuotas de ~${moneyLabel(financed / Math.max(1, installments.length || Number(cuotaCount) || 1))} (saldo ${moneyLabel(financed)}).`
+                  : `${installments.length || Number(cuotaCount) || 0} cuotas de ~${moneyLabel(financed / Math.max(1, installments.length || Number(cuotaCount) || 1))}.`}
+                {" "}Suma cuotas: {moneyLabel(installmentSum)}.
               </div>
               {installments.map((row, index) => (
                 <Row key={index} className="g-2 mb-2">

@@ -8,6 +8,7 @@ class SaleInstallmentInput(BaseModel):
     due_date: date
     amount: float = Field(..., gt=0)
     paid: bool = False
+    kind: Optional[str] = "cuota"
 
 
 class SellPropertyDTO(BaseModel):
@@ -29,6 +30,8 @@ class CollectSalePaymentDTO(BaseModel):
     received_by: Optional[str] = "DUENO"
     notes: Optional[str] = None
     paid_at: Optional[date] = None
+    overpay_reason: Optional[str] = None
+    overpay_note: Optional[str] = None
 
 
 class SaleInstallmentResponse(BaseModel):
@@ -41,6 +44,7 @@ class SaleInstallmentResponse(BaseModel):
     method: Optional[str] = None
     received_by: Optional[str] = None
     notes: Optional[str] = None
+    kind: str = "cuota"
 
 
 class PropertySaleResponse(BaseModel):

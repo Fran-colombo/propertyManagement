@@ -102,6 +102,9 @@ def _ensure_sqlite_columns():
         "properties": {
             "management_status": "TEXT DEFAULT 'ACTIVE'",
         },
+        "property_sale_payments": {
+            "kind": "TEXT DEFAULT 'cuota'",
+        },
     }
 
     with engine.begin() as conn:
@@ -112,6 +115,17 @@ def _ensure_sqlite_columns():
             for col, col_type in cols.items():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+
+        if "property_sale_payments" in inspector.get_table_names():
+            conn.execute(
+                text(
+                    """
+                    UPDATE property_sale_payments
+                    SET kind = 'cuota'
+                    WHERE kind IS NULL OR TRIM(kind) = ''
+                    """
+                )
+            )
 
         if "properties" in inspector.get_table_names():
             conn.execute(

@@ -41,5 +41,6 @@ class PropertySalePayment(Base):
     method = Column(String, nullable=True)
     received_by = Column(String, nullable=True)
     notes = Column(String, nullable=True)
+    kind = Column(String, default="cuota")
 
     sale = relationship("PropertySale", back_populates="installments")

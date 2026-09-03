@@ -59,10 +59,23 @@ function todayISO() {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 }
 
+function isAdvance(inst) {
+  return String(inst?.kind || "").toLowerCase() === "adelanto";
+}
+
 function nextPendingInstallment(sale) {
   return (sale.installments || [])
     .filter((inst) => Number(inst.remaining) > 0.009)
-    .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)))[0] || null;
+    .sort((a, b) => {
+      const rank = (isAdvance(a) ? 0 : 1) - (isAdvance(b) ? 0 : 1);
+      if (rank !== 0) return rank;
+      return String(a.due_date).localeCompare(String(b.due_date));
+    })[0] || null;
+}
+
+function kindBadge(inst) {
+  if (isAdvance(inst)) return <Badge bg="info">Adelanto</Badge>;
+  return <Badge bg="light" text="dark">Cuota</Badge>;
 }
 
 function isOverdue(inst) {
@@ -94,6 +107,10 @@ export default function Sales() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const [overpayOpen, setOverpayOpen] = useState(false);
+  const [overpayReason, setOverpayReason] = useState("");
+  const [overpayNote, setOverpayNote] = useState("");
+  const [overpayError, setOverpayError] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -141,6 +158,10 @@ export default function Sales() {
 
   const openPay = (sale, inst) => {
     setPayTarget({ sale, inst });
+    setOverpayOpen(false);
+    setOverpayReason("");
+    setOverpayNote("");
+    setOverpayError("");
     setPayForm({
       amount: String(inst.remaining),
       method: "transferencia",
@@ -149,8 +170,12 @@ export default function Sales() {
     });
   };
 
-  const submitPay = async (e) => {
-    e.preventDefault();
+  const extraPay = () => {
+    if (!payTarget) return 0;
+    return Math.round((Number(payForm.amount) - Number(payTarget.inst.remaining || 0)) * 100) / 100;
+  };
+
+  const sendCollect = async (overpay) => {
     if (!payTarget) return;
     setSaving(true);
     try {
@@ -159,15 +184,48 @@ export default function Sales() {
         method: payForm.method,
         received_by: payForm.received_by,
         notes: payForm.notes.trim() || undefined,
+        overpay_reason: overpay?.reason,
+        overpay_note: overpay?.note,
       });
+      setOverpayOpen(false);
       setPayTarget(null);
       setCuotasSale(updated);
       await load();
     } catch (err) {
-      setError(err.message || "No se pudo registrar el cobro");
+      if (overpayOpen) {
+        setOverpayError(err.message || "No se pudo registrar el cobro");
+      } else {
+        setError(err.message || "No se pudo registrar el cobro");
+      }
     } finally {
       setSaving(false);
     }
+  };
+
+  const submitPay = async (e) => {
+    e.preventDefault();
+    if (!payTarget) return;
+    const extra = extraPay();
+    if (extra > 0.009) {
+      setOverpayReason("");
+      setOverpayNote("");
+      setOverpayError("");
+      setOverpayOpen(true);
+      return;
+    }
+    await sendCollect();
+  };
+
+  const confirmOverpay = async () => {
+    if (!overpayReason) {
+      setOverpayError("Elegí un motivo.");
+      return;
+    }
+    if (overpayReason === "otro" && !overpayNote.trim()) {
+      setOverpayError("Especificá por qué se pagó de más.");
+      return;
+    }
+    await sendCollect({ reason: overpayReason, note: overpayNote.trim() });
   };
 
   const pageItems = [];
@@ -382,7 +440,8 @@ export default function Sales() {
                       {nextInst ? (
                         <div className="mb-2">
                           <div className="fw-semibold">
-                            Cobrar {money(nextInst.remaining, sale.currency)}
+                            Cobrar {money(nextInst.remaining, sale.currency)}{" "}
+                            {kindBadge(nextInst)}
                           </div>
                           <div className="small text-muted">
                             Vence {new Date(nextInst.due_date).toLocaleDateString("es-AR")}
@@ -480,6 +539,7 @@ export default function Sales() {
               <Table striped bordered hover size="sm" className="mb-0">
                 <thead>
                   <tr>
+                    <th>Tipo</th>
                     <th>Vencimiento</th>
                     <th>Monto</th>
                     <th>Pagado</th>
@@ -494,6 +554,7 @@ export default function Sales() {
                     const overdue = pending && isOverdue(inst);
                     return (
                       <tr key={inst.id} className={overdue ? "table-danger" : ""}>
+                        <td>{kindBadge(inst)}</td>
                         <td>{new Date(inst.due_date).toLocaleDateString("es-AR")}</td>
                         <td>{money(inst.amount, cuotasSale.currency)}</td>
                         <td>{money(inst.amount_paid, cuotasSale.currency)}</td>
@@ -539,14 +600,17 @@ export default function Sales() {
         </Modal.Footer>
       </Modal>
 
-      <Modal show={!!payTarget} onHide={() => setPayTarget(null)} centered>
+      <Modal show={!!payTarget && !overpayOpen} onHide={() => setPayTarget(null)} centered>
         <Form onSubmit={submitPay}>
           <Modal.Header closeButton>
-            <Modal.Title>Cobrar cuota</Modal.Title>
+            <Modal.Title>
+              {payTarget && isAdvance(payTarget.inst) ? "Cobrar adelanto" : "Cobrar cuota"}
+            </Modal.Title>
           </Modal.Header>
           <Modal.Body>
             <p className="small text-muted">
-              {payTarget?.sale?.property_direction} · saldo{" "}
+              {payTarget?.sale?.property_direction} ·{" "}
+              {payTarget && isAdvance(payTarget.inst) ? "adelanto pactado" : "cuota"} · saldo{" "}
               {money(payTarget?.inst?.remaining, payTarget?.sale?.currency)}
             </p>
             <Form.Group className="mb-3">
@@ -598,6 +662,59 @@ export default function Sales() {
             </Button>
           </Modal.Footer>
         </Form>
+      </Modal>
+
+      <Modal show={overpayOpen} onHide={() => setOverpayOpen(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Se está pagando de más</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="warning" className="small">
+            Saldo de la cuota: {money(payTarget?.inst?.remaining, payTarget?.sale?.currency)}
+            <br />
+            Monto cargado: {money(payForm.amount, payTarget?.sale?.currency)}
+            <br />
+            Excedente: <strong>{money(extraPay(), payTarget?.sale?.currency)}</strong>
+          </Alert>
+          <p className="mb-2">¿Cuál es el motivo?</p>
+          {overpayError && <Alert variant="danger" className="py-2">{overpayError}</Alert>}
+          <Form.Check
+            type="radio"
+            id="sale-overpay-adelanto"
+            name="saleOverpayReason"
+            label="Adelanto: se cubre esta cuota y el resto va a las siguientes"
+            checked={overpayReason === "adelanto"}
+            onChange={() => setOverpayReason("adelanto")}
+            className="mb-2"
+          />
+          <Form.Check
+            type="radio"
+            id="sale-overpay-otro"
+            name="saleOverpayReason"
+            label="Otro (especificar)"
+            checked={overpayReason === "otro"}
+            onChange={() => setOverpayReason("otro")}
+            className="mb-2"
+          />
+          {overpayReason === "otro" && (
+            <Form.Control
+              as="textarea"
+              rows={3}
+              className="mt-2"
+              placeholder="¿Por qué se pagó de más?"
+              value={overpayNote}
+              onChange={(e) => setOverpayNote(e.target.value)}
+            />
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setOverpayOpen(false)} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={confirmOverpay} disabled={saving}>
+            {saving ? "Guardando..." : "Confirmar"}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </div>
   );

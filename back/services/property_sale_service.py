@@ -32,6 +32,22 @@ def _sale_payment_status(total: float, paid: float) -> str:
     return "PENDIENTE"
 
 
+def _normalize_kind(value) -> str:
+    text = str(value or "cuota").strip().lower()
+    if text in ("adelanto", "advance", "down_payment"):
+        return "adelanto"
+    return "cuota"
+
+
+def _installment_remaining(inst: PropertySalePayment) -> float:
+    return max(0.0, _round2((inst.amount or 0) - (inst.amount_paid or 0)))
+
+
+def _installment_sort_key(inst: PropertySalePayment):
+    adelanto_first = 0 if _normalize_kind(getattr(inst, "kind", None)) == "adelanto" else 1
+    return (adelanto_first, inst.due_date or date.max, inst.id or 0)
+
+
 class PropertySaleService:
     def __init__(self, db: Session):
         self.db = db
@@ -77,8 +93,9 @@ class PropertySaleService:
                     method=inst.method,
                     received_by=inst.received_by,
                     notes=inst.notes,
+                    kind=_normalize_kind(getattr(inst, "kind", None)),
                 )
-                for inst in sorted(sale.installments, key=lambda i: (i.due_date, i.id))
+                for inst in sorted(sale.installments, key=_installment_sort_key)
             ],
         )
 
@@ -150,7 +167,12 @@ class PropertySaleService:
                 amount=amount,
                 date=paid_at,
                 method="venta",
-                notes=notes or f"Venta de propiedad. Cuota vto {inst.due_date.isoformat()}.",
+                notes=notes
+                or (
+                    "Venta de propiedad. Adelanto pactado."
+                    if _normalize_kind(getattr(inst, "kind", None)) == "adelanto"
+                    else f"Venta de propiedad. Cuota vto {inst.due_date.isoformat()}."
+                ),
                 contract_id=None,
                 owner_id=seller.id if seller else None,
                 owner_name=seller.name if seller else "Dueño vendedor",
@@ -255,11 +277,14 @@ class PropertySaleService:
         receiver = normalize_received_by(data.received_by)
 
         for row in data.installments:
+            kind = _normalize_kind(getattr(row, "kind", None))
             inst = PropertySalePayment(
                 sale_id=sale.id,
                 due_date=row.due_date,
                 amount=_round2(row.amount),
                 amount_paid=0.0,
+                kind=kind,
+                notes="Adelanto pactado" if kind == "adelanto" else None,
             )
             self.db.add(inst)
             self.db.flush()
@@ -438,6 +463,25 @@ class PropertySaleService:
     def get_sale(self, sale_id: int) -> PropertySaleResponse:
         return self._to_response(self._load_sale(sale_id))
 
+    def _credit_installment(
+        self,
+        sale: PropertySale,
+        inst: PropertySalePayment,
+        amount: float,
+        paid_at: date,
+        method: str,
+        receiver: str,
+        notes: Optional[str],
+    ) -> None:
+        inst.amount_paid = _round2((inst.amount_paid or 0) + amount)
+        if inst.amount_paid + 0.009 >= (inst.amount or 0):
+            inst.paid_at = paid_at
+        inst.method = method
+        inst.received_by = receiver
+        if notes:
+            inst.notes = notes
+        self._record_history(sale, inst, amount, paid_at, method, receiver, notes)
+
     def collect_installment(
         self, sale_id: int, installment_id: int, data: CollectSalePaymentDTO
     ) -> PropertySaleResponse:
@@ -445,26 +489,74 @@ class PropertySaleService:
         inst = next((i for i in sale.installments if i.id == installment_id), None)
         if not inst:
             raise HTTPException(status_code=404, detail="Cuota no encontrada")
-        remaining = max(0.0, _round2((inst.amount or 0) - (inst.amount_paid or 0)))
+        remaining = _installment_remaining(inst)
         if remaining <= 0.009:
             raise HTTPException(status_code=400, detail="Esa cuota ya está cobrada")
         amount = _round2(data.amount if data.amount is not None else remaining)
-        if amount > remaining + 0.009:
+        extra = _round2(amount - remaining)
+        reason = (data.overpay_reason or "").strip().lower() or None
+        extra_note = (data.overpay_note or "").strip()
+        if extra > 0.009 and reason not in ("adelanto", "otro"):
             raise HTTPException(
                 status_code=400,
-                detail=f"El cobro supera el saldo de la cuota (${remaining:,.2f})",
+                detail="El monto supera el saldo. Indicá si es adelanto u otro motivo.",
+            )
+        if reason == "otro" and extra > 0.009 and not extra_note:
+            raise HTTPException(
+                status_code=400,
+                detail="Si no es adelanto, especificá por qué se pagó de más.",
             )
         paid_at = data.paid_at or date.today()
         method = (data.method or "transferencia").strip().lower() or "transferencia"
         receiver = normalize_received_by(data.received_by)
-        inst.amount_paid = _round2((inst.amount_paid or 0) + amount)
-        if inst.amount_paid + 0.009 >= (inst.amount or 0):
-            inst.paid_at = paid_at
-        inst.method = method
-        inst.received_by = receiver
-        if data.notes:
-            inst.notes = data.notes
-        self._record_history(sale, inst, amount, paid_at, method, receiver, data.notes)
+
+        if extra > 0.009 and reason == "adelanto":
+            later = [
+                other
+                for other in sorted(sale.installments, key=_installment_sort_key)
+                if other.id != inst.id and _installment_remaining(other) > 0.009
+            ]
+            later_remaining = _round2(sum(_installment_remaining(other) for other in later))
+            if not later or extra > later_remaining + 0.009:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No hay cuotas siguientes con saldo suficiente para el adelanto. "
+                        "Elegí Otro o Cancelar."
+                    ),
+                )
+            current_note = (
+                data.notes
+                or f"Pago de la cuota. Incluye adelanto de ${extra:,.2f} a las siguientes."
+            )
+            if remaining > 0.009:
+                self._credit_installment(
+                    sale, inst, remaining, paid_at, method, receiver, current_note
+                )
+            leftover = extra
+            source = inst.due_date.isoformat()
+            for nxt in later:
+                if leftover <= 0.009:
+                    break
+                take = min(leftover, _installment_remaining(nxt))
+                self._credit_installment(
+                    sale,
+                    nxt,
+                    take,
+                    paid_at,
+                    method,
+                    receiver,
+                    f"Adelanto. Sobra de la cuota vto {source}.",
+                )
+                leftover = _round2(leftover - take)
+        else:
+            note = data.notes
+            if extra > 0.009 and reason == "otro":
+                note = f"Pago de más (${extra:,.2f}): {extra_note}"
+                if data.notes:
+                    note = f"{data.notes}. {note}"
+            self._credit_installment(sale, inst, amount, paid_at, method, receiver, note)
+
         self._refresh_sale_status(sale)
         self.db.commit()
         return self._to_response(self._load_sale(sale.id))
