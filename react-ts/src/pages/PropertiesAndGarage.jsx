@@ -6,6 +6,7 @@ import CreatePropertyModal from "../components/CreatePropertyModal";
 import CreateGarageModal from "../components/CreateGarageModal";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
+import SellPropertyModal from "../components/SellPropertyModal";
 import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
 
@@ -38,6 +39,7 @@ const PropertiesAndGarages = () => {
   const [contractToEdit, setContractToEdit] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [pendingDeleteProp, setPendingDeleteProp] = useState(null);
+  const [propertyToSell, setPropertyToSell] = useState(null);
 
 
   const findCurrentPeriod = (periods) => {
@@ -183,6 +185,14 @@ const PropertiesAndGarages = () => {
           Editar
         </Button>
         <Button
+          variant="outline-success"
+          size="sm"
+          className="mb-2 me-2"
+          onClick={() => setPropertyToSell(prop)}
+        >
+          Vender
+        </Button>
+        <Button
           variant="outline-danger"
           size="sm"
           className="mb-2"
@@ -280,7 +290,11 @@ const PropertiesAndGarages = () => {
           </>
         ) : (
           <p>
-            <Badge bg="success">Disponible</Badge>
+            {prop.management_status === "DELIVERED" ? (
+              <Badge bg="info">Entregada</Badge>
+            ) : (
+              <Badge bg="success">Disponible</Badge>
+            )}
           </p>
         )}
 
@@ -556,6 +570,19 @@ const PropertiesAndGarages = () => {
         }}
         contractId={contractToEdit?.id}
         onSaved={loadData}
+      />
+      <SellPropertyModal
+        show={!!propertyToSell}
+        onHide={() => setPropertyToSell(null)}
+        property={propertyToSell}
+        onSold={() => {
+          setFeedback({
+            variant: "success",
+            title: "Venta registrada",
+            message: "La venta se guardó. Podés ver cuotas en Ventas y el cobro en Transacciones.",
+          });
+          loadData();
+        }}
       />
       <Modal show={!!pendingDeleteProp} onHide={() => setPendingDeleteProp(null)} centered>
         <Modal.Header closeButton>

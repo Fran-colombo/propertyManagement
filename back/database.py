@@ -49,6 +49,7 @@ def init_db():
     from models.index import Index
     from models.transactions import Transaction
     from models.transaction_history import TransactionHistory  # noqa: F401
+    from models.property_sale import PropertySale, PropertySalePayment  # noqa: F401
     from models.contract_termination import ContractTermination  # noqa: F401
     from models.contract_history import ContractHistory  # noqa: F401
     from models.user_model import User  # noqa: F401
@@ -96,6 +97,10 @@ def _ensure_sqlite_columns():
             "received_by": "TEXT DEFAULT 'DUENO'",
             "remitted_to_owner": "INTEGER DEFAULT 1",
             "remitted_at": "DATE",
+            "sale_id": "INTEGER",
+        },
+        "properties": {
+            "management_status": "TEXT DEFAULT 'ACTIVE'",
         },
     }
 
@@ -107,6 +112,17 @@ def _ensure_sqlite_columns():
             for col, col_type in cols.items():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+
+        if "properties" in inspector.get_table_names():
+            conn.execute(
+                text(
+                    """
+                    UPDATE properties
+                    SET management_status = 'ACTIVE'
+                    WHERE management_status IS NULL OR TRIM(management_status) = ''
+                    """
+                )
+            )
 
         if "transaction_history" in inspector.get_table_names():
             conn.execute(

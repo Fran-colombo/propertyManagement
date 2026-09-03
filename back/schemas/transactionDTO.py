@@ -80,6 +80,7 @@ class TransactionHistoryResponse(TransactionResponseDTO):
     received_by: str = "DUENO"
     remitted_to_owner: bool = True
     remitted_at: Optional[date] = None
+    sale_id: Optional[int] = None
 
     class Config:
         extra = "ignore"

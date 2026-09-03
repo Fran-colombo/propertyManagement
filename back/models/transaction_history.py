@@ -29,4 +29,5 @@ class TransactionHistory(Base):
     currency = Column(String, default="PESOS")
     received_by = Column(String, default="DUENO")
     remitted_to_owner = Column(Integer, default=1)
-    remitted_at = Column(Date, nullable=True)  
+    remitted_at = Column(Date, nullable=True)
+    sale_id = Column(Integer, ForeignKey("property_sales.id"), nullable=True)  

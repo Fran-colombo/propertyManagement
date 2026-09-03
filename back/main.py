@@ -6,7 +6,7 @@ from database import SessionLocal, init_db, UPLOADS_ROOT
 init_db()
 
 from services.rental_contract_service import RentalContractService
-from controllers import tenant_controller, user_controller, owner_controller, property_controller, rental_contract_controller, contract_period_controller, transaction_controller, garage_controller, real_agency_controller, index_controller, contract_history_controller
+from controllers import tenant_controller, user_controller, owner_controller, property_controller, rental_contract_controller, contract_period_controller, transaction_controller, garage_controller, real_agency_controller, index_controller, contract_history_controller, property_sale_controller
 from scheduler_tasks import init_scheduler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -60,6 +60,7 @@ app.include_router(user_controller.router)
 app.include_router(tenant_controller.router)
 app.include_router(owner_controller.router)
 app.include_router(property_controller.router)
+app.include_router(property_sale_controller.router)
 app.include_router(rental_contract_controller.router)
 app.include_router(contract_period_controller.router)
 app.include_router(transaction_controller.router)

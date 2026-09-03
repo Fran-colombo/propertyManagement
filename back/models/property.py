@@ -19,9 +19,11 @@ class Property(Base):
     floor = Column(String)
     apartment = Column(String)
     status = Column(Integer, default=1)
+    management_status = Column(String, default="ACTIVE")
     owner = relationship("Owner", back_populates="properties")
     rental_contract = relationship("RentalContract", uselist=False, back_populates="property")
     garages = relationship("Garage", back_populates="property")
+    sales = relationship("PropertySale", back_populates="property")
 
 
 class Garage(Base):
