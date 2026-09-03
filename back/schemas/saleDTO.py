@@ -68,3 +68,12 @@ class PaginatedSalesResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+    pending_sales: int = 0
+    pending_installments: int = 0
+    overdue_installments: int = 0
+
+
+class SalesCollectionSummary(BaseModel):
+    pending_sales: int
+    pending_installments: int
+    overdue_installments: int

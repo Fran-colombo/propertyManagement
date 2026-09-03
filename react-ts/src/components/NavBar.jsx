@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Navbar, Nav, Container, Offcanvas } from "react-bootstrap";
+import { useEffect, useState } from "react";
+import { Navbar, Nav, Container, Offcanvas, Badge } from "react-bootstrap";
 import { Link, useLocation } from "react-router-dom";
 import useAuth from "../../hooks/useAuth";
 import {
@@ -9,16 +9,29 @@ import {
   CashStack,
   FileEarmarkText,
 } from "react-bootstrap-icons";
+import { getSalesSummary } from "../api/sale";
 
 export default function NavigationBar() {
   const location = useLocation();
   const { logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingInstallments, setPendingInstallments] = useState(0);
+
+  useEffect(() => {
+    getSalesSummary()
+      .then((data) => setPendingInstallments(data?.pending_installments || 0))
+      .catch(() => setPendingInstallments(0));
+  }, [location.pathname]);
 
   const navItems = [
     { to: "/people", icon: <People className="me-2" />, label: "Personas" },
     { to: "/properties", icon: <Building className="me-2" />, label: "Propiedades" },
-    { to: "/sales", icon: <CashStack className="me-2" />, label: "Ventas" },
+    {
+      to: "/sales",
+      icon: <CashStack className="me-2" />,
+      label: "Ventas",
+      badge: pendingInstallments,
+    },
     { to: "/transactions", icon: <CashStack className="me-2" />, label: "Transacciones" },
     { to: "/contracts", icon: <FileEarmarkText className="me-2" />, label: "Contratos activos" },
     { to: "/all-contracts", icon: <FileEarmarkText className="me-2" />, label: "Historial de contratos" },
@@ -28,7 +41,7 @@ export default function NavigationBar() {
 
   const links = (onSelect) => (
     <>
-      {navItems.map(({ to, icon, label }) => (
+      {navItems.map(({ to, icon, label, badge }) => (
         <Nav.Link
           as={Link}
           to={to}
@@ -41,6 +54,16 @@ export default function NavigationBar() {
         >
           {icon}
           <span>{label}</span>
+          {badge > 0 && (
+            <Badge
+              bg={location.pathname === to ? "light" : "warning"}
+              text="dark"
+              className="ms-2"
+              title="Cuotas de venta por cobrar"
+            >
+              {badge}
+            </Badge>
+          )}
         </Nav.Link>
       ))}
       <Nav.Link

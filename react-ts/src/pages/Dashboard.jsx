@@ -1,9 +1,18 @@
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button, Card } from "react-bootstrap"
-import { PeopleFill, HouseDoorFill, ReceiptCutoff, FileEarmarkTextFill, ClockHistory } from "react-bootstrap-icons"
+import { PeopleFill, HouseDoorFill, ReceiptCutoff, FileEarmarkTextFill, ClockHistory, CashStack } from "react-bootstrap-icons"
+import { getSalesSummary } from "../api/sale"
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [pendingInstallments, setPendingInstallments] = useState(0)
+
+  useEffect(() => {
+    getSalesSummary()
+      .then((data) => setPendingInstallments(data?.pending_installments || 0))
+      .catch(() => setPendingInstallments(0))
+  }, [])
 
   return (
     <div className="d-flex justify-content-center py-3">
@@ -24,6 +33,14 @@ export default function Dashboard() {
               onClick={() => navigate("/properties")}
             >
               <HouseDoorFill className="me-2" /> Propiedades y cocheras
+            </Button>
+            <Button 
+              variant={pendingInstallments > 0 ? "warning" : "primary"} 
+              size="lg"
+              onClick={() => navigate("/sales")}
+            >
+              <CashStack className="me-2" /> Ventas
+              {pendingInstallments > 0 ? ` · ${pendingInstallments} por cobrar` : ""}
             </Button>
             <Button 
               variant="primary" 

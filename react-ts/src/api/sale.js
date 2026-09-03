@@ -15,6 +15,7 @@ export async function getSales({
   status,
   keepManaging,
   month,
+  collect,
 } = {}) {
   const params = new URLSearchParams();
   params.set("page", String(page));
@@ -23,7 +24,12 @@ export async function getSales({
   if (status) params.set("status", status);
   if (keepManaging) params.set("keep_managing", keepManaging);
   if (month) params.set("month", month);
+  if (collect) params.set("collect", collect);
   return await apiFetch(`/sales/?${params.toString()}`);
+}
+
+export async function getSalesSummary() {
+  return await apiFetch("/sales/summary");
 }
 
 export async function getSale(saleId) {

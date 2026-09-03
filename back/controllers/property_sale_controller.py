@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from database import get_db
-from schemas.saleDTO import CollectSalePaymentDTO, PaginatedSalesResponse, PropertySaleResponse, SellPropertyDTO
+from schemas.saleDTO import (
+    CollectSalePaymentDTO,
+    PaginatedSalesResponse,
+    PropertySaleResponse,
+    SalesCollectionSummary,
+)
 from services.property_sale_service import PropertySaleService
 
 router = APIRouter(prefix="/sales", tags=["Property Sales"])
@@ -22,6 +27,7 @@ def list_sales(
     status: Optional[str] = Query(None, description="PAGADA | PARCIAL | PENDIENTE"),
     keep_managing: Optional[str] = Query(None, description="yes | no"),
     month: Optional[str] = Query(None, description="YYYY-MM, vacío lista todas"),
+    collect: Optional[str] = Query(None, description="pending | overdue"),
     service: PropertySaleService = Depends(get_service),
 ):
     if month:
@@ -33,6 +39,8 @@ def list_sales(
             raise HTTPException(status_code=400, detail="Mes inválido")
     if status and status.strip().upper() not in ("PAGADA", "PARCIAL", "PENDIENTE"):
         raise HTTPException(status_code=400, detail="Estado inválido")
+    if collect and collect.strip().lower() not in ("pending", "overdue"):
+        raise HTTPException(status_code=400, detail="Cobro inválido. Usá pending u overdue.")
     return service.list_sales(
         page=page,
         page_size=page_size,
@@ -40,7 +48,13 @@ def list_sales(
         sale_status=status,
         keep_managing=keep_managing,
         month=month or None,
+        collect=collect,
     )
+
+
+@router.get("/summary", response_model=SalesCollectionSummary)
+def sales_summary(service: PropertySaleService = Depends(get_service)):
+    return service.collection_summary()
 
 
 @router.get("/{sale_id}", response_model=PropertySaleResponse)

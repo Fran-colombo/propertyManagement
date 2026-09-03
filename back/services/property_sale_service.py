@@ -3,7 +3,7 @@ from math import ceil
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import extract, func, or_
+from sqlalchemy import and_, extract, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from models.person import Owner
@@ -314,6 +314,24 @@ class PropertySaleService:
             )
         return self._to_response(self._load_sale(sale.id))
 
+    def _unpaid_installment_filter(self):
+        return PropertySalePayment.amount_paid < PropertySalePayment.amount
+
+    def collection_summary(self) -> dict:
+        unpaid = self.db.query(PropertySalePayment).filter(self._unpaid_installment_filter())
+        pending_installments = unpaid.count()
+        overdue_installments = unpaid.filter(PropertySalePayment.due_date < date.today()).count()
+        pending_sales = (
+            self.db.query(PropertySale)
+            .filter(func.upper(PropertySale.status) != "PAGADA")
+            .count()
+        )
+        return {
+            "pending_sales": pending_sales,
+            "pending_installments": pending_installments,
+            "overdue_installments": overdue_installments,
+        }
+
     def list_sales(
         self,
         page: int = 1,
@@ -322,6 +340,7 @@ class PropertySaleService:
         sale_status: Optional[str] = None,
         keep_managing: Optional[str] = None,
         month: Optional[str] = None,
+        collect: Optional[str] = None,
     ) -> PaginatedSalesResponse:
         page = max(1, page)
         page_size = min(max(1, page_size), 100)
@@ -354,10 +373,37 @@ class PropertySaleService:
 
         if month and month.strip():
             year_s, month_s = month.strip().split("-", 1)
-            query = query.filter(
-                extract("year", PropertySale.sale_date) == int(year_s),
-                extract("month", PropertySale.sale_date) == int(month_s),
+            year_n, month_n = int(year_s), int(month_s)
+            due_in_month = (
+                self.db.query(PropertySalePayment.sale_id)
+                .filter(
+                    extract("year", PropertySalePayment.due_date) == year_n,
+                    extract("month", PropertySalePayment.due_date) == month_n,
+                )
             )
+            query = query.filter(
+                or_(
+                    and_(
+                        extract("year", PropertySale.sale_date) == year_n,
+                        extract("month", PropertySale.sale_date) == month_n,
+                    ),
+                    PropertySale.id.in_(due_in_month),
+                )
+            )
+
+        collect_key = (collect or "").strip().lower()
+        if collect_key == "pending":
+            query = query.filter(func.upper(PropertySale.status) != "PAGADA")
+        elif collect_key == "overdue":
+            overdue_ids = (
+                self.db.query(PropertySalePayment.sale_id)
+                .filter(
+                    self._unpaid_installment_filter(),
+                    PropertySalePayment.due_date < date.today(),
+                )
+                .distinct()
+            )
+            query = query.filter(PropertySale.id.in_(overdue_ids))
 
         total = query.count()
         items = (
@@ -377,12 +423,16 @@ class PropertySaleService:
         if items:
             self.db.commit()
         pages = ceil(total / page_size) if page_size and total else 0
+        summary = self.collection_summary()
         return PaginatedSalesResponse(
             items=[self._to_response(s) for s in items],
             total=total,
             page=page,
             page_size=page_size,
             pages=pages,
+            pending_sales=summary["pending_sales"],
+            pending_installments=summary["pending_installments"],
+            overdue_installments=summary["overdue_installments"],
         )
 
     def get_sale(self, sale_id: int) -> PropertySaleResponse:

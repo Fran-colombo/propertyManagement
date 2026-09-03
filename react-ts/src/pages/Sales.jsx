@@ -54,6 +54,21 @@ function installmentSummary(sale) {
   return `${list.length} cuota${list.length === 1 ? "" : "s"} · ${paid} cobrada${paid === 1 ? "" : "s"}`;
 }
 
+function todayISO() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+
+function nextPendingInstallment(sale) {
+  return (sale.installments || [])
+    .filter((inst) => Number(inst.remaining) > 0.009)
+    .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)))[0] || null;
+}
+
+function isOverdue(inst) {
+  return inst && String(inst.due_date).slice(0, 10) < todayISO();
+}
+
 export default function Sales() {
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
@@ -63,9 +78,13 @@ export default function Sales() {
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState(currentMonthValue);
+  const [dateFilter, setDateFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [managingFilter, setManagingFilter] = useState("");
+  const [collectFilter, setCollectFilter] = useState("pending");
+  const [pendingSales, setPendingSales] = useState(0);
+  const [pendingInstallments, setPendingInstallments] = useState(0);
+  const [overdueInstallments, setOverdueInstallments] = useState(0);
   const [cuotasSale, setCuotasSale] = useState(null);
   const [payTarget, setPayTarget] = useState(null);
   const [payForm, setPayForm] = useState({
@@ -83,7 +102,7 @@ export default function Sales() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, dateFilter, statusFilter, managingFilter]);
+  }, [debouncedSearch, dateFilter, statusFilter, managingFilter, collectFilter]);
 
   const load = async () => {
     try {
@@ -96,10 +115,14 @@ export default function Sales() {
         status: statusFilter || undefined,
         keepManaging: managingFilter || undefined,
         month: dateFilter || undefined,
+        collect: collectFilter || undefined,
       });
       setItems(data?.items || []);
       setTotal(data?.total || 0);
       setPages(data?.pages || 0);
+      setPendingSales(data?.pending_sales || 0);
+      setPendingInstallments(data?.pending_installments || 0);
+      setOverdueInstallments(data?.overdue_installments || 0);
       if (cuotasSale) {
         const updated = (data?.items || []).find((sale) => sale.id === cuotasSale.id);
         if (updated) setCuotasSale(updated);
@@ -114,7 +137,7 @@ export default function Sales() {
 
   useEffect(() => {
     load();
-  }, [page, debouncedSearch, dateFilter, statusFilter, managingFilter]);
+  }, [page, debouncedSearch, dateFilter, statusFilter, managingFilter, collectFilter]);
 
   const openPay = (sale, inst) => {
     setPayTarget({ sale, inst });
@@ -159,17 +182,83 @@ export default function Sales() {
     <div>
       <h2 className="h4">Ventas</h2>
       <p className="text-muted small">
-        Contado o cuotas. Los cobros también aparecen en Transacciones como venta,
-        separados del alquiler.
+        Lo primero que ves son las ventas con cuotas por cobrar. El detalle de cuotas sigue en el modal.
       </p>
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError("")}>
           {error}
         </Alert>
       )}
+      {pendingInstallments > 0 && (
+        <Alert variant={overdueInstallments ? "warning" : "info"} className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <strong>
+              {pendingInstallments} cuota{pendingInstallments === 1 ? "" : "s"} por cobrar
+            </strong>
+            {overdueInstallments > 0 && (
+              <>
+                {" "}
+                · {overdueInstallments} vencida{overdueInstallments === 1 ? "" : "s"}
+              </>
+            )}
+            {pendingSales > 0 && (
+              <span className="text-muted">
+                {" "}
+                en {pendingSales} venta{pendingSales === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+          {collectFilter !== "pending" && (
+            <Button
+              size="sm"
+              variant="outline-dark"
+              onClick={() => {
+                setCollectFilter("pending");
+                setStatusFilter("");
+                setDateFilter("");
+              }}
+            >
+              Ver por cobrar
+            </Button>
+          )}
+        </Alert>
+      )}
       <Card className="mb-4">
         <Card.Body>
           <Row className="g-3">
+            <Col xs={12}>
+              <div className="d-flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={collectFilter === "pending" ? "warning" : "outline-warning"}
+                  onClick={() => {
+                    setCollectFilter("pending");
+                    setStatusFilter("");
+                  }}
+                >
+                  Por cobrar
+                  {pendingInstallments > 0 ? ` (${pendingInstallments})` : ""}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={collectFilter === "overdue" ? "danger" : "outline-danger"}
+                  onClick={() => {
+                    setCollectFilter("overdue");
+                    setStatusFilter("");
+                  }}
+                >
+                  Vencidas
+                  {overdueInstallments > 0 ? ` (${overdueInstallments})` : ""}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={collectFilter === "" ? "secondary" : "outline-secondary"}
+                  onClick={() => setCollectFilter("")}
+                >
+                  Todas las ventas
+                </Button>
+              </div>
+            </Col>
             <Col xs={12} md={4}>
               <InputGroup>
                 <InputGroup.Text>
@@ -206,7 +295,7 @@ export default function Sales() {
                 </Button>
               </InputGroup>
               <Form.Text className="text-muted">
-                Mes actual por defecto. Vacío lista todas.
+                Mes de la venta o del vencimiento de una cuota.
               </Form.Text>
               {dateFilter && (
                 <Button
@@ -222,7 +311,10 @@ export default function Sales() {
             <Col xs={12} md={2}>
               <Form.Select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  if (e.target.value) setCollectFilter("");
+                }}
                 aria-label="Filtrar estado"
               >
                 <option value="">Todos los estados</option>
@@ -266,7 +358,10 @@ export default function Sales() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((sale) => (
+                {items.map((sale) => {
+                  const nextInst = nextPendingInstallment(sale);
+                  const overdue = isOverdue(nextInst);
+                  return (
                   <tr key={sale.id}>
                     <td>{new Date(sale.sale_date).toLocaleDateString("es-AR")}</td>
                     <td>{sale.property_direction}</td>
@@ -284,7 +379,32 @@ export default function Sales() {
                       )}
                     </td>
                     <td>
-                      <div className="small text-muted mb-1">{installmentSummary(sale)}</div>
+                      {nextInst ? (
+                        <div className="mb-2">
+                          <div className="fw-semibold">
+                            Cobrar {money(nextInst.remaining, sale.currency)}
+                          </div>
+                          <div className="small text-muted">
+                            Vence {new Date(nextInst.due_date).toLocaleDateString("es-AR")}
+                            {overdue && (
+                              <>
+                                {" "}
+                                <Badge bg="danger">Vencida</Badge>
+                              </>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={overdue ? "danger" : "success"}
+                            className="mt-1 me-2"
+                            onClick={() => openPay(sale, nextInst)}
+                          >
+                            Cobrar
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="small text-muted mb-1">{installmentSummary(sale)}</div>
+                      )}
                       <Button
                         size="sm"
                         variant="outline-primary"
@@ -297,11 +417,17 @@ export default function Sales() {
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {!items.length && (
                   <tr>
                     <td colSpan={10} className="text-center text-muted">
                       No hay ventas para este filtro.
+                      {collectFilter === "pending"
+                        ? " No hay cuotas pendientes de cobro."
+                        : collectFilter === "overdue"
+                        ? " No hay cuotas vencidas."
+                        : ""}
                     </td>
                   </tr>
                 )}
@@ -365,24 +491,27 @@ export default function Sales() {
                 <tbody>
                   {(cuotasSale.installments || []).map((inst) => {
                     const pending = Number(inst.remaining) > 0.009;
+                    const overdue = pending && isOverdue(inst);
                     return (
-                      <tr key={inst.id}>
+                      <tr key={inst.id} className={overdue ? "table-danger" : ""}>
                         <td>{new Date(inst.due_date).toLocaleDateString("es-AR")}</td>
                         <td>{money(inst.amount, cuotasSale.currency)}</td>
                         <td>{money(inst.amount_paid, cuotasSale.currency)}</td>
                         <td>{pending ? money(inst.remaining, cuotasSale.currency) : "—"}</td>
                         <td>
-                          {pending ? (
-                            <Badge bg="warning" text="dark">Pendiente</Badge>
-                          ) : (
+                          {!pending ? (
                             <Badge bg="success">Cobrada</Badge>
+                          ) : overdue ? (
+                            <Badge bg="danger">Vencida</Badge>
+                          ) : (
+                            <Badge bg="warning" text="dark">Pendiente</Badge>
                           )}
                         </td>
                         <td>
                           {pending && (
                             <Button
                               size="sm"
-                              variant="outline-success"
+                              variant={overdue ? "danger" : "success"}
                               onClick={() => openPay(cuotasSale, inst)}
                             >
                               Cobrar
