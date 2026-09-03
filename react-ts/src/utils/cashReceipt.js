@@ -131,11 +131,12 @@ function escapeHtml(value) {
 function receiptBlockHtml({ dateLine, body, sign }) {
   return `
   <section class="receipt">
-    <h1>Recibo</h1>
-    <div class="rule"></div>
-    <div class="date">${escapeHtml(dateLine)}</div>
-    <div class="body">${escapeHtml(body)}</div>
-    <div class="sign">${escapeHtml(sign)}</div>
+    <div class="inner">
+      <h1>RECIBO</h1>
+      <div class="date">${escapeHtml(dateLine)}</div>
+      <p class="body">${escapeHtml(body)}</p>
+      <div class="sign">${escapeHtml(sign)}</div>
+    </div>
   </section>`;
 }
 
@@ -148,17 +149,17 @@ export function openCashReceiptPrint(data) {
   <meta charset="utf-8" />
   <title>Recibo</title>
   <style>
+    @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
     body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: "Segoe UI", Arial, sans-serif;
+      font-family: "Times New Roman", Times, serif;
       background: #e8eef4;
-      color: #1b2430;
+      color: #111;
     }
     .toolbar {
-      max-width: 720px;
-      margin: 24px auto 0;
+      width: 210mm;
+      margin: 16px auto 0;
       text-align: center;
     }
     .toolbar button {
@@ -168,44 +169,70 @@ export function openCashReceiptPrint(data) {
       border-radius: 6px;
       padding: 10px 18px;
       font-size: 14px;
+      font-family: "Segoe UI", Arial, sans-serif;
       cursor: pointer;
     }
     .sheet {
-      max-width: 720px;
-      margin: 20px auto 32px;
-      padding: 36px 40px;
+      width: 210mm;
+      height: 297mm;
+      margin: 12px auto 24px;
       background: #fff;
       border: 1px solid #d5dde6;
-      border-radius: 8px;
       box-shadow: 0 12px 32px rgba(20, 40, 70, 0.12);
+      display: flex;
+      flex-direction: column;
     }
-    .receipt { text-align: center; }
-    .receipt + .cut { margin: 28px 0; }
+    .receipt {
+      flex: 1 1 50%;
+      height: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18mm 22mm;
+    }
+    .inner {
+      width: 100%;
+      max-width: 160mm;
+      text-align: center;
+    }
     .cut {
+      flex: 0 0 auto;
+      margin: 0 12mm;
       border: 0;
       border-top: 1px dashed #8a97a6;
     }
     h1 {
-      font-size: 20px;
-      margin: 0 0 8px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
+      font-size: 22pt;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      margin: 0 0 14px;
     }
-    .rule { height: 2px; width: 160px; background: #1b2430; margin: 0 auto 18px; }
-    .date { color: #4a5568; margin-bottom: 16px; }
-    .body { font-size: 15px; line-height: 1.7; max-width: 560px; margin: 0 auto; }
-    .sign { margin-top: 28px; }
+    .date {
+      font-size: 12pt;
+      font-style: italic;
+      margin-bottom: 18px;
+    }
+    .body {
+      font-size: 12pt;
+      line-height: 1.55;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .sign {
+      margin-top: 28px;
+      font-size: 12pt;
+    }
     @media print {
       body { background: #fff; }
       .toolbar { display: none; }
       .sheet {
         margin: 0;
-        padding: 12mm 14mm;
         border: 0;
         box-shadow: none;
-        max-width: none;
+        width: 210mm;
+        height: 297mm;
       }
-      .receipt, .sheet { page-break-inside: avoid; page-break-after: auto; }
+      .receipt { break-inside: avoid; page-break-inside: avoid; }
     }
   </style>
 </head>
