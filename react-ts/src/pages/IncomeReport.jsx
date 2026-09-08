@@ -28,6 +28,84 @@ function yearStartIso() {
   return `${new Date().getFullYear()}-01-01`;
 }
 
+function csvCell(value) {
+  const text = String(value ?? "");
+  if (/[;"\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function csvMoney(amount) {
+  return Number(amount || 0).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function csvDate(value) {
+  if (!value) return "";
+  const [y, m, d] = String(value).slice(0, 10).split("-");
+  if (!y || !m || !d) return String(value);
+  return `${d}/${m}/${y}`;
+}
+
+function currencyLabel(currency) {
+  return String(currency || "PESOS").toUpperCase() === "DOLARES" ? "USD" : "PESOS";
+}
+
+function downloadCsv(filename, lines) {
+  const content = `\uFEFF${lines.map((row) => row.map(csvCell).join(";")).join("\r\n")}`;
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportBilled(report) {
+  if (!report) return;
+  const rows = [
+    ["Facturado por propiedades"],
+    ["Desde", csvDate(report.start_date)],
+    ["Hasta", csvDate(report.end_date)],
+    [],
+    ["Resumen"],
+    ["Propiedad", "Facturado $", "Facturado USD"],
+  ];
+  (report.items || []).forEach((item) => {
+    rows.push([
+      propertyLabel(item),
+      csvMoney(item.billed_pesos),
+      csvMoney(item.billed_dolares),
+    ]);
+  });
+  rows.push([
+    "Total",
+    csvMoney(report.totals?.billed_pesos),
+    csvMoney(report.totals?.billed_dolares),
+  ]);
+  rows.push([]);
+  rows.push(["Detalle por período"]);
+  rows.push(["Propiedad", "Inquilino", "Período desde", "Período hasta", "Moneda", "Facturado"]);
+  (report.billed_lines || []).forEach((line) => {
+    rows.push([
+      propertyLabel(line),
+      line.tenant_name || "Sin inquilino",
+      csvDate(line.period_start),
+      csvDate(line.period_end),
+      currencyLabel(line.currency),
+      csvMoney(line.amount),
+    ]);
+  });
+  if (!(report.billed_lines || []).length) {
+    rows.push(["No hay períodos facturados en este rango."]);
+  }
+  downloadCsv(`facturado_${report.start_date}_${report.end_date}.csv`, rows);
+}
+
 export default function IncomeReport() {
   const [properties, setProperties] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -171,6 +249,16 @@ export default function IncomeReport() {
       )}
 
       {!loading && report && (
+        <div>
+        <div className="d-flex justify-content-end mb-2">
+          <Button
+            variant="outline-primary"
+            size="sm"
+            onClick={() => exportBilled(report)}
+          >
+            Exportar facturado
+          </Button>
+        </div>
         <div className="table-responsive">
           <Table striped bordered hover>
             <thead>
@@ -203,6 +291,7 @@ export default function IncomeReport() {
               </tr>
             </tfoot>
           </Table>
+        </div>
         </div>
       )}
     </div>

@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 
 from models.contract import RentalContract
 from models.contract_period import ContractPeriod
+from models.person import Tenant
 from models.property import Property
 from models.transaction_history import TransactionHistory
-from schemas.reportDTO import PropertyIncomeItem, PropertyIncomeReport, PropertyIncomeTotals
+from schemas.reportDTO import BilledLine, PropertyIncomeItem, PropertyIncomeReport, PropertyIncomeTotals
 from services.transaction_service import normalize_currency
 
 
@@ -48,20 +49,42 @@ class ReportService:
             )
 
         billed = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
+        billed_lines = []
         billed_rows = (
             self.db.query(
                 RentalContract.property_id,
                 RentalContract.currency,
                 ContractPeriod.total_amount,
+                ContractPeriod.start_date,
+                ContractPeriod.end_date,
+                Tenant.name,
             )
             .join(ContractPeriod, ContractPeriod.contract_id == RentalContract.id)
+            .outerjoin(Tenant, Tenant.id == RentalContract.tenant_id)
             .filter(RentalContract.property_id.in_(ids))
             .filter(ContractPeriod.start_date <= end_date)
             .filter(ContractPeriod.end_date >= start_date)
+            .order_by(RentalContract.property_id, ContractPeriod.start_date)
             .all()
         )
-        for property_id, currency, total in billed_rows:
-            billed[property_id][normalize_currency(currency)] += float(total or 0)
+        for property_id, currency, total, period_start, period_end, tenant_name in billed_rows:
+            amount = float(total or 0)
+            currency_key = normalize_currency(currency)
+            billed[property_id][currency_key] += amount
+            prop = found.get(property_id)
+            billed_lines.append(
+                BilledLine(
+                    property_id=property_id,
+                    direction=prop.direction if prop else "",
+                    floor=prop.floor if prop else None,
+                    apartment=prop.apartment if prop else None,
+                    tenant_name=tenant_name,
+                    period_start=period_start,
+                    period_end=period_end,
+                    currency=currency_key,
+                    amount=amount,
+                )
+            )
 
         collected = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
         collected_rows = (
@@ -111,4 +134,5 @@ class ReportService:
             end_date=end_date,
             items=items,
             totals=totals,
+            billed_lines=billed_lines,
         )
