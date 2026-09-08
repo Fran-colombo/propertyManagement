@@ -9,6 +9,7 @@ from schemas.contract_periodDTO import ContractPeriodResponse
 from models.contract import RentalContract
 from models.contract_period import ContractPeriod
 from models.property import Garage, Property, RealAgency
+from models.person import Tenant
 from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
 from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum, IndexTypeEnum
 from utils.proration import is_partial_month, period_total, proration_note, prorate, period_due_date
@@ -42,6 +43,14 @@ class RentalContractService:
             return float(ipc["value"])
         except IpcServiceError:
             return None
+
+    def _history_tenant_name(self, contract: RentalContract) -> Optional[str]:
+        if contract.tenant and contract.tenant.name:
+            return contract.tenant.name
+        if not contract.tenant_id:
+            return None
+        tenant = self.db.query(Tenant).filter(Tenant.id == contract.tenant_id).first()
+        return tenant.name if tenant else None
 
     def create_contract(self, contract_data: CreateContractDTO) -> ContractResponse:
         if contract_data.end_date <= contract_data.start_date:
@@ -105,11 +114,13 @@ class RentalContractService:
                 self._mark_past_periods_paid(contract)
 
             self.db.refresh(contract)
+            tenant_name = self._history_tenant_name(contract)
             all_contract = ContractHistory(
                 rental_contract_id=contract.id,
                 property_id=contract.property_id,
                 property_address=property_obj.direction,
                 tenant_id=contract.tenant_id,
+                tenant_name=tenant_name,
                 start_date=contract.start_date,
                 end_date=contract.end_date
             )
@@ -189,6 +200,7 @@ class RentalContractService:
                 property_id=garage.property_id,
                 property_address=address,
                 tenant_id=contract.tenant_id,
+                tenant_name=self._history_tenant_name(contract),
                 start_date=contract.start_date,
                 end_date=contract.end_date,
             ))

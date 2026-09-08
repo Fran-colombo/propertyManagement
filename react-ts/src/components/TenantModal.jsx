@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { createTenant } from "../api/person"
 import FeedbackModal from "./FeedbackModal"
 
@@ -8,6 +8,8 @@ export default function TenantModal({ onClose, onSave }) {
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [formVisible, setFormVisible] = useState(true)
+  const [createdTenant, setCreatedTenant] = useState(null)
+  const createdRef = useRef(null)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -21,7 +23,9 @@ export default function TenantModal({ onClose, onSave }) {
     try {
       setSaving(true)
       setError("")
-      await createTenant(formData)
+      const created = await createTenant(formData)
+      createdRef.current = created
+      setCreatedTenant(created)
       setFormVisible(false)
       setFeedback({
         variant: "success",
@@ -47,7 +51,7 @@ export default function TenantModal({ onClose, onSave }) {
     if (variant === "danger") {
       setFormVisible(true)
     } else {
-      onSave()
+      onSave(createdRef.current || createdTenant)
       onClose()
     }
   }
@@ -55,7 +59,7 @@ export default function TenantModal({ onClose, onSave }) {
   return (
     <>
     {formVisible && (
-  <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+  <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1960 }}>
     <div className="modal-dialog modal-dialog-centered">
       <div className="modal-content">
         <div className="modal-header bg-light">

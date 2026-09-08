@@ -7,6 +7,8 @@ import { getGarages } from "../api/garage";
 import { getAllAgencies } from "../api/real_agency";
 import { getIpc } from "../api/index";
 import FeedbackModal from "./FeedbackModal";
+import TenantModal from "./TenantModal";
+import SearchableSelect from "./SearchableSelect";
 import HistoricalRentTiers from "./HistoricalRentTiers";
 import {
   buildDefaultTiers,
@@ -89,6 +91,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   const [ipcHint, setIpcHint] = useState("");
   const [ipcCurrentHint, setIpcCurrentHint] = useState("");
   const [rentTiers, setRentTiers] = useState([]);
+  const [showTenantModal, setShowTenantModal] = useState(false);
 
   useEffect(() => {
     if (show) {
@@ -100,6 +103,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       setIpcHint("");
       setIpcCurrentHint("");
       setRentTiers([]);
+      setShowTenantModal(false);
       loadData();
     }
   }, [show]);
@@ -235,6 +239,48 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       return true;
     });
   }, [garages, ownerId]);
+
+  const propertyOptions = useMemo(
+    () =>
+      availableProperties.map((p) => ({
+        value: p.id,
+        label: `${propertyLabel(p)} — ${p.owner?.name || "Sin dueño"}`,
+        search: `${propertyLabel(p)} ${p.owner?.name || ""}`,
+      })),
+    [availableProperties]
+  );
+
+  const tenantOptions = useMemo(
+    () =>
+      tenants.map((t) => ({
+        value: t.id,
+        label: `${t.name}${t.phone ? ` - ${t.phone}` : ""}`,
+        search: `${t.name} ${t.phone || ""} ${t.email || ""}`,
+      })),
+    [tenants]
+  );
+
+  const garageOptions = useMemo(
+    () =>
+      availableGarages.map((g) => ({
+        value: g.id,
+        label: garageLabel(g),
+        search: `${g.number} ${g.owner_name || ""} ${g.property_direction || ""}`,
+      })),
+    [availableGarages]
+  );
+
+  const handleTenantCreated = (created) => {
+    if (!created?.id) {
+      loadData();
+      return;
+    }
+    setTenants((prev) => {
+      if (prev.some((t) => t.id === created.id)) return prev;
+      return [...prev, created];
+    });
+    setForm((prev) => ({ ...prev, tenant_id: created.id }));
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -476,7 +522,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
 
   return (
     <>
-    <Modal show={show} onHide={onHide} backdrop="static" size="lg" fullscreen="sm-down">
+    <Modal show={show} onHide={onHide} backdrop="static" size="lg" fullscreen="sm-down" enforceFocus={false}>
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
           <Modal.Title>Nuevo Contrato</Modal.Title>
@@ -519,18 +565,18 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
               {!form.garage_only && (
                 <Form.Group className="mb-2">
                   <Form.Label>Propiedad *</Form.Label>
-                  <Form.Select
-                    name="property_id"
+                  <SearchableSelect
+                    options={propertyOptions}
                     value={form.property_id}
-                    onChange={handleChange}
-                  >
-                    <option value="">Seleccione propiedad</option>
-                    {availableProperties.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {propertyLabel(p)} — {p.owner?.name || "Sin dueño"}
-                      </option>
-                    ))}
-                  </Form.Select>
+                    onChange={(val) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        property_id: val === "" || val == null ? "" : Number(val),
+                      }))
+                    }
+                    placeholder="Buscar propiedad..."
+                    emptyText="No hay propiedades disponibles para este filtro."
+                  />
                   {availableProperties.length === 0 && (
                     <Form.Text className="text-danger">
                       No hay propiedades disponibles para este filtro.
@@ -540,19 +586,30 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
               )}
 
               <Form.Group className="mb-2">
-                <Form.Label>Inquilino *</Form.Label>
-                <Form.Select
-                  name="tenant_id"
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <Form.Label className="mb-0">Inquilino *</Form.Label>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="p-0"
+                    onClick={() => setShowTenantModal(true)}
+                  >
+                    + Nuevo inquilino
+                  </Button>
+                </div>
+                <SearchableSelect
+                  options={tenantOptions}
                   value={form.tenant_id}
-                  onChange={handleChange}
-                >
-                  <option value="">Seleccione inquilino</option>
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} - {t.phone}
-                    </option>
-                  ))}
-                </Form.Select>
+                  onChange={(val) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      tenant_id: val === "" || val == null ? "" : Number(val),
+                    }))
+                  }
+                  placeholder="Buscar inquilino por nombre o teléfono..."
+                  emptyText="No hay inquilinos que coincidan."
+                />
               </Form.Group>
 
               <Form.Group className="mb-2">
@@ -764,18 +821,18 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
               {(form.garage_only || form.includes_garage) && (
                 <Form.Group className="mb-2 mt-2">
                   <Form.Label>Garage *</Form.Label>
-                  <Form.Select
-                    name="garage_id"
+                  <SearchableSelect
+                    options={garageOptions}
                     value={form.garage_id ?? ""}
-                    onChange={handleChange}
-                  >
-                    <option value="">Seleccione garage</option>
-                    {availableGarages.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {garageLabel(g)}
-                      </option>
-                    ))}
-                  </Form.Select>
+                    onChange={(val) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        garage_id: val === "" || val == null ? null : Number(val),
+                      }))
+                    }
+                    placeholder="Buscar garage..."
+                    emptyText="No hay garages disponibles para este filtro."
+                  />
                   <Form.Text className="text-muted">
                     Un garage puede estar asociado a una propiedad y aún así alquilarse por separado.
                   </Form.Text>
@@ -888,6 +945,12 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       message={feedback?.message}
       onClose={closeFeedback}
     />
+    {showTenantModal && (
+      <TenantModal
+        onClose={() => setShowTenantModal(false)}
+        onSave={handleTenantCreated}
+      />
+    )}
     </>
   );
 }

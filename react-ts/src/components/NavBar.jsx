@@ -8,6 +8,7 @@ import {
   Building,
   CashStack,
   FileEarmarkText,
+  GraphUp,
 } from "react-bootstrap-icons";
 import { getSalesSummary } from "../api/sale";
 
@@ -33,6 +34,7 @@ export default function NavigationBar() {
       badge: pendingInstallments,
     },
     { to: "/transactions", icon: <CashStack className="me-2" />, label: "Transacciones" },
+    { to: "/ingresos", icon: <GraphUp className="me-2" />, label: "Ingresos" },
     { to: "/contracts", icon: <FileEarmarkText className="me-2" />, label: "Contratos activos" },
     { to: "/all-contracts", icon: <FileEarmarkText className="me-2" />, label: "Historial de contratos" },
   ];

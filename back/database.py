@@ -73,6 +73,7 @@ def _ensure_sqlite_columns():
             "settlement_direction": "TEXT",
             "receipt_path": "TEXT",
             "document_path": "TEXT",
+            "tenant_name": "TEXT",
         },
         "rental_contracts": {
             "document_path": "TEXT",
@@ -115,6 +116,19 @@ def _ensure_sqlite_columns():
             for col, col_type in cols.items():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+
+        if "all_contracts" in inspector.get_table_names():
+            conn.execute(
+                text(
+                    """
+                    UPDATE all_contracts
+                    SET tenant_name = (
+                        SELECT tenants.name FROM tenants WHERE tenants.id = all_contracts.tenant_id
+                    )
+                    WHERE tenant_name IS NULL OR TRIM(tenant_name) = ''
+                    """
+                )
+            )
 
         if "property_sale_payments" in inspector.get_table_names():
             conn.execute(

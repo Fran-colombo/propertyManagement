@@ -159,6 +159,7 @@ class ContractPeriodService:
         Obtiene todos los períodos de un contrato, ordenados por fecha de inicio
         """
         periods = self.db.query(ContractPeriod)\
+            .options(*_period_load())\
             .filter(ContractPeriod.contract_id == contract_id)\
             .order_by(ContractPeriod.start_date.asc())\
             .all()

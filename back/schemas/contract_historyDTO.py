@@ -21,6 +21,7 @@ class AllContractResponse(BaseModel):
     rental_contract_id: Optional[int] = None
     property_id: Optional[int] = None
     tenant_id: int
+    tenant_name: Optional[str] = None
     start_date: date
     end_date: date
     cancelled: int

@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from models.property import Garage, Property
 from models.person import Owner
+from models.contract import RentalContract
 from schemas.garageDTO import GarageCreate, GarageRead, GarageUpdate
 
 
@@ -25,7 +26,7 @@ class GarageRepository:
             .options(
                 joinedload(Garage.owner),
                 joinedload(Garage.property),
-                joinedload(Garage.rental_contract),
+                joinedload(Garage.rental_contract).joinedload(RentalContract.tenant),
             )
             .filter(Garage.status == 1)
             .filter(
@@ -45,7 +46,7 @@ class GarageRepository:
             .options(
                 joinedload(Garage.owner),
                 joinedload(Garage.property),
-                joinedload(Garage.rental_contract),
+                joinedload(Garage.rental_contract).joinedload(RentalContract.tenant),
             )
             .filter(Garage.id == garage_id, Garage.status == 1)
             .first()
@@ -82,6 +83,9 @@ def to_garage_read(garage: Garage) -> GarageRead:
         if garage.rental_contract and garage.rental_contract.status == 1
         else None
     )
+    tenant_name = None
+    if active and active.tenant:
+        tenant_name = active.tenant.name
     return GarageRead(
         id=garage.id,
         number=garage.number,
@@ -90,4 +94,5 @@ def to_garage_read(garage: Garage) -> GarageRead:
         owner_name=garage.owner.name if garage.owner else None,
         property_direction=garage.property.direction if garage.property else None,
         rental_contract_id=active.id if active else None,
+        tenant_name=tenant_name,
     )

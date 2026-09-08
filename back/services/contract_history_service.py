@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from models.contract import RentalContract
 from models.property import Garage
 from repositories.contract_history_repository import AllContractRepository
-from schemas.contract_historyDTO import AllContractResponse, PaginatedContractHistoryResponse
+from schemas.contract_historyDTO import AllContractResponse, PaginatedContractHistoryResponse, TenantMiniDTO
 from utils.contract_display import contract_owner
 
 
@@ -62,11 +62,16 @@ class AllContractService:
             owner = contract_owner(contract)
             if owner:
                 owner_name = owner.name
+        tenant = row.tenant
+        tenant_name = getattr(row, "tenant_name", None) or (tenant.name if tenant else None)
+        if tenant is None and tenant_name:
+            tenant = TenantMiniDTO(id=row.tenant_id or 0, name=tenant_name)
         return AllContractResponse(
             id=row.id,
             rental_contract_id=row.rental_contract_id,
             property_id=row.property_id,
             tenant_id=row.tenant_id,
+            tenant_name=tenant_name,
             start_date=row.start_date,
             end_date=row.end_date,
             cancelled=row.cancelled or 0,
@@ -79,5 +84,5 @@ class AllContractService:
             property_address=row.property_address,
             owner_name=owner_name,
             property=row.property,
-            tenant=row.tenant,
+            tenant=tenant,
         )

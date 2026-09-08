@@ -211,7 +211,7 @@ const AllContracts = () => {
                       contract.property?.owner?.name ||
                       "Sin dueño"}
                   </td>
-                  <td>{contract.tenant?.name || "Sin inquilino"}</td>
+                  <td>{contract.tenant?.name || contract.tenant_name || "Sin inquilino"}</td>
                   <td>{new Date(contract.start_date).toLocaleDateString()}</td>
                   <td>{new Date(contract.end_date).toLocaleDateString()}</td>
                   <td>

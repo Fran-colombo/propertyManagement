@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from models.person import Tenant
+from models.contract import RentalContract
 from schemas.tenantDTO import CreateTenantDTO, UpdateTenantDTO
 from repositories.tenant_repository import TenantRepository
 
@@ -36,7 +37,18 @@ class TenantService:
         tenant = self.repo.get_by_id(tenant_id)
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")
-        
+
+        active = (
+            self.repo.db.query(RentalContract)
+            .filter(RentalContract.tenant_id == tenant_id, RentalContract.status == 1)
+            .first()
+        )
+        if active:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar un inquilino con contrato activo",
+            )
+
         self.repo.soft_delete(tenant)
         return {"message": "Tenant deleted successfully"}
 

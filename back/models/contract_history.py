@@ -9,6 +9,7 @@ class ContractHistory(Base):
     rental_contract_id = Column(Integer, ForeignKey("rental_contracts.id"), nullable=True)
     property_id = Column(Integer, ForeignKey("properties.id"))
     tenant_id = Column(Integer, ForeignKey("tenants.id"))
+    tenant_name = Column(String)
     property_address = Column(String)
     start_date = Column(Date)
     end_date = Column(Date)

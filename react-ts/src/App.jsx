@@ -5,6 +5,7 @@ import People from "./pages/People";
 import Transactions from "./pages/Transactions";
 import PropertiesAndGarages from "./pages/PropertiesAndGarage";
 import Sales from "./pages/Sales";
+import IncomeReport from "./pages/IncomeReport";
 import ContractsTable from "./pages/Contracts";
 import AllContracts from "./pages/AllContracts";
 import AuthProvider from "../context/AuthProvider";
@@ -57,6 +58,16 @@ function App() {
               <PrivateRoute>
                 <Layout>
                   <Sales />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/ingresos"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <IncomeReport />
                 </Layout>
               </PrivateRoute>
             }

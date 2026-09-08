@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import extract
+from sqlalchemy import extract, or_
 from models.contract_history import ContractHistory
 from models.property import Property
 from models.person import Tenant
@@ -25,8 +25,12 @@ class AllContractRepository:
                 extract("month", ContractHistory.start_date) == int(month_s),
             )
         if tenant:
-            query = query.join(ContractHistory.tenant).filter(
-                Tenant.name.ilike(f"%{tenant.strip()}%")
+            term = f"%{tenant.strip()}%"
+            query = query.outerjoin(ContractHistory.tenant).filter(
+                or_(
+                    Tenant.name.ilike(term),
+                    ContractHistory.tenant_name.ilike(term),
+                )
             )
         return query
 

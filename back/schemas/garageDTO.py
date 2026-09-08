@@ -24,3 +24,4 @@ class GarageRead(BaseModel):
     owner_name: Optional[str] = None
     property_direction: Optional[str] = None
     rental_contract_id: Optional[int] = None
+    tenant_name: Optional[str] = None
