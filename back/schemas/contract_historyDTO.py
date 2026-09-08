@@ -5,6 +5,8 @@ from typing import Optional, List
 class PropertyMiniDTO(BaseModel):
     id: int
     direction: str
+    floor: Optional[str] = None
+    apartment: Optional[str] = None
 
     class Config:
         from_attributes = True

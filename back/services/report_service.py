@@ -1,16 +1,28 @@
 from collections import defaultdict
 from datetime import date
 from fastapi import HTTPException
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from models.contract import RentalContract
 from models.contract_period import ContractPeriod
-from models.person import Tenant
+from models.contract_termination import ContractTermination, SettlementDirectionEnum
 from models.property import Property
-from models.transaction_history import TransactionHistory
+from schemas.enums.enums import PaymentStatusEnum
 from schemas.reportDTO import BilledLine, PropertyIncomeItem, PropertyIncomeReport, PropertyIncomeTotals
 from services.transaction_service import normalize_currency
+from utils.contract_display import iter_months
+
+
+def _status_value(value) -> str:
+    if hasattr(value, "value"):
+        value = value.value
+    return str(value or "").strip().upper()
+
+
+def _direction_value(value) -> str:
+    if hasattr(value, "value"):
+        value = value.value
+    return str(value or "").strip().upper()
 
 
 class ReportService:
@@ -49,60 +61,147 @@ class ReportService:
             )
 
         billed = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
-        billed_lines = []
+        collected = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
+        period_lines = defaultdict(list)
+
         billed_rows = (
-            self.db.query(
-                RentalContract.property_id,
-                RentalContract.currency,
-                ContractPeriod.total_amount,
-                ContractPeriod.start_date,
-                ContractPeriod.end_date,
-                Tenant.name,
+            self.db.query(ContractPeriod)
+            .options(
+                joinedload(ContractPeriod.contract).joinedload(RentalContract.tenant),
             )
-            .join(ContractPeriod, ContractPeriod.contract_id == RentalContract.id)
-            .outerjoin(Tenant, Tenant.id == RentalContract.tenant_id)
+            .join(RentalContract, ContractPeriod.contract_id == RentalContract.id)
             .filter(RentalContract.property_id.in_(ids))
             .filter(ContractPeriod.start_date <= end_date)
             .filter(ContractPeriod.end_date >= start_date)
             .order_by(RentalContract.property_id, ContractPeriod.start_date)
             .all()
         )
-        for property_id, currency, total, period_start, period_end, tenant_name in billed_rows:
-            amount = float(total or 0)
-            currency_key = normalize_currency(currency)
+        for period in billed_rows:
+            if _status_value(period.payment_status) == PaymentStatusEnum.CONTRATO_TERMINADO.value:
+                if float(period.amount_paid or 0) <= 0:
+                    continue
+            contract = period.contract
+            property_id = contract.property_id if contract else None
+            if property_id not in found:
+                continue
+            prop = found[property_id]
+            currency_key = normalize_currency(getattr(contract, "currency", None))
+            amount = float(period.total_amount or 0)
+            paid = float(period.amount_paid or 0)
+            tenant = getattr(contract, "tenant", None)
             billed[property_id][currency_key] += amount
-            prop = found.get(property_id)
-            billed_lines.append(
+            collected[property_id][currency_key] += paid
+            period_lines[property_id].append(
                 BilledLine(
                     property_id=property_id,
-                    direction=prop.direction if prop else "",
-                    floor=prop.floor if prop else None,
-                    apartment=prop.apartment if prop else None,
-                    tenant_name=tenant_name,
-                    period_start=period_start,
-                    period_end=period_end,
+                    direction=prop.direction,
+                    floor=prop.floor,
+                    apartment=prop.apartment,
+                    tenant_name=tenant.name if tenant else None,
+                    period_start=period.start_date,
+                    period_end=period.end_date,
                     currency=currency_key,
                     amount=amount,
+                    amount_paid=paid,
+                    payment_status=_status_value(period.payment_status),
+                    kind="period",
+                    note=period.proration_note or period.termination_note,
                 )
             )
 
-        collected = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
-        collected_rows = (
-            self.db.query(
-                RentalContract.property_id,
-                TransactionHistory.currency,
-                TransactionHistory.amount,
+        settlements = (
+            self.db.query(ContractTermination)
+            .options(
+                joinedload(ContractTermination.contract).joinedload(RentalContract.tenant),
             )
-            .join(RentalContract, RentalContract.id == TransactionHistory.contract_id)
+            .join(RentalContract, ContractTermination.rental_contract_id == RentalContract.id)
             .filter(RentalContract.property_id.in_(ids))
-            .filter(TransactionHistory.date >= start_date)
-            .filter(TransactionHistory.date <= end_date)
-            .filter(func.lower(func.coalesce(TransactionHistory.method, "")) != "carga_inicial")
-            .filter(func.lower(func.coalesce(TransactionHistory.method, "")) != "venta")
+            .filter(ContractTermination.effective_date >= start_date)
+            .filter(ContractTermination.effective_date <= end_date)
+            .filter(ContractTermination.settlement_amount > 0)
             .all()
         )
-        for property_id, currency, total in collected_rows:
-            collected[property_id][normalize_currency(currency)] += float(total or 0)
+        settlement_lines = defaultdict(list)
+        for term in settlements:
+            contract = term.contract
+            property_id = contract.property_id if contract else None
+            if property_id not in found:
+                continue
+            prop = found[property_id]
+            currency_key = normalize_currency(getattr(contract, "currency", None))
+            amount = float(term.settlement_amount or 0)
+            direction = _direction_value(term.settlement_direction)
+            tenant = getattr(contract, "tenant", None)
+            if direction == SettlementDirectionEnum.PROPIETARIO_A_INQUILINO.value:
+                billed_amount = 0.0
+                collected_amount = -amount
+                note = "Acuerdo de baja (Propietario → Inquilino)"
+            else:
+                billed_amount = amount
+                collected_amount = amount
+                note = "Acuerdo de baja (Inquilino → Propietario)"
+            billed[property_id][currency_key] += billed_amount
+            collected[property_id][currency_key] += collected_amount
+            settlement_lines[property_id].append(
+                BilledLine(
+                    property_id=property_id,
+                    direction=prop.direction,
+                    floor=prop.floor,
+                    apartment=prop.apartment,
+                    tenant_name=tenant.name if tenant else None,
+                    period_start=term.effective_date,
+                    period_end=term.effective_date,
+                    currency=currency_key,
+                    amount=billed_amount,
+                    amount_paid=collected_amount,
+                    payment_status="BAJA",
+                    kind="settlement",
+                    note=note,
+                )
+            )
+
+        billed_lines = []
+        for pid in ids:
+            prop = found[pid]
+            existing = period_lines[pid]
+            for month_from, month_to in iter_months(start_date, end_date):
+                covers = [
+                    line
+                    for line in existing
+                    if line.period_start <= month_to and line.period_end >= month_from
+                ]
+                if covers:
+                    billed_lines.extend(
+                        line
+                        for line in covers
+                        if not any(
+                            prev.period_start == line.period_start
+                            and prev.period_end == line.period_end
+                            and prev.kind == line.kind
+                            and prev.tenant_name == line.tenant_name
+                            for prev in billed_lines
+                            if prev.property_id == pid
+                        )
+                    )
+                else:
+                    billed_lines.append(
+                        BilledLine(
+                            property_id=pid,
+                            direction=prop.direction,
+                            floor=prop.floor,
+                            apartment=prop.apartment,
+                            tenant_name=None,
+                            period_start=month_from,
+                            period_end=month_to,
+                            currency="PESOS",
+                            amount=0,
+                            amount_paid=0,
+                            payment_status=None,
+                            kind="vacant",
+                            note="No factura: no está ocupado",
+                        )
+                    )
+            billed_lines.extend(settlement_lines[pid])
 
         items = []
         totals = PropertyIncomeTotals()

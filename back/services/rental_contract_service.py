@@ -13,6 +13,7 @@ from models.person import Tenant
 from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
 from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum, IndexTypeEnum
 from utils.proration import is_partial_month, period_total, proration_note, prorate, period_due_date
+from utils.contract_display import property_display_label, contract_owner, contract_location_label
 from services.ipc_service import (
     get_ipc_for_date,
     get_ipc_series,
@@ -118,7 +119,7 @@ class RentalContractService:
             all_contract = ContractHistory(
                 rental_contract_id=contract.id,
                 property_id=contract.property_id,
-                property_address=property_obj.direction,
+                property_address=property_display_label(property_obj),
                 tenant_id=contract.tenant_id,
                 tenant_name=tenant_name,
                 start_date=contract.start_date,
@@ -193,7 +194,7 @@ class RentalContractService:
 
             address = f"Garage N° {garage.number}"
             if garage.property:
-                address = f"{address} ({garage.property.direction})"
+                address = f"{address} ({property_display_label(garage.property)})"
 
             self.db.add(ContractHistory(
                 rental_contract_id=contract.id,
@@ -1125,6 +1126,43 @@ class RentalContractService:
                 history.settlement_amount = settlement_amount
                 history.settlement_direction = direction.value
                 history.receipt_path = receipt_path
+
+            if direction != SettlementDirectionEnum.SIN_MONTO and settlement_amount:
+                from models.transaction_history import TransactionHistory
+                from services.transaction_service import normalize_currency
+
+                signed = (
+                    settlement_amount
+                    if direction == SettlementDirectionEnum.INQUILINO_A_PROPIETARIO
+                    else -settlement_amount
+                )
+                owner = contract_owner(contract)
+                tenant = contract.tenant
+                self.db.add(
+                    TransactionHistory(
+                        transaction_id=None,
+                        amount=signed,
+                        date=effective_date,
+                        method="baja",
+                        notes=note,
+                        contract_id=contract.id,
+                        owner_id=owner.id if owner else None,
+                        owner_name=owner.name if owner else "Sin dueño",
+                        tenant_id=tenant.id if tenant else None,
+                        tenant_name=tenant.name if tenant else "Sin inquilino",
+                        property_direction=contract_location_label(contract),
+                        period_id=None,
+                        period_start_date=effective_date,
+                        period_end_date=effective_date,
+                        period_due_date=effective_date,
+                        period_total_amount=abs(signed),
+                        period_amount_paid=abs(signed),
+                        period_payment_status="BAJA",
+                        currency=normalize_currency(getattr(contract, "currency", None)),
+                        received_by="DUENO",
+                        remitted_to_owner=1,
+                    )
+                )
 
             if commit:
                 self.db.commit()

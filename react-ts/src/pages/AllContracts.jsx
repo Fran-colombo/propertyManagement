@@ -17,6 +17,14 @@ function propertyLabel(p) {
   return parts.join(" · ");
 }
 
+function historyPropertyLabel(contract) {
+  const address = contract?.property_address || "";
+  if (address.toLowerCase().includes("garage")) return address;
+  const p = contract?.property;
+  if (p?.direction) return propertyLabel(p);
+  return address || "Sin dirección";
+}
+
 const AllContracts = () => {
   const [contracts, setContracts] = useState([]);
   const [selectedContract, setSelectedContract] = useState(null);
@@ -202,9 +210,7 @@ const AllContracts = () => {
               {contracts.map((contract) => (
                 <tr key={contract.id}>
                   <td>
-                    {contract.property?.direction ||
-                      contract.property_address ||
-                      "Sin dirección"}
+                    {historyPropertyLabel(contract)}
                   </td>
                   <td>
                     {contract.owner_name ||
@@ -362,9 +368,7 @@ const AllContracts = () => {
       <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" fullscreen="sm-down">
         <Modal.Header closeButton>
           <Modal.Title>
-            Períodos —{" "}
-            {selectedContract?.property?.direction ||
-              selectedContract?.property_address}
+            Períodos — {historyPropertyLabel(selectedContract)}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -475,10 +479,7 @@ const AllContracts = () => {
         contractId={
           contractToCancel ? resolveContractId(contractToCancel) : null
         }
-        propertyLabel={
-          contractToCancel?.property?.direction ||
-          contractToCancel?.property_address
-        }
+        propertyLabel={historyPropertyLabel(contractToCancel)}
         onCancelled={loadContracts}
       />
       <EditContractModal

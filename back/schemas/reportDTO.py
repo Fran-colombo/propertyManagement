@@ -24,6 +24,10 @@ class BilledLine(BaseModel):
     period_end: date
     currency: str
     amount: float = 0
+    amount_paid: float = 0
+    payment_status: Optional[str] = None
+    kind: str = "period"
+    note: Optional[str] = None
 
 
 class PropertyIncomeTotals(BaseModel):
