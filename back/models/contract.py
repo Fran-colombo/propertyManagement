@@ -38,9 +38,9 @@ class RentalContract(Base):
     document_path = Column(String, nullable=True)
     status=   Column(Integer, default=1)
 
-    property = relationship("Property", back_populates="rental_contract")
-    tenant = relationship("Tenant", back_populates="rental_contract")
-    garage = relationship("Garage", back_populates="rental_contract")
+    property = relationship("Property", back_populates="rental_contracts")
+    tenant = relationship("Tenant", back_populates="rental_contracts")
+    garage = relationship("Garage", back_populates="rental_contracts")
     periods = relationship("ContractPeriod", back_populates="contract", cascade="all, delete-orphan")
     termination = relationship(
         "ContractTermination",

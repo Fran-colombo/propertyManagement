@@ -53,6 +53,17 @@ class RentalContractService:
         tenant = self.db.query(Tenant).filter(Tenant.id == contract.tenant_id).first()
         return tenant.name if tenant else None
 
+    def _active_lease_on_property(self, property_id: int):
+        """A unit can have many historical contracts; only status=1 is currently rented."""
+        return (
+            self.db.query(RentalContract)
+            .filter(
+                RentalContract.property_id == property_id,
+                RentalContract.status == 1,
+            )
+            .first()
+        )
+
     def create_contract(self, contract_data: CreateContractDTO) -> ContractResponse:
         if contract_data.end_date <= contract_data.start_date:
             raise HTTPException(
@@ -70,13 +81,11 @@ class RentalContractService:
         if contract_data.garage_id and not contract_data.property_id:
             return self._create_garage_only_contract(contract_data)
 
-        existing = self.db.query(RentalContract).filter(
-            RentalContract.property_id == contract_data.property_id,
-            RentalContract.status == 1
-        ).first()
-
-        if existing:
-            raise HTTPException(status_code=400, detail="La propiedad ya está alquilada")
+        if self._active_lease_on_property(contract_data.property_id):
+            raise HTTPException(
+                status_code=400,
+                detail="La propiedad ya tiene un contrato vigente. Registrá la baja de ese contrato para cargar uno nuevo.",
+            )
 
         try:
             contract_dict = contract_data.dict(exclude_unset=True)
@@ -95,7 +104,6 @@ class RentalContractService:
                 contract_dict["last_index_value"] = base_index
 
             contract = RentalContract(**contract_dict)
-            contract.property = property_obj
 
             if garage:
                 contract.garage = garage

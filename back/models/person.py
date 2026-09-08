@@ -10,7 +10,14 @@ class Tenant(Base):
     phone = Column(String)
     email = Column(String)
     status = Column(Integer, default=1)
-    rental_contract = relationship("RentalContract", uselist=False, back_populates="tenant")
+    rental_contracts = relationship("RentalContract", back_populates="tenant")
+    rental_contract = relationship(
+        "RentalContract",
+        uselist=False,
+        viewonly=True,
+        overlaps="rental_contracts,tenant",
+        primaryjoin="and_(Tenant.id==foreign(RentalContract.tenant_id), RentalContract.status==1)",
+    )
 
 class Owner(Base):
     __tablename__ = "owners"

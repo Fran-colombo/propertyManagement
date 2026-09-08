@@ -1,9 +1,11 @@
 from collections import defaultdict
 from datetime import date
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from models.contract import RentalContract
+from models.contract_history import ContractHistory
 from models.contract_period import ContractPeriod
 from models.contract_termination import ContractTermination, SettlementDirectionEnum
 from models.property import Property
@@ -25,9 +27,55 @@ def _direction_value(value) -> str:
     return str(value or "").strip().upper()
 
 
+def _is_garage_only_history(address) -> bool:
+    return str(address or "").startswith("Garage N°")
+
+
 class ReportService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _history_property_ids(self, property_ids: list[int]) -> dict[int, int]:
+        """Map cancelled/previous contracts back to a property via historial.
+
+        Creating a new lease used to null `rental_contracts.property_id` on the
+        previous contract (one-to-one relationship). History keeps the link.
+        Garage-only leases are excluded so their rent does not appear as
+        occupancy of the building unit.
+        """
+        rows = (
+            self.db.query(
+                ContractHistory.rental_contract_id,
+                ContractHistory.property_id,
+                ContractHistory.property_address,
+            )
+            .filter(ContractHistory.property_id.in_(property_ids))
+            .filter(ContractHistory.rental_contract_id.isnot(None))
+            .order_by(ContractHistory.id.asc())
+            .all()
+        )
+        mapping = {}
+        for contract_id, property_id, address in rows:
+            if not contract_id or not property_id:
+                continue
+            if _is_garage_only_history(address):
+                continue
+            mapping[int(contract_id)] = int(property_id)
+        return mapping
+
+    def _contract_property_scope(self, ids: list[int]):
+        history_map = self._history_property_ids(ids)
+        filters = [RentalContract.property_id.in_(ids)]
+        if history_map:
+            filters.append(RentalContract.id.in_(list(history_map.keys())))
+        return history_map, or_(*filters)
+
+    def _line_property_id(self, contract, found: dict, history_map: dict[int, int]):
+        if not contract:
+            return None
+        if contract.property_id in found:
+            return contract.property_id
+        return history_map.get(contract.id)
 
     def property_income(
         self,
@@ -63,6 +111,7 @@ class ReportService:
         billed = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
         collected = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
         period_lines = defaultdict(list)
+        history_map, contract_scope = self._contract_property_scope(ids)
 
         billed_rows = (
             self.db.query(ContractPeriod)
@@ -70,7 +119,7 @@ class ReportService:
                 joinedload(ContractPeriod.contract).joinedload(RentalContract.tenant),
             )
             .join(RentalContract, ContractPeriod.contract_id == RentalContract.id)
-            .filter(RentalContract.property_id.in_(ids))
+            .filter(contract_scope)
             .filter(ContractPeriod.start_date <= end_date)
             .filter(ContractPeriod.end_date >= start_date)
             .order_by(RentalContract.property_id, ContractPeriod.start_date)
@@ -81,7 +130,7 @@ class ReportService:
                 if float(period.amount_paid or 0) <= 0:
                     continue
             contract = period.contract
-            property_id = contract.property_id if contract else None
+            property_id = self._line_property_id(contract, found, history_map)
             if property_id not in found:
                 continue
             prop = found[property_id]
@@ -115,7 +164,7 @@ class ReportService:
                 joinedload(ContractTermination.contract).joinedload(RentalContract.tenant),
             )
             .join(RentalContract, ContractTermination.rental_contract_id == RentalContract.id)
-            .filter(RentalContract.property_id.in_(ids))
+            .filter(contract_scope)
             .filter(ContractTermination.effective_date >= start_date)
             .filter(ContractTermination.effective_date <= end_date)
             .filter(ContractTermination.settlement_amount > 0)
@@ -124,7 +173,7 @@ class ReportService:
         settlement_lines = defaultdict(list)
         for term in settlements:
             contract = term.contract
-            property_id = contract.property_id if contract else None
+            property_id = self._line_property_id(contract, found, history_map)
             if property_id not in found:
                 continue
             prop = found[property_id]

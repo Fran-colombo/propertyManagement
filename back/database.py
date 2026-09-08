@@ -130,6 +130,43 @@ def _ensure_sqlite_columns():
                 )
             )
 
+        # SQLAlchemy used to treat Property.rental_contract as one-to-one and
+        # null property_id on the previous contract when a new one was created.
+        if (
+            "all_contracts" in inspector.get_table_names()
+            and "rental_contracts" in inspector.get_table_names()
+        ):
+            conn.execute(
+                text(
+                    """
+                    UPDATE rental_contracts
+                    SET property_id = (
+                        SELECT ac.property_id
+                        FROM all_contracts ac
+                        WHERE ac.rental_contract_id = rental_contracts.id
+                          AND ac.property_id IS NOT NULL
+                          AND (
+                            ac.property_address IS NULL
+                            OR ac.property_address NOT LIKE 'Garage N°%'
+                          )
+                        ORDER BY ac.id DESC
+                        LIMIT 1
+                    )
+                    WHERE property_id IS NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM all_contracts ac
+                        WHERE ac.rental_contract_id = rental_contracts.id
+                          AND ac.property_id IS NOT NULL
+                          AND (
+                            ac.property_address IS NULL
+                            OR ac.property_address NOT LIKE 'Garage N°%'
+                          )
+                      )
+                    """
+                )
+            )
+
         if "property_sale_payments" in inspector.get_table_names():
             conn.execute(
                 text(

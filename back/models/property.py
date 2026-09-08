@@ -21,7 +21,15 @@ class Property(Base):
     status = Column(Integer, default=1)
     management_status = Column(String, default="ACTIVE")
     owner = relationship("Owner", back_populates="properties")
-    rental_contract = relationship("RentalContract", uselist=False, back_populates="property")
+    rental_contracts = relationship("RentalContract", back_populates="property")
+    # Current occupancy only (status=1). Past leases stay in rental_contracts.
+    rental_contract = relationship(
+        "RentalContract",
+        uselist=False,
+        viewonly=True,
+        overlaps="rental_contracts,property",
+        primaryjoin="and_(Property.id==foreign(RentalContract.property_id), RentalContract.status==1)",
+    )
     garages = relationship("Garage", back_populates="property")
     sales = relationship("PropertySale", back_populates="property")
 
@@ -35,8 +43,11 @@ class Garage(Base):
     status = Column(Integer, default=1)
     owner = relationship("Owner", back_populates="garages")
     property = relationship("Property", back_populates="garages")
+    rental_contracts = relationship("RentalContract", back_populates="garage")
     rental_contract = relationship(
-        "RentalContract", 
-        back_populates="garage",
-        uselist=False  
+        "RentalContract",
+        uselist=False,
+        viewonly=True,
+        overlaps="rental_contracts,garage",
+        primaryjoin="and_(Garage.id==foreign(RentalContract.garage_id), RentalContract.status==1)",
     )
