@@ -1,7 +1,9 @@
 import os
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from typing import Optional
 
 
 class EmailConfigError(Exception):
@@ -44,7 +46,7 @@ def smtp_configured() -> bool:
     return bool(smtp_host() and smtp_user() and reminder_to_email())
 
 
-def send_email(to_addr: str, subject: str, body: str) -> None:
+def send_email(to_addr: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
     host = smtp_host()
     user = smtp_user()
     password = smtp_password()
@@ -53,7 +55,12 @@ def send_email(to_addr: str, subject: str, body: str) -> None:
     if not host or not user or not from_addr or not to_addr:
         raise EmailConfigError("Falta configurar SMTP_HOST, SMTP_USER y el destinatario.")
 
-    message = MIMEText(body, "plain", "utf-8")
+    if html_body:
+        message = MIMEMultipart("alternative")
+        message.attach(MIMEText(body, "plain", "utf-8"))
+        message.attach(MIMEText(html_body, "html", "utf-8"))
+    else:
+        message = MIMEText(body, "plain", "utf-8")
     message["Subject"] = subject
     message["From"] = formataddr(("Gestión Inmobiliaria", from_addr))
     message["To"] = to_addr

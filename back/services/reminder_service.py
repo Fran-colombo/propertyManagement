@@ -1,3 +1,4 @@
+import html as html_lib
 import os
 from datetime import date, timedelta
 from typing import Any, Optional
@@ -184,6 +185,114 @@ def render_admin_digest(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _format_due_label(value) -> str:
+    if not value:
+        return "—"
+    text = str(value)[:10]
+    parts = text.split("-")
+    if len(parts) == 3:
+        return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    return text
+
+
+def render_admin_digest_html(rows: list[dict[str, Any]]) -> str:
+    count = len(rows)
+    if not rows:
+        rows_html = """
+          <tr>
+            <td colspan="4" style="padding:16px;color:#666;font-style:italic;text-align:center;">
+              No hay alquileres pendientes.
+            </td>
+          </tr>
+        """
+    else:
+        chunks = []
+        for i, row in enumerate(rows):
+            bg = "#ffffff" if i % 2 == 0 else "#f4f7fb"
+            tenant = html_lib.escape(str(row.get("tenant_name") or "Sin inquilino"))
+            location = html_lib.escape(str(row.get("location") or "—"))
+            month = html_lib.escape(str(row.get("month") or "—"))
+            due = html_lib.escape(_format_due_label(row.get("due_date")))
+            amount = html_lib.escape(str(row.get("amount_label") or "—"))
+            chunks.append(
+                f"""
+            <tr>
+              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};font-weight:600;color:#1a1a1a;">
+                {tenant}
+              </td>
+              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};color:#333;">
+                {location}
+              </td>
+              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};color:#333;white-space:nowrap;">
+                {month}<br />
+                <span style="color:#888;font-size:12px;font-weight:400;">Vence {due}</span>
+              </td>
+              </td>
+              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};color:#1f4e79;font-weight:700;text-align:right;white-space:nowrap;">
+                {amount}
+              </td>
+            </tr>
+                """
+            )
+        rows_html = "".join(chunks)
+
+    subtitle = (
+        f"{count} alquiler{'es' if count != 1 else ''} pendiente{'s' if count != 1 else ''} "
+        "· vencen en dos días"
+        if count
+        else "Nadie tiene vencimiento en dos días"
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alquileres por vencer</title>
+</head>
+<body style="margin:0;padding:0;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f6;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #d9e1ea;">
+          <tr>
+            <td style="background:#1f4e79;padding:20px 24px;color:#ffffff;">
+              <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.85;">Gestión Inmobiliaria</div>
+              <div style="font-size:22px;font-weight:700;margin-top:6px;">Alquileres por vencer</div>
+              <div style="font-size:14px;margin-top:6px;opacity:0.9;">{html_lib.escape(subtitle)}</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 24px 8px;color:#333;font-size:15px;line-height:1.5;">
+              Hola, buenos días. Estos inquilinos todavía no pagaron y el vencimiento es en <strong>dos días</strong>.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 16px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d9e1ea;border-radius:6px;">
+                <tr>
+                  <th align="left" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Inquilino</th>
+                  <th align="left" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Dirección</th>
+                  <th align="left" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Mes</th>
+                  <th align="right" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Monto</th>
+                </tr>
+                {rows_html}
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 24px 20px;color:#888;font-size:12px;border-top:1px solid #eef2f6;">
+              <div style="padding-top:14px;">Mail automático. No responder.</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
 def render_tenant_reminder(row: dict[str, Any]) -> str:
     tenant = row.get("tenant_name") or "inquilino"
     sender = reminder_sender_name()
@@ -234,6 +343,7 @@ def preview_due_reminders(db: Session, days: Optional[int] = None) -> dict[str, 
         "recipient": reminder_to_email() or None,
         "count": len(rows),
         "body": render_admin_digest(rows),
+        "html_body": render_admin_digest_html(rows),
         "rows": rows,
         "tenant_previews": [
             {
@@ -262,6 +372,7 @@ def send_due_reminders(db: Session, days: Optional[int] = None) -> dict[str, Any
         "skipped": len(rows) - len(pending),
         "recipient": reminder_to_email() or None,
         "body": render_admin_digest(pending) if pending else "",
+        "html_body": render_admin_digest_html(pending) if pending else "",
         "reason": None,
         "sent_to": [],
     }
@@ -307,9 +418,10 @@ def send_due_reminders(db: Session, days: Optional[int] = None) -> dict[str, Any
         return result
 
     body = render_admin_digest(pending)
+    html_body = render_admin_digest_html(pending)
     subject = "Alquileres por vencer — faltan dos días"
     try:
-        send_email(recipient, subject, body)
+        send_email(recipient, subject, body, html_body=html_body)
     except Exception as exc:
         result["reason"] = f"No se pudo enviar el mail: {exc}"
         print(f"[reminders] ERROR: {exc}", flush=True)
