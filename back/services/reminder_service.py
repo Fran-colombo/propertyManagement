@@ -176,7 +176,11 @@ def list_unpaid_due_soon(
 
 
 def render_admin_digest(rows: list[dict[str, Any]]) -> str:
-    lines = ["Hola, buenos días. Faltan pagar:"]
+    count = len(rows)
+    lines = [
+        f"Hola, buenos días. {count} alquileres pendientes, vencen en dos días.",
+        "",
+    ]
     if not rows:
         lines.append("(nadie)")
         return "\n".join(lines)
@@ -198,91 +202,89 @@ def _format_due_label(value) -> str:
 def render_admin_digest_html(rows: list[dict[str, Any]]) -> str:
     count = len(rows)
     if not rows:
-        rows_html = """
-          <tr>
-            <td colspan="4" style="padding:16px;color:#666;font-style:italic;text-align:center;">
-              No hay alquileres pendientes.
-            </td>
-          </tr>
+        cards_html = """
+            <tr>
+              <td bgcolor="#ffffff" style="padding:16px;color:#555555;font-style:italic;font-family:Arial,Helvetica,sans-serif;">
+                No hay alquileres pendientes.
+              </td>
+            </tr>
         """
     else:
         chunks = []
         for i, row in enumerate(rows):
-            bg = "#ffffff" if i % 2 == 0 else "#f4f7fb"
+            bg = "#ffffff" if i % 2 == 0 else "#f3f6fa"
             tenant = html_lib.escape(str(row.get("tenant_name") or "Sin inquilino"))
             location = html_lib.escape(str(row.get("location") or "—"))
             month = html_lib.escape(str(row.get("month") or "—"))
             due = html_lib.escape(_format_due_label(row.get("due_date")))
             amount = html_lib.escape(str(row.get("amount_label") or "—"))
+            border = "border-bottom:1px solid #d8dee6;" if i < count - 1 else ""
             chunks.append(
                 f"""
             <tr>
-              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};font-weight:600;color:#1a1a1a;">
-                {tenant}
-              </td>
-              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};color:#333;">
-                {location}
-              </td>
-              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};color:#333;white-space:nowrap;">
-                {month}<br />
-                <span style="color:#888;font-size:12px;font-weight:400;">Vence {due}</span>
-              </td>
-              </td>
-              <td style="padding:10px 12px;border-bottom:1px solid #e4e8ee;background:{bg};color:#1f4e79;font-weight:700;text-align:right;white-space:nowrap;">
-                {amount}
+              <td bgcolor="{bg}" style="padding:14px 12px;{border}font-family:Arial,Helvetica,sans-serif;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td valign="top" style="font-family:Arial,Helvetica,sans-serif;padding-right:12px;">
+                      <div style="font-size:15px;font-weight:700;color:#1a1a1a;line-height:1.3;">{tenant}</div>
+                      <div style="font-size:13px;color:#444444;line-height:1.4;padding-top:4px;">{location}</div>
+                      <div style="font-size:12px;color:#666666;padding-top:4px;">{month} · vence {due}</div>
+                    </td>
+                    <td valign="top" align="right" width="130" style="font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#1f4e79;white-space:nowrap;">
+                      {amount}
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
                 """
             )
-        rows_html = "".join(chunks)
+        cards_html = "".join(chunks)
 
     subtitle = (
-        f"{count} alquiler{'es' if count != 1 else ''} pendiente{'s' if count != 1 else ''} "
-        "· vencen en dos días"
+        f"{count} alquiler{'es' if count != 1 else ''} pendiente{'s' if count != 1 else ''} · vencen en dos días"
         if count
         else "Nadie tiene vencimiento en dos días"
     )
+    preheader = html_lib.escape(subtitle)
 
     return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
   <title>Alquileres por vencer</title>
 </head>
-<body style="margin:0;padding:0;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f6;padding:24px 12px;">
+<body bgcolor="#eef2f6" style="margin:0;padding:0;background-color:#eef2f6;">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef2f6">
     <tr>
-      <td align="center">
-        <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #d9e1ea;">
+      <td align="center" style="padding:20px 10px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:560px;width:100%;">
           <tr>
-            <td style="background:#1f4e79;padding:20px 24px;color:#ffffff;">
-              <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.85;">Gestión Inmobiliaria</div>
-              <div style="font-size:22px;font-weight:700;margin-top:6px;">Alquileres por vencer</div>
-              <div style="font-size:14px;margin-top:6px;opacity:0.9;">{html_lib.escape(subtitle)}</div>
+            <td bgcolor="#1f4e79" style="padding:18px 20px;font-family:Arial,Helvetica,sans-serif;color:#ffffff;">
+              <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#ffffff;">Gestión Inmobiliaria</div>
+              <div style="font-size:22px;font-weight:700;color:#ffffff;padding-top:6px;">Alquileres por vencer</div>
+              <div style="font-size:14px;color:#ffffff;padding-top:6px;">{html_lib.escape(subtitle)}</div>
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 24px 8px;color:#333;font-size:15px;line-height:1.5;">
+            <td bgcolor="#ffffff" style="padding:16px 20px 8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#333333;">
               Hola, buenos días. Estos inquilinos todavía no pagaron y el vencimiento es en <strong>dos días</strong>.
             </td>
           </tr>
           <tr>
-            <td style="padding:8px 16px 24px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d9e1ea;border-radius:6px;">
-                <tr>
-                  <th align="left" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Inquilino</th>
-                  <th align="left" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Dirección</th>
-                  <th align="left" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Mes</th>
-                  <th align="right" style="padding:10px 12px;background:#1f4e79;color:#ffffff;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">Monto</th>
-                </tr>
-                {rows_html}
+            <td bgcolor="#ffffff" style="padding:8px 12px 16px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="border:1px solid #d8dee6;">
+                {cards_html}
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:0 24px 20px;color:#888;font-size:12px;border-top:1px solid #eef2f6;">
-              <div style="padding-top:14px;">Mail automático. No responder.</div>
+            <td bgcolor="#ffffff" style="padding:4px 20px 18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#888888;">
+              Mail automático. No responder.
             </td>
           </tr>
         </table>
