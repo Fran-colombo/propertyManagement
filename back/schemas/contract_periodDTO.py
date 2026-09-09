@@ -70,6 +70,7 @@ class ContractPeriodResponse(BaseModel):
     total_amount: float
     payment_status: str
     amount_paid: float
+    payment_date: Optional[date] = None
     payment_method: Optional[str] = None
     payment_reference: Optional[str] = None
     taxes: Optional[PeriodTaxesResponse] = None
@@ -157,6 +158,7 @@ class ContractPeriodResponse(BaseModel):
         period_dict['days_overdue'] = days_overdue(getattr(period, 'due_date', None))
         status = getattr(period, 'payment_status', None)
         period_dict['payment_status'] = status.value if hasattr(status, 'value') else status
+        period_dict['payment_date'] = getattr(period, 'payment_date', None)
         period_dict.pop('_sa_instance_state', None)
 
         return cls(**period_dict)

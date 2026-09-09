@@ -24,6 +24,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - DEMO_MODE=true
+      # Avisos 9:00 ART (opcional en demo): SMTP_* y REMINDER_TO_EMAIL en .env.demo
     expose:
       - "8000"
     networks:

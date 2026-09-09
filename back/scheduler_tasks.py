@@ -6,6 +6,7 @@ from models.contract_period import ContractPeriod
 from schemas.enums.enums import PaymentStatusEnum
 from services.ipc_service import IpcServiceError
 from services.index_service import IndexService
+from services.reminder_service import send_due_reminders
 
 
 def update_periods_status():
@@ -68,6 +69,24 @@ def refresh_published_ipc():
         db.close()
 
 
+def send_rent_due_reminders():
+    db = SessionLocal()
+    try:
+        result = send_due_reminders(db)
+        print(
+            f"[reminders] sent={result.get('sent')} count={result.get('count')} "
+            f"skipped={result.get('skipped')} reason={result.get('reason')}",
+            flush=True,
+        )
+        return result
+    except Exception as e:
+        db.rollback()
+        print(f"[reminders] ERROR: {e}", flush=True)
+        return None
+    finally:
+        db.close()
+
+
 def init_scheduler():
     scheduler = BackgroundScheduler(timezone="America/Argentina/Buenos_Aires")
     scheduler.add_job(
@@ -86,6 +105,14 @@ def init_scheduler():
         hour=10,
         minute=0,
         id="refresh_published_ipc",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        send_rent_due_reminders,
+        "cron",
+        hour=9,
+        minute=0,
+        id="rent_due_reminders",
         replace_existing=True,
     )
     scheduler.start()

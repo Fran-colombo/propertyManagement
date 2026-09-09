@@ -3,6 +3,11 @@ import { Alert, Button, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import { getProperties } from "../api/property";
 import { getPropertyIncome } from "../api/report";
 import SearchableSelect from "../components/SearchableSelect";
+import {
+  downloadExcelDocument,
+  formatEsDate,
+  formatMoney,
+} from "../utils/exportTable";
 
 function propertyLabel(p) {
   const parts = [p.direction];
@@ -12,12 +17,7 @@ function propertyLabel(p) {
 }
 
 function money(amount, currency) {
-  const n = Number(amount) || 0;
-  const prefix = currency === "DOLARES" ? "U$S" : "$";
-  return `${prefix} ${n.toLocaleString("es-AR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatMoney(amount, currency);
 }
 
 function todayIso() {
@@ -29,10 +29,7 @@ function yearStartIso() {
 }
 
 function csvDate(value) {
-  if (!value) return "";
-  const [y, m, d] = String(value).slice(0, 10).split("-");
-  if (!y || !m || !d) return String(value);
-  return `${d}/${m}/${y}`;
+  return formatEsDate(value);
 }
 
 function lineStatus(line) {
@@ -43,110 +40,62 @@ function lineStatus(line) {
 
 function exportReportTable(report) {
   if (!report) return;
-  const esc = (value) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  const moneyCell = (amount, currency) => esc(money(amount, currency));
-  const detailRows = (report.billed_lines || [])
-    .map((line) => {
-      const vacant = line.kind === "vacant";
-      const note = vacant
-        ? "No factura: no está ocupado"
-        : line.note || "—";
-      return `<tr${vacant ? ' class="vacant"' : ""}>
-        <td>${esc(propertyLabel(line))}</td>
-        <td>${esc(line.tenant_name || (vacant ? "—" : "Sin inquilino"))}</td>
-        <td>${esc(csvDate(line.period_start))}</td>
-        <td>${esc(csvDate(line.period_end))}</td>
-        <td>${esc(lineStatus(line))}</td>
-        <td>${vacant ? "—" : moneyCell(line.amount, line.currency)}</td>
-        <td>${vacant ? "—" : moneyCell(line.amount_paid, line.currency)}</td>
-        <td>${esc(note)}</td>
-      </tr>`;
-    })
-    .join("");
-  const summaryRows = (report.items || [])
-    .map(
-      (item) => `<tr>
-        <td>${esc(propertyLabel(item))}</td>
-        <td>${moneyCell(item.billed_pesos, "PESOS")}</td>
-        <td>${moneyCell(item.billed_dolares, "DOLARES")}</td>
-        <td>${moneyCell(item.collected_pesos, "PESOS")}</td>
-        <td>${moneyCell(item.collected_dolares, "DOLARES")}</td>
-      </tr>`
-    )
-    .join("");
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <title>Informe de ingresos</title>
-  <style>
-    body { font-family: Arial, sans-serif; color: #1a1a1a; margin: 24px; }
-    h1 { font-size: 18px; margin: 0 0 8px; }
-    p { margin: 0 0 16px; color: #444; }
-    table { border-collapse: collapse; width: 100%; margin: 0 0 28px; }
-    th, td { border: 1px solid #bbb; padding: 8px 10px; font-size: 13px; vertical-align: top; }
-    th { background: #1f4e79; color: #fff; text-align: left; }
-    tfoot td { font-weight: bold; background: #eef3f8; }
-    .vacant td { color: #666; font-style: italic; background: #f7f7f7; }
-  </style>
-</head>
-<body>
-  <h1>Informe de ingresos</h1>
-  <p>Desde ${esc(csvDate(report.start_date))} hasta ${esc(csvDate(report.end_date))}</p>
-  <h2 style="font-size:16px">Resumen</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Propiedad</th>
-        <th>Facturado $</th>
-        <th>Facturado USD</th>
-        <th>Cobrado $</th>
-        <th>Cobrado USD</th>
-      </tr>
-    </thead>
-    <tbody>${summaryRows}</tbody>
-    <tfoot>
-      <tr>
-        <td>Total</td>
-        <td>${moneyCell(report.totals?.billed_pesos, "PESOS")}</td>
-        <td>${moneyCell(report.totals?.billed_dolares, "DOLARES")}</td>
-        <td>${moneyCell(report.totals?.collected_pesos, "PESOS")}</td>
-        <td>${moneyCell(report.totals?.collected_dolares, "DOLARES")}</td>
-      </tr>
-    </tfoot>
-  </table>
-  <h2 style="font-size:16px">Detalle por período</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Propiedad</th>
-        <th>Inquilino</th>
-        <th>Desde</th>
-        <th>Hasta</th>
-        <th>Estado</th>
-        <th>Facturado</th>
-        <th>Cobrado</th>
-        <th>Nota</th>
-      </tr>
-    </thead>
-    <tbody>${detailRows || `<tr><td colspan="8">No hay períodos en este rango.</td></tr>`}</tbody>
-  </table>
-</body>
-</html>`;
-  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `ingresos_${report.start_date}_${report.end_date}.xls`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadExcelDocument({
+    filename: `ingresos_${report.start_date}_${report.end_date}.xls`,
+    title: "Informe de ingresos",
+    subtitle: `Desde ${csvDate(report.start_date)} hasta ${csvDate(report.end_date)}`,
+    sections: [
+      {
+        heading: "Resumen",
+        headers: ["Propiedad", "Facturado $", "Facturado USD", "Cobrado $", "Cobrado USD"],
+        rows: (report.items || []).map((item) => [
+          propertyLabel(item),
+          money(item.billed_pesos, "PESOS"),
+          money(item.billed_dolares, "DOLARES"),
+          money(item.collected_pesos, "PESOS"),
+          money(item.collected_dolares, "DOLARES"),
+        ]),
+        footer: [
+          "Total",
+          money(report.totals?.billed_pesos, "PESOS"),
+          money(report.totals?.billed_dolares, "DOLARES"),
+          money(report.totals?.collected_pesos, "PESOS"),
+          money(report.totals?.collected_dolares, "DOLARES"),
+        ],
+        emptyText: "No hay propiedades en este rango.",
+      },
+      {
+        heading: "Detalle por período",
+        headers: [
+          "Propiedad",
+          "Inquilino",
+          "Desde",
+          "Hasta",
+          "Estado",
+          "Facturado",
+          "Cobrado",
+          "Nota",
+        ],
+        rows: (report.billed_lines || []).map((line) => {
+          const vacant = line.kind === "vacant";
+          return {
+            className: vacant ? "vacant" : undefined,
+            cells: [
+              propertyLabel(line),
+              line.tenant_name || (vacant ? "—" : "Sin inquilino"),
+              csvDate(line.period_start),
+              csvDate(line.period_end),
+              lineStatus(line),
+              vacant ? "—" : money(line.amount, line.currency),
+              vacant ? "—" : money(line.amount_paid, line.currency),
+              vacant ? "No factura: no está ocupado" : line.note || "—",
+            ],
+          };
+        }),
+        emptyText: "No hay períodos en este rango.",
+      },
+    ],
+  });
 }
 
 export default function IncomeReport() {

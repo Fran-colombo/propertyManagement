@@ -112,6 +112,11 @@ class PropertyService:
                     ],
                     start_date=prop.rental_contract.start_date,
                     end_date=prop.rental_contract.end_date,
+                    currency=(
+                        prop.rental_contract.currency.value
+                        if hasattr(prop.rental_contract.currency, "value")
+                        else prop.rental_contract.currency
+                    ),
                     document_path=getattr(prop.rental_contract, "document_path", None),
                     pays_epe=bool(prop.rental_contract.pays_epe),
                     pays_tgi=bool(prop.rental_contract.pays_tgi),

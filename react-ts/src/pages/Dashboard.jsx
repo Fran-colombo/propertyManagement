@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button, Card } from "react-bootstrap"
-import { PeopleFill, HouseDoorFill, ReceiptCutoff, FileEarmarkTextFill, ClockHistory, CashStack } from "react-bootstrap-icons"
+import { PeopleFill, HouseDoorFill, ReceiptCutoff, FileEarmarkTextFill, ClockHistory, CashStack, Download } from "react-bootstrap-icons"
 import { getSalesSummary } from "../api/sale"
 
 export default function Dashboard() {
@@ -62,6 +62,13 @@ export default function Dashboard() {
               onClick={() => navigate("/all-contracts")}
             >
               <ClockHistory className="me-2" /> Historial de contratos
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => navigate("/exportar")}
+            >
+              <Download className="me-2" /> Exportar
             </Button>
           </div>
         </Card.Body>
