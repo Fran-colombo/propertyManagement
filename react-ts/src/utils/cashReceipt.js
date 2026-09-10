@@ -103,6 +103,28 @@ export function saleInstallmentConcept(sale, installment) {
   return `pago de cuota ${n}/${total}`;
 }
 
+function isoDay(value) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+/** Dates for a sale receipt: cuota month + the day money moved, not the sale date. */
+export function saleReceiptDates(sale, installment) {
+  const due = installment?.due_date || null;
+  const paid = installment?.paid_at || null;
+  const sold = sale?.sale_date || null;
+  const paidDay = isoDay(paid);
+  const soldDay = isoDay(sold);
+  const dueDay = isoDay(due);
+  let issuedAt = paid || due;
+  if (paidDay && soldDay && paidDay === soldDay && dueDay && dueDay !== soldDay) {
+    issuedAt = due;
+  }
+  return {
+    periodDate: due || paid || sold,
+    issuedAt: issuedAt || due || paid || sold,
+  };
+}
+
 export function rentPeriodConcept(periods, periodId) {
   const list = [...(periods || [])].sort((a, b) =>
     String(a.start_date || "").localeCompare(String(b.start_date || ""))

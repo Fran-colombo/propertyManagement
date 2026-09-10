@@ -20,6 +20,7 @@ import FeedbackModal from "../components/FeedbackModal";
 import {
   openCashReceiptPrint,
   saleInstallmentConcept,
+  saleReceiptDates,
 } from "../utils/cashReceipt";
 
 const PAGE_SIZE = 20;
@@ -490,18 +491,7 @@ export default function Sales() {
                   return (
                   <tr key={sale.id}>
                     <td>{new Date(sale.sale_date).toLocaleDateString("es-AR")}</td>
-                    <td>
-                      <div>{sale.property_direction}</div>
-                      <Button
-                        size="sm"
-                        variant="link"
-                        className="p-0 mt-1"
-                        onClick={() => openAddressEdit(sale)}
-                      >
-                        <Pencil className="me-1" />
-                        Corregir dirección
-                      </Button>
-                    </td>
+                    <td>{sale.property_direction}</td>
                     <td>{sale.buyer_name || "—"}</td>
                     <td>{isDollars(sale.currency) ? "Dólares" : "Pesos"}</td>
                     <td>{money(sale.total_amount, sale.currency)}</td>
@@ -514,6 +504,16 @@ export default function Sales() {
                       ) : (
                         <Badge bg="dark">Fuera de cartera</Badge>
                       )}
+                      <div className="mt-2">
+                        <Button
+                          size="sm"
+                          variant="outline-secondary"
+                          onClick={() => openAddressEdit(sale)}
+                        >
+                          <Pencil className="me-1" />
+                          Corregir dirección
+                        </Button>
+                      </div>
                     </td>
                     <td>
                       {nextInst ? (
@@ -662,6 +662,7 @@ export default function Sales() {
                               variant="outline-secondary"
                               onClick={() => {
                                 try {
+                                  const dates = saleReceiptDates(cuotasSale, inst);
                                   openCashReceiptPrint({
                                       payerName: cuotasSale.buyer_name,
                                       amount: inst.amount_paid || inst.amount,
@@ -670,8 +671,8 @@ export default function Sales() {
                                       floor: cuotasSale.property_floor,
                                       apartment: cuotasSale.property_apartment,
                                       direction: cuotasSale.property_address || cuotasSale.property_direction,
-                                      periodDate: inst.due_date,
-                                      issuedAt: inst.paid_at || inst.due_date,
+                                      periodDate: dates.periodDate,
+                                      issuedAt: dates.issuedAt,
                                     });
                                 } catch (err) {
                                   window.alert(err.message || "No se pudo generar el comprobante.");
@@ -890,6 +891,7 @@ export default function Sales() {
           feedback?.receipt
             ? () => {
                 const { sale, inst, amount } = feedback.receipt;
+                const dates = saleReceiptDates(sale, inst);
                 openCashReceiptPrint({
                     payerName: sale.buyer_name,
                     amount,
@@ -898,7 +900,8 @@ export default function Sales() {
                     floor: sale.property_floor,
                     apartment: sale.property_apartment,
                     direction: sale.property_address || sale.property_direction,
-                    periodDate: inst.due_date,
+                    periodDate: dates.periodDate,
+                    issuedAt: dates.issuedAt,
                   });
               }
             : undefined

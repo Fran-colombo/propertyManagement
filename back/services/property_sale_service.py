@@ -293,11 +293,11 @@ class PropertySaleService:
             self.db.flush()
             if row.paid:
                 inst.amount_paid = inst.amount
-                inst.paid_at = data.sale_date
+                inst.paid_at = row.due_date
                 inst.method = method
                 inst.received_by = receiver
                 self._record_history(
-                    sale, inst, inst.amount, data.sale_date, method, receiver, data.notes
+                    sale, inst, inst.amount, row.due_date, method, receiver, data.notes
                 )
 
         self.db.flush()

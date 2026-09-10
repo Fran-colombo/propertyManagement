@@ -13,6 +13,7 @@ import { mediaUrl } from "../utils/mediaUrl";
 import {
   openCashReceiptPrint,
   saleInstallmentConcept,
+  saleReceiptDates,
   rentPeriodConcept,
 } from "../utils/cashReceipt";
 
@@ -908,6 +909,7 @@ const PropertiesAndGarages = () => {
                   (paidRows || []).length > 1
                     ? "pago de venta"
                     : saleInstallmentConcept(sale, inst);
+                const dates = saleReceiptDates(sale, inst);
                 openCashReceiptPrint({
                     payerName: sale.buyer_name,
                     amount: totalCash,
@@ -916,7 +918,8 @@ const PropertiesAndGarages = () => {
                     floor: sale.property_floor,
                     apartment: sale.property_apartment,
                     direction: sale.property_address || sale.property_direction,
-                    periodDate: inst?.due_date || sale.sale_date,
+                    periodDate: dates.periodDate,
+                    issuedAt: dates.issuedAt,
                   });
               }
             : undefined
