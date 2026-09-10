@@ -143,7 +143,7 @@ function receiptBlockHtml({ dateLine, body, signatureUrl }) {
       <p class="body">${escapeHtml(body)}</p>
       ${collector}
       <div class="sign-block">
-        <div class="sign-line">Firma del inquilino: ______________________________</div>
+        <div class="sign-line">Firma del locador: ______________________________</div>
       </div>
     </div>
   </section>`;
