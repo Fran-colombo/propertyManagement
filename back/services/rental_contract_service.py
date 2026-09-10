@@ -12,7 +12,15 @@ from models.property import Garage, Property, RealAgency
 from models.person import Tenant
 from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
 from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum, IndexTypeEnum
-from utils.proration import is_partial_month, period_total, proration_note, prorate, period_due_date
+from utils.proration import (
+    is_partial_month,
+    period_due_date,
+    period_rent,
+    period_tax_total,
+    period_total,
+    proration_note,
+    prorate,
+)
 from utils.contract_display import property_display_label, contract_owner, contract_location_label
 from services.ipc_service import (
     get_ipc_for_date,
@@ -447,12 +455,41 @@ class RentalContractService:
             return
 
         paid = round(period.amount_paid or 0, 2)
+        principal = round(period_rent(period, rent_base) + period_tax_total(period), 2)
+        if paid + 0.009 >= principal and paid + 0.009 < total:
+            period.late_fee_amount = 0
+            period.total_amount = period_total(period, rent_base)
+            total = round(period.total_amount or 0, 2)
+
         if paid <= 0.009:
             period.payment_status = PaymentStatusEnum.PENDIENTE
         elif paid + 0.009 >= total:
             period.payment_status = PaymentStatusEnum.PAGADO
         else:
             period.payment_status = PaymentStatusEnum.PARCIAL
+
+        status = self._status_value(period.payment_status)
+        remaining = max(0.0, round(total - paid, 2))
+        (
+            self.db.query(TransactionHistory)
+            .filter(TransactionHistory.period_id == period.id)
+            .update(
+                {
+                    TransactionHistory.period_amount_paid: paid,
+                    TransactionHistory.period_total_amount: total,
+                    TransactionHistory.period_payment_status: status,
+                },
+                synchronize_session=False,
+            )
+        )
+        txs = (
+            self.db.query(Transaction)
+            .filter(Transaction.period_id == period.id)
+            .all()
+        )
+        for tx in txs:
+            if (tx.amount or 0) > 0 and str(tx.method or "").strip().lower() != "nota_credito":
+                tx.remaining_amount = remaining
 
     def _apply_historical_rents(
         self,

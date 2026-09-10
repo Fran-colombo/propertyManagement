@@ -504,15 +504,16 @@ export default function Sales() {
                       ) : (
                         <Badge bg="dark">Fuera de cartera</Badge>
                       )}
-                      <div className="mt-2">
-                        <Button
-                          size="sm"
-                          variant="outline-secondary"
+                      <div className="mt-1">
+                        <button
+                          type="button"
+                          className="btn p-0 border-0 bg-transparent text-secondary"
+                          style={{ fontSize: "0.72rem", lineHeight: 1.2 }}
                           onClick={() => openAddressEdit(sale)}
                         >
-                          <Pencil className="me-1" />
+                          <Pencil size={11} className="me-1" />
                           Corregir dirección
-                        </Button>
+                        </button>
                       </div>
                     </td>
                     <td>

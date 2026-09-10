@@ -4,9 +4,12 @@ from fastapi import HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from models.contract_period import ContractPeriod
 from models.property_sale import PropertySale, PropertySalePayment
 from models.transaction_history import TransactionHistory
 from models.transactions import Transaction
+from schemas.enums.enums import PaymentStatusEnum
+from utils.proration import period_rent, period_tax_total, period_total
 from schemas.transactionDTO import (
     TransactionHistoryResponse,
     TransactionResponseDTO,
@@ -155,9 +158,19 @@ class TransactionService:
             .all()
         )
         sale_snaps = self._sale_snapshots({r.sale_id for r in items if r.sale_id})
+        period_snaps = self._period_snapshots(
+            {r.period_id for r in items if r.period_id and not r.sale_id}
+        )
         pages = ceil(total / page_size) if page_size and total else 0
         return PaginatedTransactionHistoryResponse(
-            items=[self._history_to_dto(record, sale_snaps.get(record.sale_id)) for record in items],
+            items=[
+                self._history_to_dto(
+                    record,
+                    sale_snaps.get(record.sale_id),
+                    period_snaps.get(record.period_id),
+                )
+                for record in items
+            ],
             total=total,
             page=page,
             page_size=page_size,
@@ -172,7 +185,17 @@ class TransactionService:
         """Obtiene todas las transacciones del historial"""
         history_records = self.db.query(TransactionHistory).order_by(TransactionHistory.date.desc()).all()
         sale_snaps = self._sale_snapshots({r.sale_id for r in history_records if r.sale_id})
-        return [self._history_to_dto(record, sale_snaps.get(record.sale_id)) for record in history_records]
+        period_snaps = self._period_snapshots(
+            {r.period_id for r in history_records if r.period_id and not r.sale_id}
+        )
+        return [
+            self._history_to_dto(
+                record,
+                sale_snaps.get(record.sale_id),
+                period_snaps.get(record.period_id),
+            )
+            for record in history_records
+        ]
 
     def get_history_by_period(self, period_id: int) -> list[TransactionHistoryResponse]:
         """Obtiene transacciones del historial por período"""
@@ -180,7 +203,17 @@ class TransactionService:
             TransactionHistory.period_id == period_id
         ).order_by(TransactionHistory.date.desc()).all()
         sale_snaps = self._sale_snapshots({r.sale_id for r in history_records if r.sale_id})
-        return [self._history_to_dto(record, sale_snaps.get(record.sale_id)) for record in history_records]
+        period_snaps = self._period_snapshots(
+            {r.period_id for r in history_records if r.period_id and not r.sale_id}
+        )
+        return [
+            self._history_to_dto(
+                record,
+                sale_snaps.get(record.sale_id),
+                period_snaps.get(record.period_id),
+            )
+            for record in history_records
+        ]
 
     def _sale_snapshots(self, sale_ids: set[int]) -> dict:
         if not sale_ids:
@@ -227,12 +260,74 @@ class TransactionService:
             self.db.commit()
         return snapshots
 
-    def _history_to_dto(self, record: TransactionHistory, sale_snap: dict | None = None) -> TransactionHistoryResponse:
+    def _period_snapshots(self, period_ids: set[int]) -> dict:
+        ids = {pid for pid in (period_ids or set()) if pid}
+        if not ids:
+            return {}
+        periods = self.db.query(ContractPeriod).filter(ContractPeriod.id.in_(ids)).all()
+        snapshots = {}
+        for period in periods:
+            rent_base = (
+                period.indexed_amount
+                if period.indexed_amount is not None
+                else period.base_rent
+            )
+            total = round(period_total(period, rent_base), 2)
+            paid = round(period.amount_paid or 0, 2)
+            principal = round(period_rent(period, rent_base) + period_tax_total(period), 2)
+            if paid + 0.009 >= principal and paid + 0.009 < total:
+                period.late_fee_amount = 0
+                total = round(period_total(period, rent_base), 2)
+            status = (
+                period.payment_status.value
+                if hasattr(period.payment_status, "value")
+                else str(period.payment_status or "")
+            )
+            if abs(round(period.total_amount or 0, 2) - total) > 0.009:
+                period.total_amount = total
+            if status != PaymentStatusEnum.CONTRATO_TERMINADO.value:
+                if paid + 0.009 >= total and paid > 0.009:
+                    status = PaymentStatusEnum.PAGADO.value
+                    period.payment_status = PaymentStatusEnum.PAGADO
+                elif paid > 0.009:
+                    status = PaymentStatusEnum.PARCIAL.value
+                    period.payment_status = PaymentStatusEnum.PARCIAL
+            snapshots[period.id] = {
+                "total": total,
+                "paid": paid,
+                "status": status,
+            }
+            (
+                self.db.query(TransactionHistory)
+                .filter(TransactionHistory.period_id == period.id)
+                .update(
+                    {
+                        TransactionHistory.period_amount_paid: paid,
+                        TransactionHistory.period_total_amount: total,
+                        TransactionHistory.period_payment_status: status,
+                    },
+                    synchronize_session=False,
+                )
+            )
+        if snapshots:
+            self.db.commit()
+        return snapshots
+
+    def _history_to_dto(
+        self,
+        record: TransactionHistory,
+        sale_snap: dict | None = None,
+        period_snap: dict | None = None,
+    ) -> TransactionHistoryResponse:
         """Convierte un registro de historial a DTO"""
         if sale_snap:
             total_amount = sale_snap["total"]
             amount_paid = sale_snap["paid"]
             payment_status = sale_snap["status"]
+        elif period_snap:
+            total_amount = period_snap["total"]
+            amount_paid = period_snap["paid"]
+            payment_status = period_snap["status"]
         else:
             total_amount = record.period_total_amount or 0
             amount_paid = record.period_amount_paid or 0
