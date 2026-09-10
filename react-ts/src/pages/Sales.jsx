@@ -13,8 +13,9 @@ import {
   Spinner,
   Table,
 } from "react-bootstrap";
-import { Calendar, Search } from "react-bootstrap-icons";
+import { Calendar, Pencil, Search } from "react-bootstrap-icons";
 import { collectSaleInstallment, getSales } from "../api/sale";
+import { updateProperty } from "../api/property";
 import FeedbackModal from "../components/FeedbackModal";
 import {
   openCashReceiptPrint,
@@ -117,6 +118,14 @@ export default function Sales() {
   const [overpayNote, setOverpayNote] = useState("");
   const [overpayError, setOverpayError] = useState("");
   const [feedback, setFeedback] = useState(null);
+  const [addressSale, setAddressSale] = useState(null);
+  const [addressForm, setAddressForm] = useState({
+    direction: "",
+    floor: "",
+    apartment: "",
+  });
+  const [addressError, setAddressError] = useState("");
+  const [addressSaving, setAddressSaving] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -246,6 +255,46 @@ export default function Sales() {
     await sendCollect({ reason: overpayReason, note: overpayNote.trim() });
   };
 
+  const openAddressEdit = (sale) => {
+    setAddressSale(sale);
+    setAddressError("");
+    setAddressForm({
+      direction: sale.property_address || "",
+      floor: sale.property_floor || "",
+      apartment: sale.property_apartment || "",
+    });
+  };
+
+  const submitAddress = async (e) => {
+    e.preventDefault();
+    if (!addressSale) return;
+    const direction = addressForm.direction.trim();
+    if (!direction) {
+      setAddressError("La dirección no puede estar vacía.");
+      return;
+    }
+    setAddressSaving(true);
+    setAddressError("");
+    try {
+      await updateProperty(addressSale.property_id, {
+        direction,
+        floor: addressForm.floor.trim() || null,
+        apartment: addressForm.apartment.trim() || null,
+      });
+      setAddressSale(null);
+      await load();
+      setFeedback({
+        variant: "success",
+        title: "Dirección actualizada",
+        message: "La propiedad se corrigió. Ventas, recibos y caja van a mostrar la nueva dirección.",
+      });
+    } catch (err) {
+      setAddressError(err.message || "No se pudo actualizar la dirección");
+    } finally {
+      setAddressSaving(false);
+    }
+  };
+
   const pageItems = [];
   const totalPages = Math.max(pages, 1);
   const windowStart = Math.max(1, page - 2);
@@ -259,6 +308,7 @@ export default function Sales() {
       <h2 className="h4">Ventas</h2>
       <p className="text-muted small">
         Lo primero que ves son las ventas con cuotas por cobrar. El detalle de cuotas sigue en el modal.
+        Si anotaste mal la dirección al vender, podés corregirla acá: las vendidas ya no aparecen en Propiedades.
       </p>
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError("")}>
@@ -440,7 +490,18 @@ export default function Sales() {
                   return (
                   <tr key={sale.id}>
                     <td>{new Date(sale.sale_date).toLocaleDateString("es-AR")}</td>
-                    <td>{sale.property_direction}</td>
+                    <td>
+                      <div>{sale.property_direction}</div>
+                      <Button
+                        size="sm"
+                        variant="link"
+                        className="p-0 mt-1"
+                        onClick={() => openAddressEdit(sale)}
+                      >
+                        <Pencil className="me-1" />
+                        Corregir dirección
+                      </Button>
+                    </td>
                     <td>{sale.buyer_name || "—"}</td>
                     <td>{isDollars(sale.currency) ? "Dólares" : "Pesos"}</td>
                     <td>{money(sale.total_amount, sale.currency)}</td>
@@ -757,6 +818,68 @@ export default function Sales() {
             {saving ? "Guardando..." : "Confirmar"}
           </Button>
         </Modal.Footer>
+      </Modal>
+
+      <Modal
+        show={!!addressSale}
+        onHide={() => !addressSaving && setAddressSale(null)}
+        centered
+      >
+        <Form onSubmit={submitAddress}>
+          <Modal.Header closeButton>
+            <Modal.Title>Corregir dirección</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <p className="small text-muted">
+              Esto actualiza la propiedad vendida. Ventas, caja y los próximos recibos van a mostrar la dirección nueva.
+            </p>
+            {addressError && <Alert variant="danger">{addressError}</Alert>}
+            <Form.Group className="mb-3">
+              <Form.Label>Dirección</Form.Label>
+              <Form.Control
+                value={addressForm.direction}
+                onChange={(e) =>
+                  setAddressForm((prev) => ({ ...prev, direction: e.target.value }))
+                }
+                placeholder="Calle y número"
+                autoFocus
+                required
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Piso</Form.Label>
+              <Form.Control
+                value={addressForm.floor}
+                onChange={(e) =>
+                  setAddressForm((prev) => ({ ...prev, floor: e.target.value }))
+                }
+                placeholder="Opcional"
+              />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label>Departamento</Form.Label>
+              <Form.Control
+                value={addressForm.apartment}
+                onChange={(e) =>
+                  setAddressForm((prev) => ({ ...prev, apartment: e.target.value }))
+                }
+                placeholder="Opcional"
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button
+              variant="outline-secondary"
+              onClick={() => setAddressSale(null)}
+              disabled={addressSaving}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" variant="primary" disabled={addressSaving}>
+              {addressSaving ? "Guardando..." : "Guardar"}
+            </Button>
+          </Modal.Footer>
+        </Form>
       </Modal>
       <FeedbackModal
         show={!!feedback}

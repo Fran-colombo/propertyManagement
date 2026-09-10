@@ -2,9 +2,13 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from schemas.contract_periodDTO import ContractPeriodResponse
+from models.contract import RentalContract
 from models.property import Property
+from models.property_sale import PropertySale
+from models.transaction_history import TransactionHistory
 from schemas.propertyDTO import CreatePropertyDTO, UpdatePropertyDTO, GarageResponse, OwnerSimpleResponse, PropertyResponse, RentalContractWithPeriodsResponse, TenantSimpleResponse
 from repositories.property_repository import PropertyRepository
+from utils.contract_display import property_display_label
 
 class PropertyService:
     def __init__(self, db: Session):
@@ -65,6 +69,8 @@ class PropertyService:
             )
         try:
             updated = self.repo.update_property(prop, data)
+            if {"direction", "floor", "apartment"}.intersection(updates):
+                self._refresh_address_snapshots(updated)
             return self._map_to_response(updated)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -73,6 +79,33 @@ class PropertyService:
                 status_code=500,
                 detail=f"Error al actualizar propiedad: {str(e)}"
             )
+
+    def _refresh_address_snapshots(self, prop: Property) -> None:
+        label = property_display_label(prop)
+        db = self.repo.db
+        sale_ids = [
+            row[0]
+            for row in db.query(PropertySale.id).filter(PropertySale.property_id == prop.id).all()
+        ]
+        if sale_ids:
+            db.query(TransactionHistory).filter(
+                TransactionHistory.sale_id.in_(sale_ids)
+            ).update(
+                {TransactionHistory.property_direction: label},
+                synchronize_session=False,
+            )
+        contract_ids = [
+            row[0]
+            for row in db.query(RentalContract.id).filter(RentalContract.property_id == prop.id).all()
+        ]
+        if contract_ids:
+            db.query(TransactionHistory).filter(
+                TransactionHistory.contract_id.in_(contract_ids)
+            ).update(
+                {TransactionHistory.property_direction: label},
+                synchronize_session=False,
+            )
+        db.commit()
 
     def delete_property(self, property_id: int) -> dict:
         prop = self.repo.get_by_id(property_id)
