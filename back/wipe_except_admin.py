@@ -25,6 +25,7 @@ def main() -> None:
         shutil.rmtree(uploads, ignore_errors=True)
     os.makedirs(os.path.join(uploads, "terminations"), exist_ok=True)
     os.makedirs(os.path.join(uploads, "contracts"), exist_ok=True)
+    os.makedirs(os.path.join(uploads, "signatures"), exist_ok=True)
 
     init_db()
     db = SessionLocal()

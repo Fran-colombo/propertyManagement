@@ -60,6 +60,7 @@ def _wipe_and_reseed() -> None:
     os.makedirs(uploads, exist_ok=True)
     os.makedirs(os.path.join(uploads, "terminations"), exist_ok=True)
     os.makedirs(os.path.join(uploads, "contracts"), exist_ok=True)
+    os.makedirs(os.path.join(uploads, "signatures"), exist_ok=True)
 
     init_db()
     session = SessionLocal()

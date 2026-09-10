@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navbar, Nav, Container, Offcanvas, Badge } from "react-bootstrap";
+import { Navbar, Nav, NavDropdown, Container, Offcanvas, Badge } from "react-bootstrap";
 import { Link, useLocation } from "react-router-dom";
 import useAuth from "../../hooks/useAuth";
 import {
@@ -10,8 +10,15 @@ import {
   FileEarmarkText,
   GraphUp,
   Download,
+  ReceiptCutoff,
+  Gear,
 } from "react-bootstrap-icons";
 import { getSalesSummary } from "../api/sale";
+
+const linkClass = (active) =>
+  `nav-compact-link d-flex align-items-center ${
+    active ? "bg-primary text-white" : "text-dark"
+  }`;
 
 export default function NavigationBar() {
   const location = useLocation();
@@ -25,76 +32,144 @@ export default function NavigationBar() {
       .catch(() => setPendingInstallments(0));
   }, [location.pathname]);
 
-  const navItems = [
-    { to: "/people", icon: <People className="me-2" />, label: "Personas" },
-    { to: "/properties", icon: <Building className="me-2" />, label: "Propiedades" },
-    {
-      to: "/sales",
-      icon: <CashStack className="me-2" />,
-      label: "Ventas",
-      badge: pendingInstallments,
-    },
-    { to: "/transactions", icon: <CashStack className="me-2" />, label: "Transacciones" },
-    { to: "/ingresos", icon: <GraphUp className="me-2" />, label: "Ingresos" },
-    { to: "/exportar", icon: <Download className="me-2" />, label: "Exportar" },
-    { to: "/contracts", icon: <FileEarmarkText className="me-2" />, label: "Contratos activos" },
-    { to: "/all-contracts", icon: <FileEarmarkText className="me-2" />, label: "Historial de contratos" },
-  ];
-
   const closeMenu = () => setMenuOpen(false);
+  const path = location.pathname;
+  const contractsOpen = path === "/contracts" || path === "/all-contracts";
+  const cajaOpen =
+    path === "/transactions" || path === "/ingresos" || path === "/exportar";
 
-  const links = (onSelect) => (
+  const links = (onSelect, { inOffcanvas = false } = {}) => (
     <>
-      {navItems.map(({ to, icon, label, badge }) => (
-        <Nav.Link
+      <Nav.Link
+        as={Link}
+        to="/people"
+        active={path === "/people"}
+        onClick={onSelect}
+        className={linkClass(path === "/people")}
+      >
+        <People className="me-1" size={15} />
+        Personas
+      </Nav.Link>
+      <Nav.Link
+        as={Link}
+        to="/properties"
+        active={path === "/properties"}
+        onClick={onSelect}
+        className={linkClass(path === "/properties")}
+      >
+        <Building className="me-1" size={15} />
+        Propiedades
+      </Nav.Link>
+      <Nav.Link
+        as={Link}
+        to="/sales"
+        active={path === "/sales"}
+        onClick={onSelect}
+        className={linkClass(path === "/sales")}
+      >
+        <CashStack className="me-1" size={15} />
+        Ventas
+        {pendingInstallments > 0 && (
+          <Badge
+            bg={path === "/sales" ? "light" : "warning"}
+            text="dark"
+            className="ms-1"
+            title="Cuotas de venta por cobrar"
+          >
+            {pendingInstallments}
+          </Badge>
+        )}
+      </Nav.Link>
+      <NavDropdown
+        title={
+          <span className="d-inline-flex align-items-center">
+            <FileEarmarkText className="me-1" size={15} />
+            Contratos
+          </span>
+        }
+        id={inOffcanvas ? "nav-contratos-mobile" : "nav-contratos"}
+        active={contractsOpen}
+        className={`nav-compact-dropdown ${contractsOpen ? "nav-compact-active" : ""}`}
+      >
+        <NavDropdown.Item as={Link} to="/contracts" onClick={onSelect} active={path === "/contracts"}>
+          Activos
+        </NavDropdown.Item>
+        <NavDropdown.Item
           as={Link}
-          to={to}
-          key={to}
-          active={location.pathname === to}
+          to="/all-contracts"
           onClick={onSelect}
-          className={`d-flex align-items-center px-3 py-2 rounded-pill me-lg-2 mb-1 mb-lg-0 ${
-            location.pathname === to ? "bg-primary text-white" : "text-dark"
-          }`}
+          active={path === "/all-contracts"}
         >
-          {icon}
-          <span>{label}</span>
-          {badge > 0 && (
-            <Badge
-              bg={location.pathname === to ? "light" : "warning"}
-              text="dark"
-              className="ms-2"
-              title="Cuotas de venta por cobrar"
-            >
-              {badge}
-            </Badge>
-          )}
-        </Nav.Link>
-      ))}
+          Historial
+        </NavDropdown.Item>
+      </NavDropdown>
+      <NavDropdown
+        title={
+          <span className="d-inline-flex align-items-center">
+            <ReceiptCutoff className="me-1" size={15} />
+            Caja
+          </span>
+        }
+        id={inOffcanvas ? "nav-caja-mobile" : "nav-caja"}
+        active={cajaOpen}
+        className={`nav-compact-dropdown ${cajaOpen ? "nav-compact-active" : ""}`}
+      >
+        <NavDropdown.Item
+          as={Link}
+          to="/transactions"
+          onClick={onSelect}
+          active={path === "/transactions"}
+        >
+          Transacciones
+        </NavDropdown.Item>
+        <NavDropdown.Item as={Link} to="/ingresos" onClick={onSelect} active={path === "/ingresos"}>
+          <GraphUp className="me-1" size={14} />
+          Ingresos
+        </NavDropdown.Item>
+        <NavDropdown.Item as={Link} to="/exportar" onClick={onSelect} active={path === "/exportar"}>
+          <Download className="me-1" size={14} />
+          Exportar
+        </NavDropdown.Item>
+      </NavDropdown>
+      <Nav.Link
+        as={Link}
+        to="/configuracion"
+        active={path === "/configuracion"}
+        onClick={onSelect}
+        className={linkClass(path === "/configuracion")}
+        title="Configuración"
+        aria-label="Configuración"
+      >
+        <Gear size={16} />
+        {inOffcanvas && <span className="ms-1">Configuración</span>}
+      </Nav.Link>
       <Nav.Link
         as="button"
         onClick={() => {
           onSelect?.();
           logout();
         }}
-        className="d-flex align-items-center px-3 py-2 rounded-pill text-danger border-0 bg-transparent"
+        className="nav-compact-link d-flex align-items-center text-danger border-0 bg-transparent"
       >
-        Cerrar sesión
+        Salir
       </Nav.Link>
     </>
   );
 
   return (
-    <Navbar bg="light" expand="lg" className="shadow-sm border-bottom py-2" sticky="top">
+    <Navbar bg="light" expand="xl" className="shadow-sm border-bottom py-1" sticky="top">
       <Container fluid="xl">
-        <Navbar.Brand as={Link} to="/" className="fw-bold text-primary d-flex align-items-center">
-          <House className="me-2" size={22} />
+        <Navbar.Brand as={Link} to="/" className="fw-bold text-primary d-flex align-items-center py-1">
+          <House className="me-2" size={20} />
           <span>Gestión Inmobiliaria</span>
         </Navbar.Brand>
         <Navbar.Toggle
           aria-controls="main-navbar"
           onClick={() => setMenuOpen(true)}
         />
-        <Nav className="ms-auto d-none d-lg-flex align-items-center">{links()}</Nav>
+        <Nav className="ms-auto d-none d-xl-flex align-items-center flex-nowrap">
+          {links()}
+        </Nav>
         <Offcanvas
           id="main-navbar"
           placement="end"
@@ -105,7 +180,7 @@ export default function NavigationBar() {
             <Offcanvas.Title>Menú</Offcanvas.Title>
           </Offcanvas.Header>
           <Offcanvas.Body>
-            <Nav className="flex-column">{links(closeMenu)}</Nav>
+            <Nav className="flex-column">{links(closeMenu, { inOffcanvas: true })}</Nav>
           </Offcanvas.Body>
         </Offcanvas>
       </Container>

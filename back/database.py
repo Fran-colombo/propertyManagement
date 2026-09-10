@@ -54,6 +54,7 @@ def init_db():
     from models.contract_history import ContractHistory  # noqa: F401
     from models.user_model import User  # noqa: F401
     from models.reminder_log import ReminderLog  # noqa: F401
+    from models.app_setting import AppSetting  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_columns()

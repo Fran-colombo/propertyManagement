@@ -76,6 +76,30 @@ body.gradient-bg {
   }
 }
 
+.nav-compact-link {
+  padding: 0.3rem 0.65rem !important;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  border-radius: 999px;
+  margin-right: 0.15rem;
+}
+
+.nav-compact-dropdown .dropdown-toggle {
+  padding: 0.3rem 0.65rem !important;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  border-radius: 999px;
+}
+
+.nav-compact-dropdown.nav-compact-active .dropdown-toggle {
+  background-color: var(--bs-primary);
+  color: #fff;
+}
+
+.navbar .nav-compact-dropdown .dropdown-toggle::after {
+  margin-left: 0.35rem;
+}
+
 .feedback-result-modal {
   z-index: 2000 !important;
 }

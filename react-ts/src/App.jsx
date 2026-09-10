@@ -7,6 +7,7 @@ import PropertiesAndGarages from "./pages/PropertiesAndGarage";
 import Sales from "./pages/Sales";
 import IncomeReport from "./pages/IncomeReport";
 import ExportPage from "./pages/Export";
+import Settings from "./pages/Settings";
 import ContractsTable from "./pages/Contracts";
 import AllContracts from "./pages/AllContracts";
 import AuthProvider from "../context/AuthProvider";
@@ -79,6 +80,16 @@ function App() {
               <PrivateRoute>
                 <Layout>
                   <ExportPage />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/configuracion"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <Settings />
                 </Layout>
               </PrivateRoute>
             }

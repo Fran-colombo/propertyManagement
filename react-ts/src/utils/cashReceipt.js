@@ -1,4 +1,6 @@
 import { amountToSpanish } from "./numberToSpanish";
+import { getReceiptSignature } from "../api/settings";
+import { mediaUrl } from "./mediaUrl";
 
 const MONTHS = [
   "enero",
@@ -68,7 +70,6 @@ function receiptParts(data = {}) {
     unidad,
     edificio,
     month: monthYearLabel(data.periodDate),
-    sign: "Firma y aclaración: ______________________________",
   };
 }
 
@@ -78,8 +79,6 @@ export function buildCashReceiptText(data = {}) {
     p.dateLine,
     "",
     `Recibí de ${p.payerName} la suma de ${p.amountWords} en concepto de ${p.concept}, unidad ${p.unidad}, edificio ${p.edificio}, mes ${p.month}.`,
-    "",
-    p.sign,
   ].join("\n");
 }
 
@@ -89,8 +88,6 @@ export function buildClientReceiptText(data = {}) {
     p.dateLine,
     "",
     `Se otorga el presente comprobante a ${p.payerName} por haber abonado la suma de ${p.amountWords} en concepto de ${p.concept}, unidad ${p.unidad}, edificio ${p.edificio}, mes ${p.month}.`,
-    "",
-    p.sign,
   ].join("\n");
 }
 
@@ -117,32 +114,51 @@ export function rentPeriodConcept(periods, periodId) {
 }
 
 function splitReceipt(text) {
-  const [dateLine = "", , body = "", , sign = ""] = String(text).split("\n");
-  return { dateLine, body, sign };
+  const [dateLine = "", , body = ""] = String(text).split("\n");
+  return { dateLine, body };
 }
 
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-function receiptBlockHtml({ dateLine, body, sign }) {
+function receiptBlockHtml({ dateLine, body, signatureUrl }) {
+  const collector = signatureUrl
+    ? `<div class="sign-block">
+        <img class="sign-img" src="${escapeHtml(signatureUrl)}" alt="Firma de quien recibe" />
+        <div class="sign-label">Recibí</div>
+      </div>`
+    : `<div class="sign-block">
+        <div class="sign-line">Firma de quien recibe: ______________________________</div>
+      </div>`;
   return `
   <section class="receipt">
     <div class="inner">
       <h1>RECIBO</h1>
       <div class="date">${escapeHtml(dateLine)}</div>
       <p class="body">${escapeHtml(body)}</p>
-      <div class="sign">${escapeHtml(sign)}</div>
+      ${collector}
+      <div class="sign-block">
+        <div class="sign-line">Firma del inquilino: ______________________________</div>
+      </div>
     </div>
   </section>`;
 }
 
-export function openCashReceiptPrint(data) {
+export async function openCashReceiptPrint(data) {
   const archive = splitReceipt(typeof data === "string" ? data : buildCashReceiptText(data));
   const client = splitReceipt(typeof data === "string" ? data : buildClientReceiptText(data));
+  let signatureUrl = null;
+  try {
+    const info = await getReceiptSignature();
+    if (info?.path) signatureUrl = mediaUrl(info.path);
+  } catch (_) {
+    signatureUrl = null;
+  }
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -218,9 +234,22 @@ export function openCashReceiptPrint(data) {
       margin: 0 auto;
       text-align: center;
     }
-    .sign {
-      margin-top: 28px;
+    .sign-block {
+      margin-top: 18px;
+    }
+    .sign-img {
+      display: block;
+      margin: 0 auto 4px;
+      max-height: 28mm;
+      max-width: 70mm;
+      object-fit: contain;
+    }
+    .sign-label,
+    .sign-line {
       font-size: 12pt;
+    }
+    .sign-label {
+      font-style: italic;
     }
     @media print {
       body { background: #fff; }
@@ -241,9 +270,9 @@ export function openCashReceiptPrint(data) {
     <button onclick="window.print()">Imprimir</button>
   </div>
   <div class="sheet">
-    ${receiptBlockHtml(archive)}
+    ${receiptBlockHtml({ ...archive, signatureUrl })}
     <hr class="cut" />
-    ${receiptBlockHtml(client)}
+    ${receiptBlockHtml({ ...client, signatureUrl })}
   </div>
 </body>
 </html>`;

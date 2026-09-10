@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button, Card } from "react-bootstrap"
-import { PeopleFill, HouseDoorFill, ReceiptCutoff, FileEarmarkTextFill, ClockHistory, CashStack, Download } from "react-bootstrap-icons"
+import { PeopleFill, HouseDoorFill, ReceiptCutoff, FileEarmarkTextFill, ClockHistory, CashStack, Download, GearFill } from "react-bootstrap-icons"
 import { getSalesSummary } from "../api/sale"
 
 export default function Dashboard() {
@@ -69,6 +69,13 @@ export default function Dashboard() {
               onClick={() => navigate("/exportar")}
             >
               <Download className="me-2" /> Exportar
+            </Button>
+            <Button
+              variant="outline-primary"
+              size="lg"
+              onClick={() => navigate("/configuracion")}
+            >
+              <GearFill className="me-2" /> Configuración
             </Button>
           </div>
         </Card.Body>
