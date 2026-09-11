@@ -149,7 +149,7 @@ return (
       </div>
       
       <div className="card-body px-2 px-sm-3">
-        <ul className="nav nav-tabs mb-4 flex-nowrap overflow-auto">
+        <ul className="nav nav-tabs mb-4 flex-nowrap">
           <li className="nav-item">
             <button 
               className={`nav-link ${activeTab === "owners" ? "active" : ""}`}

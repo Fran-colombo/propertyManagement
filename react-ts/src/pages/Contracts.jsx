@@ -522,7 +522,7 @@ const ContractsTable = () => {
         </p>
       )}
 
-      <Tabs defaultActiveKey="all" className="mb-3 flex-nowrap overflow-auto">
+      <Tabs defaultActiveKey="all" className="mb-3 flex-nowrap">
         <Tab eventKey="all" title="Todos">
           {displayedPeriods.length > 0 ? (
             <PeriodsTable periods={displayedPeriods} title="Todos los períodos" />
