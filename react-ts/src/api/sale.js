@@ -43,3 +43,11 @@ export async function collectSaleInstallment(saleId, installmentId, data) {
     body: JSON.stringify(data),
   });
 }
+
+export async function updateSaleInstallment(saleId, installmentId, data) {
+  return await apiFetch(`/sales/${saleId}/installments/${installmentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}

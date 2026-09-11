@@ -466,6 +466,55 @@ class PropertySaleService:
     def get_sale(self, sale_id: int) -> PropertySaleResponse:
         return self._to_response(self._load_sale(sale_id))
 
+    def update_installment_due_date(
+        self, sale_id: int, installment_id: int, due_date: date
+    ) -> PropertySaleResponse:
+        sale = self._load_sale(sale_id)
+        inst = next((i for i in sale.installments if i.id == installment_id), None)
+        if not inst:
+            raise HTTPException(status_code=404, detail="Cuota no encontrada")
+        if due_date == inst.due_date:
+            return self._to_response(sale)
+
+        old = inst.due_date
+        old_iso = old.isoformat()
+        new_iso = due_date.isoformat()
+        kind = _normalize_kind(getattr(inst, "kind", None))
+        inst.due_date = due_date
+
+        rows = (
+            self.db.query(TransactionHistory)
+            .filter(TransactionHistory.sale_id == sale.id)
+            .all()
+        )
+        cuota_marker = f"Cuota vto {old_iso}"
+        for row in rows:
+            notes = row.notes or ""
+            if kind == "adelanto":
+                if row.period_due_date == old and "Adelanto pactado" in notes:
+                    row.period_due_date = due_date
+                    row.period_end_date = due_date
+                continue
+            if cuota_marker not in notes:
+                continue
+            if row.period_due_date == old:
+                row.period_due_date = due_date
+                row.period_end_date = due_date
+            row.notes = notes.replace(cuota_marker, f"Cuota vto {new_iso}")
+
+        if inst.notes:
+            inst.notes = inst.notes.replace(cuota_marker, f"Cuota vto {new_iso}")
+
+        try:
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"No se pudo actualizar el vencimiento: {e}",
+            )
+        return self._to_response(self._load_sale(sale.id))
+
     def _credit_installment(
         self,
         sale: PropertySale,

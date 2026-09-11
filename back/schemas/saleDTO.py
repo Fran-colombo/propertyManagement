@@ -34,6 +34,10 @@ class CollectSalePaymentDTO(BaseModel):
     overpay_note: Optional[str] = None
 
 
+class UpdateSaleInstallmentDTO(BaseModel):
+    due_date: date
+
+
 class SaleInstallmentResponse(BaseModel):
     id: int
     due_date: date

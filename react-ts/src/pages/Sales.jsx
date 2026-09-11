@@ -14,7 +14,7 @@ import {
   Table,
 } from "react-bootstrap";
 import { Calendar, Pencil, Search } from "react-bootstrap-icons";
-import { collectSaleInstallment, getSales } from "../api/sale";
+import { collectSaleInstallment, getSales, updateSaleInstallment } from "../api/sale";
 import { updateProperty } from "../api/property";
 import FeedbackModal from "../components/FeedbackModal";
 import {
@@ -89,6 +89,29 @@ function isOverdue(inst) {
   return inst && String(inst.due_date).slice(0, 10) < todayISO();
 }
 
+function isoDay(value) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function addMonthsISO(iso, months) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const next = new Date(y, m - 1 + months, d);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+}
+
+function lastOtherCuotaDue(sale, exceptId) {
+  const dates = (sale?.installments || [])
+    .filter(
+      (row) =>
+        row.id !== exceptId &&
+        String(row.kind || "cuota").toLowerCase() !== "adelanto"
+    )
+    .map((row) => isoDay(row.due_date))
+    .filter(Boolean)
+    .sort();
+  return dates[dates.length - 1] || null;
+}
+
 export default function Sales() {
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
@@ -127,6 +150,8 @@ export default function Sales() {
   });
   const [addressError, setAddressError] = useState("");
   const [addressSaving, setAddressSaving] = useState(false);
+  const [dueDateSavingId, setDueDateSavingId] = useState(null);
+  const [dueDateError, setDueDateError] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -294,6 +319,33 @@ export default function Sales() {
     } finally {
       setAddressSaving(false);
     }
+  };
+
+  const applyDueDate = async (inst, dueDate) => {
+    if (!cuotasSale || !inst || !dueDate) return;
+    if (isoDay(inst.due_date) === dueDate) return;
+    setDueDateSavingId(inst.id);
+    setDueDateError("");
+    try {
+      const updated = await updateSaleInstallment(cuotasSale.id, inst.id, {
+        due_date: dueDate,
+      });
+      setCuotasSale(updated);
+      await load();
+    } catch (err) {
+      setDueDateError(err.message || "No se pudo cambiar el vencimiento");
+    } finally {
+      setDueDateSavingId(null);
+    }
+  };
+
+  const moveCuotaToEnd = (inst) => {
+    const last = lastOtherCuotaDue(cuotasSale, inst.id);
+    if (!last) {
+      setDueDateError("No hay otra cuota para ubicarla al final.");
+      return;
+    }
+    applyDueDate(inst, addMonthsISO(last, 1));
   };
 
   const pageItems = [];
@@ -602,6 +654,7 @@ export default function Sales() {
         onHide={() => {
           setCuotasSale(null);
           setPayTarget(null);
+          setDueDateError("");
         }}
         size="lg"
         centered
@@ -615,7 +668,14 @@ export default function Sales() {
               <p className="small text-muted mb-3">
                 Comprador: {cuotasSale.buyer_name || "—"} · Total{" "}
                 {money(cuotasSale.total_amount, cuotasSale.currency)} · {statusBadge(cuotasSale.status)}
+                <br />
+                El número de cuota del recibo sigue el vencimiento. Si cargaste un mes de más, pasá esa cuota al final.
               </p>
+              {dueDateError && (
+                <Alert variant="danger" className="py-2" dismissible onClose={() => setDueDateError("")}>
+                  {dueDateError}
+                </Alert>
+              )}
               <Table striped bordered hover size="sm" className="mb-0">
                 <thead>
                   <tr>
@@ -632,10 +692,32 @@ export default function Sales() {
                   {(cuotasSale.installments || []).map((inst) => {
                     const pending = Number(inst.remaining) > 0.009;
                     const overdue = pending && isOverdue(inst);
+                    const adelanto = isAdvance(inst);
+                    const savingDue = dueDateSavingId === inst.id;
                     return (
                       <tr key={inst.id} className={overdue ? "table-danger" : ""}>
                         <td>{kindBadge(inst)}</td>
-                        <td>{new Date(inst.due_date).toLocaleDateString("es-AR")}</td>
+                        <td>
+                          <Form.Control
+                            type="date"
+                            size="sm"
+                            value={isoDay(inst.due_date)}
+                            disabled={!!dueDateSavingId}
+                            onChange={(e) => applyDueDate(inst, e.target.value)}
+                          />
+                          {!adelanto && (
+                            <Button
+                              size="sm"
+                              variant="link"
+                              className="p-0 mt-1 text-secondary"
+                              style={{ fontSize: "0.75rem", textDecoration: "none" }}
+                              disabled={!!dueDateSavingId}
+                              onClick={() => moveCuotaToEnd(inst)}
+                            >
+                              {savingDue ? "Guardando..." : "Pasar al final"}
+                            </Button>
+                          )}
+                        </td>
                         <td>{money(inst.amount, cuotasSale.currency)}</td>
                         <td>{money(inst.amount_paid, cuotasSale.currency)}</td>
                         <td>{pending ? money(inst.remaining, cuotasSale.currency) : "—"}</td>

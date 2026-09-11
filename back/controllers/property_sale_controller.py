@@ -9,6 +9,7 @@ from schemas.saleDTO import (
     PaginatedSalesResponse,
     PropertySaleResponse,
     SalesCollectionSummary,
+    UpdateSaleInstallmentDTO,
 )
 from services.property_sale_service import PropertySaleService
 
@@ -60,6 +61,19 @@ def sales_summary(service: PropertySaleService = Depends(get_service)):
 @router.get("/{sale_id}", response_model=PropertySaleResponse)
 def get_sale(sale_id: int, service: PropertySaleService = Depends(get_service)):
     return service.get_sale(sale_id)
+
+
+@router.patch(
+    "/{sale_id}/installments/{installment_id}",
+    response_model=PropertySaleResponse,
+)
+def update_installment(
+    sale_id: int,
+    installment_id: int,
+    data: UpdateSaleInstallmentDTO,
+    service: PropertySaleService = Depends(get_service),
+):
+    return service.update_installment_due_date(sale_id, installment_id, data.due_date)
 
 
 @router.post(
