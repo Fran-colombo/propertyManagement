@@ -2,6 +2,7 @@ from datetime import date
 from math import ceil
 from typing import Optional
 
+from dateutil.relativedelta import relativedelta
 from fastapi import HTTPException, status
 from sqlalchemy import and_, extract, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -467,45 +468,75 @@ class PropertySaleService:
         return self._to_response(self._load_sale(sale_id))
 
     def update_installment_due_date(
-        self, sale_id: int, installment_id: int, due_date: date
+        self,
+        sale_id: int,
+        installment_id: int,
+        due_date: Optional[date] = None,
+        move_to_end: bool = False,
+        reset_payment: bool = False,
     ) -> PropertySaleResponse:
         sale = self._load_sale(sale_id)
         inst = next((i for i in sale.installments if i.id == installment_id), None)
         if not inst:
             raise HTTPException(status_code=404, detail="Cuota no encontrada")
-        if due_date == inst.due_date:
-            return self._to_response(sale)
+
+        if move_to_end:
+            others = [
+                other.due_date
+                for other in sale.installments
+                if other.id != inst.id
+                and _normalize_kind(getattr(other, "kind", None)) != "adelanto"
+                and other.due_date
+            ]
+            if not others:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No hay otra cuota para ubicarla al final.",
+                )
+            due_date = max(others) + relativedelta(months=1)
+            reset_payment = True
+
+        if due_date is None:
+            raise HTTPException(status_code=400, detail="Indicá el vencimiento")
 
         old = inst.due_date
         old_iso = old.isoformat()
         new_iso = due_date.isoformat()
         kind = _normalize_kind(getattr(inst, "kind", None))
-        inst.due_date = due_date
+        date_changed = due_date != old
 
-        rows = (
-            self.db.query(TransactionHistory)
-            .filter(TransactionHistory.sale_id == sale.id)
-            .all()
-        )
-        cuota_marker = f"Cuota vto {old_iso}"
-        for row in rows:
-            notes = row.notes or ""
-            if kind == "adelanto":
-                if row.period_due_date == old and "Adelanto pactado" in notes:
+        if date_changed:
+            inst.due_date = due_date
+            cuota_marker = f"Cuota vto {old_iso}"
+            rows = (
+                self.db.query(TransactionHistory)
+                .filter(TransactionHistory.sale_id == sale.id)
+                .all()
+            )
+            for row in rows:
+                notes = row.notes or ""
+                if kind == "adelanto":
+                    if row.period_due_date == old and "Adelanto pactado" in notes:
+                        row.period_due_date = due_date
+                        row.period_end_date = due_date
+                    continue
+                if cuota_marker not in notes:
+                    continue
+                if row.period_due_date == old:
                     row.period_due_date = due_date
                     row.period_end_date = due_date
-                continue
-            if cuota_marker not in notes:
-                continue
-            if row.period_due_date == old:
-                row.period_due_date = due_date
-                row.period_end_date = due_date
-            row.notes = notes.replace(cuota_marker, f"Cuota vto {new_iso}")
+                row.notes = notes.replace(cuota_marker, f"Cuota vto {new_iso}")
+            if inst.notes:
+                inst.notes = inst.notes.replace(cuota_marker, f"Cuota vto {new_iso}")
 
-        if inst.notes:
-            inst.notes = inst.notes.replace(cuota_marker, f"Cuota vto {new_iso}")
+        if reset_payment and kind != "adelanto":
+            self._clear_installment_payment(sale, inst)
+
+        if not date_changed and not reset_payment:
+            return self._to_response(sale)
 
         try:
+            self._refresh_sale_status(sale)
             self.db.commit()
         except Exception as e:
             self.db.rollback()
@@ -514,6 +545,24 @@ class PropertySaleService:
                 detail=f"No se pudo actualizar el vencimiento: {e}",
             )
         return self._to_response(self._load_sale(sale.id))
+
+    def _clear_installment_payment(self, sale: PropertySale, inst: PropertySalePayment) -> None:
+        due = inst.due_date
+        rows = (
+            self.db.query(TransactionHistory)
+            .filter(TransactionHistory.sale_id == sale.id)
+            .all()
+        )
+        for row in rows:
+            notes = row.notes or ""
+            if "Adelanto pactado" in notes:
+                continue
+            if due and row.period_due_date == due:
+                self.db.delete(row)
+        inst.amount_paid = 0.0
+        inst.paid_at = None
+        inst.method = None
+        inst.received_by = None
 
     def _credit_installment(
         self,

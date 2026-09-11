@@ -73,7 +73,13 @@ def update_installment(
     data: UpdateSaleInstallmentDTO,
     service: PropertySaleService = Depends(get_service),
 ):
-    return service.update_installment_due_date(sale_id, installment_id, data.due_date)
+    return service.update_installment_due_date(
+        sale_id,
+        installment_id,
+        due_date=data.due_date,
+        move_to_end=data.move_to_end,
+        reset_payment=data.reset_payment,
+    )
 
 
 @router.post(

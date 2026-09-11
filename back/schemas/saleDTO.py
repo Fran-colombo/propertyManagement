@@ -35,7 +35,9 @@ class CollectSalePaymentDTO(BaseModel):
 
 
 class UpdateSaleInstallmentDTO(BaseModel):
-    due_date: date
+    due_date: Optional[date] = None
+    move_to_end: bool = False
+    reset_payment: bool = False
 
 
 class SaleInstallmentResponse(BaseModel):
