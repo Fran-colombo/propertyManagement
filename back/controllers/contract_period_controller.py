@@ -106,6 +106,7 @@ def get_all_pending_periods(db: Session = Depends(get_db)):
 def get_periods_by_month(
     year: Optional[int] = None,
     month: Optional[int] = None,
+    payment: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     today = date.today()
@@ -113,9 +114,15 @@ def get_periods_by_month(
     month = month or today.month
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Mes inválido")
+    status_filter = (payment or "pending").strip().lower()
+    if status_filter not in ("pending", "paid", "all"):
+        raise HTTPException(
+            status_code=400,
+            detail="payment inválido. Usá pending, paid o all.",
+        )
     service = ContractPeriodService(db)
     try:
-        periods = service.get_periods_for_month(year, month)
+        periods = service.get_periods_for_month(year, month, status_filter)
         return [ContractPeriodResponse.from_orm(p) for p in periods]
     except Exception as e:
         raise HTTPException(

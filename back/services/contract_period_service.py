@@ -131,26 +131,32 @@ class ContractPeriodService:
             .all()
         )
 
-    def get_periods_for_month(self, year: int, month: int) -> List[ContractPeriod]:
-        """Unpaid periods that overlap the given year/month."""
+    def get_periods_for_month(
+        self, year: int, month: int, payment: Optional[str] = None
+    ) -> List[ContractPeriod]:
+        """Periods that overlap the given year/month. payment: pending | paid | all."""
         first_day = date(year, month, 1)
         last_day = date(year, month, calendar.monthrange(year, month)[1])
+        payment = (payment or "pending").strip().lower()
 
-        return (
+        query = (
             self.db.query(ContractPeriod)
             .options(*_period_load())
             .filter(
-                ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
                 ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
                 ContractPeriod.start_date <= last_day,
                 ContractPeriod.end_date >= first_day,
             )
-            .order_by(
-                ContractPeriod.due_date.asc(),
-                ContractPeriod.contract_id,
-            )
-            .all()
         )
+        if payment == "paid":
+            query = query.filter(ContractPeriod.payment_status == PaymentStatusEnum.PAGADO)
+        elif payment != "all":
+            query = query.filter(ContractPeriod.payment_status != PaymentStatusEnum.PAGADO)
+
+        return query.order_by(
+            ContractPeriod.due_date.asc(),
+            ContractPeriod.contract_id,
+        ).all()
 
         
         

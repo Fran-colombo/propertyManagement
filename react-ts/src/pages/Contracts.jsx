@@ -40,10 +40,11 @@ const ContractsTable = () => {
   const [filterYear, setFilterYear] = useState(today.getFullYear());
   const [filterMonth, setFilterMonth] = useState(today.getMonth() + 1);
   const [showAllPending, setShowAllPending] = useState(false);
+  const [paymentFilter, setPaymentFilter] = useState("pending");
 
   useEffect(() => {
     loadPeriods();
-  }, [filterYear, filterMonth, showAllPending]);
+  }, [filterYear, filterMonth, showAllPending, paymentFilter]);
 
   const loadPeriods = async () => {
     try {
@@ -52,7 +53,7 @@ const ContractsTable = () => {
 
       const data = showAllPending
         ? await getAllPendingPeriods()
-        : await getPeriodsByMonth(filterYear, filterMonth);
+        : await getPeriodsByMonth(filterYear, filterMonth, paymentFilter);
 
       const list = (data || []).slice().sort((a, b) => {
         const da = new Date(a.due_date || a.start_date);
@@ -439,7 +440,7 @@ const ContractsTable = () => {
     <div>
       <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
         <div>
-          <h2 className="h4 mb-0">Períodos Pendientes</h2>
+          <h2 className="h4 mb-0">Contratos activos</h2>
           <p className="text-muted small mb-0 mt-1">
             El IPC se actualiza solo a mitad de mes. Cuando toque el ajuste de un contrato, usá <strong>Índice</strong> y confirmá: el alquiler no sube solo.
           </p>
@@ -504,6 +505,35 @@ const ContractsTable = () => {
             </Form.Select>
           </Form.Group>
         </Col>
+        <Col xs={12} md={4}>
+          <Form.Label className="d-block">Estado del mes</Form.Label>
+          <div className="d-flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant={paymentFilter === "pending" ? "warning" : "outline-warning"}
+              disabled={showAllPending}
+              onClick={() => setPaymentFilter("pending")}
+            >
+              Pendientes
+            </Button>
+            <Button
+              size="sm"
+              variant={paymentFilter === "paid" ? "success" : "outline-success"}
+              disabled={showAllPending}
+              onClick={() => setPaymentFilter("paid")}
+            >
+              Pagados
+            </Button>
+            <Button
+              size="sm"
+              variant={paymentFilter === "all" ? "secondary" : "outline-secondary"}
+              disabled={showAllPending}
+              onClick={() => setPaymentFilter("all")}
+            >
+              Todos
+            </Button>
+          </div>
+        </Col>
         <Col xs={12} md={3}>
           <Form.Check
             type="switch"
@@ -517,8 +547,11 @@ const ContractsTable = () => {
 
       {!showAllPending && (
         <p className="text-muted small mb-3">
-          Mostrando períodos de {MONTH_NAMES[filterMonth - 1]} {filterYear}, ordenados por vencimiento.
-          No se listan períodos de otros meses.
+          {paymentFilter === "paid"
+            ? `Mostrando períodos pagados de ${MONTH_NAMES[filterMonth - 1]} ${filterYear}.`
+            : paymentFilter === "all"
+            ? `Mostrando todos los períodos de ${MONTH_NAMES[filterMonth - 1]} ${filterYear}.`
+            : `Mostrando períodos pendientes de ${MONTH_NAMES[filterMonth - 1]} ${filterYear}, ordenados por vencimiento.`}
         </p>
       )}
 
@@ -528,11 +561,14 @@ const ContractsTable = () => {
             <PeriodsTable periods={displayedPeriods} title="Todos los períodos" />
           ) : (
             <Alert variant="info">
-              No hay períodos pendientes
-              {!showAllPending
-                ? ` para ${MONTH_NAMES[filterMonth - 1]} ${filterYear}`
-                : ""}
-              . Podés crear un contrato o cambiar el filtro de fecha.
+              {showAllPending
+                ? "No hay períodos pendientes."
+                : paymentFilter === "paid"
+                ? `No hay períodos pagados para ${MONTH_NAMES[filterMonth - 1]} ${filterYear}.`
+                : paymentFilter === "all"
+                ? `No hay períodos para ${MONTH_NAMES[filterMonth - 1]} ${filterYear}.`
+                : `No hay períodos pendientes para ${MONTH_NAMES[filterMonth - 1]} ${filterYear}.`}{" "}
+              Podés crear un contrato o cambiar el filtro.
             </Alert>
           )}
         </Tab>

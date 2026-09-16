@@ -157,7 +157,7 @@ export default function NavigationBar() {
   );
 
   return (
-    <Navbar bg="light" expand="xl" className="shadow-sm border-bottom py-1" sticky="top">
+    <Navbar bg="light" variant="light" data-bs-theme="light" expand="xl" className="shadow-sm border-bottom py-1" sticky="top">
       <Container fluid="xl">
         <Navbar.Brand as={Link} to="/" className="fw-bold text-primary d-flex align-items-center py-1">
           <House className="me-2" size={20} />
@@ -175,6 +175,7 @@ export default function NavigationBar() {
           placement="end"
           show={menuOpen}
           onHide={closeMenu}
+          data-bs-theme="light"
         >
           <Offcanvas.Header closeButton>
             <Offcanvas.Title>Menú</Offcanvas.Title>

@@ -89,15 +89,49 @@ body.gradient-bg {
   font-size: 0.875rem;
   white-space: nowrap;
   border-radius: 999px;
+  color: #212529 !important;
+}
+
+.nav-compact-dropdown .dropdown-toggle:hover,
+.nav-compact-dropdown .dropdown-toggle:focus,
+.nav-compact-dropdown.show > .dropdown-toggle {
+  color: #212529 !important;
 }
 
 .nav-compact-dropdown.nav-compact-active .dropdown-toggle {
   background-color: var(--bs-primary);
-  color: #fff;
+  color: #fff !important;
 }
 
 .navbar .nav-compact-dropdown .dropdown-toggle::after {
   margin-left: 0.35rem;
+}
+
+.navbar .dropdown-menu,
+.offcanvas .dropdown-menu {
+  background-color: #fff;
+  color: #212529;
+}
+
+.navbar .dropdown-item,
+.offcanvas .dropdown-item {
+  color: #212529;
+}
+
+.navbar .dropdown-item:hover,
+.navbar .dropdown-item:focus,
+.offcanvas .dropdown-item:hover,
+.offcanvas .dropdown-item:focus {
+  color: #212529;
+  background-color: #e9ecef;
+}
+
+.navbar .dropdown-item.active,
+.navbar .dropdown-item:active,
+.offcanvas .dropdown-item.active,
+.offcanvas .dropdown-item:active {
+  color: #fff;
+  background-color: var(--bs-primary);
 }
 
 .feedback-result-modal {
