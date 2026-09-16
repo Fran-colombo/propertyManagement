@@ -22,6 +22,7 @@ import {
   saleInstallmentConcept,
   saleReceiptDates,
 } from "../utils/cashReceipt";
+import { downloadSalesReport, fetchAllSales } from "../utils/salesExport";
 
 const PAGE_SIZE = 20;
 
@@ -142,6 +143,7 @@ export default function Sales() {
     method: "transferencia",
     received_by: "DUENO",
     notes: "",
+    paid_at: todayISO(),
   });
   const [saving, setSaving] = useState(false);
   const [overpayOpen, setOverpayOpen] = useState(false);
@@ -160,6 +162,7 @@ export default function Sales() {
   const [dueDateSavingId, setDueDateSavingId] = useState(null);
   const [dueDateError, setDueDateError] = useState("");
   const [editingDueId, setEditingDueId] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -216,6 +219,7 @@ export default function Sales() {
       method: "transferencia",
       received_by: "DUENO",
       notes: "",
+      paid_at: todayISO(),
     });
   };
 
@@ -236,6 +240,7 @@ export default function Sales() {
         method,
         received_by: payForm.received_by,
         notes: payForm.notes.trim() || undefined,
+        paid_at: payForm.paid_at || undefined,
         overpay_reason: overpay?.reason,
         overpay_note: overpay?.note,
       });
@@ -358,6 +363,27 @@ export default function Sales() {
     applyDueDate(inst, null, { move_to_end: true });
   };
 
+  const exportReport = async () => {
+    try {
+      setExporting(true);
+      setError("");
+      const sales = await fetchAllSales({
+        q: debouncedSearch || undefined,
+        status: statusFilter || undefined,
+        keepManaging: managingFilter || undefined,
+        month: dateFilter || undefined,
+        collect: collectFilter || undefined,
+      });
+      downloadSalesReport(sales, {
+        subtitle: `Exportado el ${new Date().toLocaleDateString("es-AR")} · ${sales.length} venta${sales.length === 1 ? "" : "s"}`,
+      });
+    } catch (err) {
+      setError(err.message || "No se pudo exportar el reporte");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const pageItems = [];
   const totalPages = Math.max(pages, 1);
   const windowStart = Math.max(1, page - 2);
@@ -373,6 +399,14 @@ export default function Sales() {
         Lo primero que ves son las ventas con cuotas por cobrar. El detalle de cuotas sigue en el modal.
         Si anotaste mal la dirección al vender, podés corregirla acá: las vendidas ya no aparecen en Propiedades.
       </p>
+      <div className="mb-3">
+        <Button variant="outline-primary" size="sm" onClick={exportReport} disabled={exporting}>
+          {exporting ? "Generando..." : "Exportar reporte"}
+        </Button>
+        <span className="text-muted small ms-2">
+          Incluye propiedad, comprador, cuota, pagado, saldo y fecha de fin. Respeta los filtros actuales.
+        </span>
+      </div>
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError("")}>
           {error}
@@ -850,6 +884,18 @@ export default function Sales() {
               {payTarget && isAdvance(payTarget.inst) ? "adelanto pactado" : "cuota"} · saldo{" "}
               {money(payTarget?.inst?.remaining, payTarget?.sale?.currency)}
             </p>
+            <Form.Group className="mb-3">
+              <Form.Label>Fecha de pago</Form.Label>
+              <Form.Control
+                type="date"
+                value={payForm.paid_at}
+                onChange={(e) => setPayForm({ ...payForm, paid_at: e.target.value })}
+                required
+              />
+              <Form.Text className="text-muted">
+                El día en que pagaron, aunque el comprobante llegue después.
+              </Form.Text>
+            </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Monto</Form.Label>
               <Form.Control

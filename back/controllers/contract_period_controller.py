@@ -27,6 +27,7 @@ class PaymentData(BaseModel):
     late_fee_daily_rate: Optional[float] = Field(None, ge=0)
     late_fee_amount: Optional[float] = Field(None, ge=0)
     already_paid: bool = False
+    payment_date: Optional[date] = None
 
 
 @router.post("/{period_id}/pay")
@@ -39,17 +40,18 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
         raise HTTPException(status_code=400, detail="Este período ya está pagado")
     
 
+    paid_on = payment.payment_date or date.today()
     transaction = Transaction(
         period_id=period_id,
         amount=payment.amount,
-        date=date.today(),
+        date=paid_on,
         method=payment.method,
         notes=payment.reference
     )
     db.add(transaction)
 
     period.amount_paid += payment.amount
-    period.payment_date = date.today()
+    period.payment_date = paid_on
     period.payment_method = payment.method
     period.payment_reference = payment.reference
 

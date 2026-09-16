@@ -11,6 +11,11 @@ function parseISODate(value) {
   return new Date(y, m - 1, d);
 }
 
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function round2(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
@@ -28,10 +33,6 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
   const dueDate = parseISODate(period?.due_date);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const daysOverdue =
-    dueDate && dueDate < today
-      ? Math.round((today - dueDate) / 86400000)
-      : 0;
   const existingFee = Number(period?.late_fee_amount || 0);
   const remainingNow = Math.max(
     0,
@@ -44,7 +45,13 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
     method: "transferencia",
     reference: "",
     received_by: "DUENO",
+    payment_date: todayIso(),
   });
+  const paymentDay = parseISODate(paymentData.payment_date) || today;
+  const daysOverdue =
+    dueDate && dueDate < paymentDay
+      ? Math.round((paymentDay - dueDate) / 86400000)
+      : 0;
   const [overpayOpen, setOverpayOpen] = useState(false);
   const [overpayReason, setOverpayReason] = useState("");
   const [overpayNote, setOverpayNote] = useState("");
@@ -79,6 +86,7 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
       method: "transferencia",
       reference: "",
       received_by: "DUENO",
+      payment_date: todayIso(),
     });
     setOverpayOpen(false);
     setOverpayReason("");
@@ -338,6 +346,21 @@ export default function PayPeriodModal({ show, onHide, period, onPay }) {
           )}
           {!alreadyPaid && (
             <>
+          <Form.Group className="mb-3">
+            <Form.Label>Fecha de pago</Form.Label>
+            <Form.Control
+              type="date"
+              value={paymentData.payment_date}
+              onChange={(e) => setPaymentData({
+                ...paymentData,
+                payment_date: e.target.value
+              })}
+              required
+            />
+            <Form.Text className="text-muted">
+              El día en que pagaron, aunque el comprobante llegue después.
+            </Form.Text>
+          </Form.Group>
           <Form.Group className="mb-3">
             <Form.Label>Monto a Pagar</Form.Label>
             <Form.Control

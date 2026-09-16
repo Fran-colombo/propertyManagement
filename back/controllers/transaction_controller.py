@@ -44,10 +44,16 @@ def _period_label(period: ContractPeriod) -> str:
     return f"{period.start_date.strftime('%d/%m/%Y')} - {period.end_date.strftime('%d/%m/%Y')}"
 
 
-def _apply_late_fee_if_requested(period: ContractPeriod, payment: PaymentData) -> Optional[float]:
+def _paid_on(payment: PaymentData) -> date:
+    return payment.payment_date or date.today()
+
+
+def _apply_late_fee_if_requested(
+    period: ContractPeriod, payment: PaymentData, paid_on: Optional[date] = None
+) -> Optional[float]:
     if not payment.apply_late_fee:
         return None
-    days = days_overdue(period.due_date)
+    days = days_overdue(period.due_date, paid_on)
     if days <= 0:
         raise HTTPException(
             status_code=400,
@@ -84,12 +90,14 @@ def _add_ledger_entry(
     notes: Optional[str],
     received_by: Optional[str] = None,
     remitted_to_owner: Optional[bool] = None,
+    paid_on: Optional[date] = None,
 ) -> Transaction:
+    paid_on = paid_on or date.today()
     remaining_before = (period.total_amount or 0) - (period.amount_paid or 0)
     transaction = Transaction(
         period_id=period.id,
         amount=amount,
-        date=date.today(),
+        date=paid_on,
         method=method,
         notes=notes,
         remaining_amount=remaining_before - amount,
@@ -112,7 +120,7 @@ def _add_ledger_entry(
         TransactionHistory(
             transaction_id=transaction.id,
             amount=amount,
-            date=date.today(),
+            date=paid_on,
             method=method,
             notes=notes,
             contract_id=contract.id if contract else None,
@@ -131,13 +139,13 @@ def _add_ledger_entry(
             currency=normalize_currency(getattr(contract, "currency", None) if contract else None),
             received_by=receiver,
             remitted_to_owner=1 if remitted else 0,
-            remitted_at=date.today() if remitted and receiver == "INTERMEDIARIO" else None,
+            remitted_at=paid_on if remitted and receiver == "INTERMEDIARIO" else None,
         )
     )
 
     period.amount_paid = min(new_paid, period.total_amount or 0)
     period.payment_status = new_status
-    period.payment_date = date.today()
+    period.payment_date = paid_on
     period.payment_method = method
     period.payment_reference = notes
     return transaction
@@ -193,7 +201,8 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
     if (payment.amount or 0) <= 0:
         raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
 
-    fee = _apply_late_fee_if_requested(period, payment)
+    paid_on = _paid_on(payment)
+    fee = _apply_late_fee_if_requested(period, payment, paid_on)
     remaining = max(0.0, (period.total_amount or 0) - (period.amount_paid or 0))
     extra = round(payment.amount - remaining, 2)
     reason = (payment.overpay_reason or "").strip().lower() or None
@@ -202,7 +211,7 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
     if fee:
         reference = _join_notes(
             reference,
-            f"Recargo por atraso ${fee:,.2f} ({days_overdue(period.due_date)} día(s)).",
+            f"Recargo por atraso ${fee:,.2f} ({days_overdue(period.due_date, paid_on)} día(s)).",
         )
 
     receiver = payment.received_by
@@ -220,7 +229,13 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
 
     if extra <= 0.009:
         _add_ledger_entry(
-            db, period, payment.amount, payment.method, reference, received_by=receiver
+            db,
+            period,
+            payment.amount,
+            payment.method,
+            reference,
+            received_by=receiver,
+            paid_on=paid_on,
         )
         db.commit()
         return {
@@ -250,14 +265,26 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
         )
         if remaining > 0.009:
             _add_ledger_entry(
-                db, period, remaining, payment.method, current_note, received_by=receiver
+                db,
+                period,
+                remaining,
+                payment.method,
+                current_note,
+                received_by=receiver,
+                paid_on=paid_on,
             )
         advance_note = _join_notes(
             f"Adelanto. Sobra de la transferencia del período {_period_label(period)}.",
             reference,
         )
         _add_ledger_entry(
-            db, nxt, extra, payment.method, advance_note, received_by=receiver
+            db,
+            nxt,
+            extra,
+            payment.method,
+            advance_note,
+            received_by=receiver,
+            paid_on=paid_on,
         )
         db.commit()
         return {
@@ -272,7 +299,13 @@ def register_payment(period_id: int, payment: PaymentData, db: Session = Depends
         f"Pago de más (${extra:,.2f}): {extra_note}",
     )
     _add_ledger_entry(
-        db, period, payment.amount, payment.method, overpay_note, received_by=receiver
+        db,
+        period,
+        payment.amount,
+        payment.method,
+        overpay_note,
+        received_by=receiver,
+        paid_on=paid_on,
     )
     db.commit()
     return {

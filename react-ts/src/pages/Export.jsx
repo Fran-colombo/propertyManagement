@@ -15,6 +15,7 @@ import {
   formatMoney,
   yesNo,
 } from "../utils/exportTable";
+import { downloadSalesReport, fetchAllSales } from "../utils/salesExport";
 
 const MONTHS_ES = [
   "enero",
@@ -604,6 +605,14 @@ export default function ExportPage() {
       });
     });
 
+  const exportSales = () =>
+    run("sales", async () => {
+      const sales = await fetchAllSales();
+      downloadSalesReport(sales, {
+        subtitle: `Exportado el ${formatEsDate(todayIso())} · ${sales.length} venta${sales.length === 1 ? "" : "s"}`,
+      });
+    });
+
   const exportHistory = () =>
     run("history", async () => {
       const items = await fetchAllPages((page, pageSize) =>
@@ -716,6 +725,19 @@ export default function ExportPage() {
               />
               <Button className="mt-3" onClick={exportOneContract} disabled={Boolean(busy)}>
                 {busy === "one-contract" ? "Generando..." : "Descargar contrato"}
+              </Button>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={6}>
+          <Card className="h-100 shadow-sm">
+            <Card.Body>
+              <Card.Title>Propiedades vendidas</Card.Title>
+              <Card.Text className="text-muted small">
+                Comprador, cuota en curso, total de cuotas, pagado, saldo y fecha de fin.
+              </Card.Text>
+              <Button onClick={exportSales} disabled={Boolean(busy)}>
+                {busy === "sales" ? "Generando..." : "Descargar ventas"}
               </Button>
             </Card.Body>
           </Card>
