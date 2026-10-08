@@ -9,6 +9,8 @@ const emptyForm = {
   floor: "",
   apartment: "",
   owner_id: "",
+  tgi_account: "",
+  tgi_code: "",
 };
 
 export default function CreatePropertyModal({ show, onHide, onCreated, property = null }) {
@@ -30,6 +32,8 @@ export default function CreatePropertyModal({ show, onHide, onCreated, property 
           floor: property.floor || "",
           apartment: property.apartment || "",
           owner_id: property.owner?.id ? String(property.owner.id) : "",
+          tgi_account: property.tgi_account || "",
+          tgi_code: property.tgi_code || "",
         });
       } else {
         setForm(emptyForm);
@@ -72,6 +76,8 @@ export default function CreatePropertyModal({ show, onHide, onCreated, property 
     const payload = {
       ...form,
       owner_id: parseInt(form.owner_id, 10),
+      tgi_account: String(form.tgi_account || "").trim() || null,
+      tgi_code: String(form.tgi_code || "").trim() || null,
     };
 
     try {
@@ -165,6 +171,31 @@ export default function CreatePropertyModal({ show, onHide, onCreated, property 
                   value={form.apartment}
                   onChange={handleChange}
                 />
+              </Form.Group>
+
+              <Form.Group className="mb-2">
+                <Form.Label>Cuenta TGI</Form.Label>
+                <Form.Control
+                  type="text"
+                  name="tgi_account"
+                  value={form.tgi_account}
+                  onChange={handleChange}
+                  placeholder="Sin guiones. Opcional"
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-2">
+                <Form.Label>Código de gestión personal</Form.Label>
+                <Form.Control
+                  type="text"
+                  name="tgi_code"
+                  value={form.tgi_code}
+                  onChange={handleChange}
+                  placeholder="Opcional"
+                />
+                <Form.Text className="text-muted">
+                  Quedan en la propiedad. Si un contrato paga TGI desde el SIAT, usa estos datos.
+                </Form.Text>
               </Form.Group>
 
               <Form.Group className="mb-2">

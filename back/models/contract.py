@@ -34,6 +34,8 @@ class RentalContract(Base):
     tgi_amount = Column(Float, nullable=True)
     tgi_account = Column(String, nullable=True)
     tgi_code = Column(String, nullable=True)
+    tgi_mode = Column(String, nullable=True)
+    tgi_debt_plan = Column(String, nullable=True)
     api_amount = Column(Float, nullable=True)
     fire_insurance_amount = Column(Float, nullable=True)
     notes = Column(String, nullable=True)

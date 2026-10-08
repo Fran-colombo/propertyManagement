@@ -4,6 +4,7 @@ from datetime import date
 from services.siat_tgi_service import (
     SiatInstallment,
     build_tgi_charge,
+    overdue_months,
     parse_siat_html,
 )
 
@@ -112,6 +113,16 @@ class TgiChargeTests(unittest.TestCase):
         self.assertEqual(by_period["2026-10"].capital, 78185.49)
         self.assertEqual(by_period["2026-10"].interest, 0)
         self.assertEqual(by_period["2026-09"].status, "abonado")
+
+    def test_overdue_months_skip_the_month_being_charged(self):
+        late = overdue_months(SCREENSHOT, "2026-10")
+        self.assertEqual(late, ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08"])
+
+    def test_proportional_skips_catchup_and_keeps_current_month(self):
+        charge = build_tgi_charge(SCREENSHOT, "2026-10", skip_catchup=True)
+        self.assertIsNone(charge["catchup"])
+        self.assertEqual(charge["current"]["total"], 78185.49)
+        self.assertEqual(charge["total"], 78185.49)
 
     def test_parse_error_page_has_no_rows(self):
         page = '<UL class="error" id="strutsErrors"><LI>La cuenta ingresada es inexistente</LI></UL>'

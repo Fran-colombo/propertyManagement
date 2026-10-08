@@ -8,6 +8,7 @@ import CreateContractModal from "../components/CreateContractModal";
 import UpdateIndexModal from "../components/UpdateIndexModal";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
+import TgiDebtPlanChoice from "../components/TgiDebtPlanChoice";
 import { mediaUrl } from "../utils/mediaUrl";
 
 function parseISODate(value) {
@@ -75,6 +76,7 @@ const ContractsTable = () => {
   const [showAllPending, setShowAllPending] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState("pending");
   const [syncingTgiId, setSyncingTgiId] = useState(null);
+  const [tgiPlan, setTgiPlan] = useState(null);
 
   useEffect(() => {
     loadPeriods();
@@ -117,12 +119,20 @@ const ContractsTable = () => {
     loadPeriods();
   };
 
-  const handleSyncTgi = async (contractId) => {
+  const handleSyncTgi = async (contractId, debtPlan) => {
     if (!contractId) return;
     setSyncingTgiId(contractId);
     setError(null);
     try {
-      const result = await syncContractTgi(contractId);
+      const result = await syncContractTgi(contractId, debtPlan);
+      if (result?.needs_debt_plan) {
+        setTgiPlan({
+          contractId,
+          overdue: result.overdue_periods || [],
+        });
+        return;
+      }
+      setTgiPlan(null);
       if (result?.tgi_sync_error) {
         setError(result.tgi_sync_error);
       } else if (result?.note) {
@@ -235,7 +245,7 @@ const ContractsTable = () => {
             Ver contrato
           </Button>
         )}
-        {period.contract?.id && period.contract?.pays_tgi && period.payment_status !== "PAGADO" && (
+        {period.contract?.id && period.contract?.tgi_mode === "siat" && period.payment_status !== "PAGADO" && (
           <Button
             variant="outline-info"
             size="sm"
@@ -583,6 +593,15 @@ const ContractsTable = () => {
         <Alert variant="danger" className="mb-3" dismissible onClose={() => setError(null)}>
           {error}
         </Alert>
+      )}
+      {tgiPlan && (
+        <div className="mb-3">
+          <TgiDebtPlanChoice
+            overdue={tgiPlan.overdue}
+            busy={syncingTgiId === tgiPlan.contractId}
+            onChoose={(plan) => handleSyncTgi(tgiPlan.contractId, plan)}
+          />
+        </div>
       )}
 
       <Row className="mb-3 g-3 align-items-end">

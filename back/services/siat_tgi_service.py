@@ -188,7 +188,7 @@ def fetch_siat_installments(account: str, code: str, timeout: int = 30) -> list[
         )
         login_html = login.read().decode("latin-1", "replace")
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise SiatError("No se pudo consultar el SIAT de Rosario.") from exc
+        raise SiatError(f"No se pudo consultar el SIAT de Rosario: {exc}") from exc
 
     action_match = re.search(r'action="([^"]+)"', login_html)
     if not action_match:
@@ -222,7 +222,7 @@ def fetch_siat_installments(account: str, code: str, timeout: int = 30) -> list[
         response = opener.open(request, timeout=timeout)
         page = response.read().decode("latin-1", "replace")
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise SiatError("No se pudo consultar el SIAT de Rosario.") from exc
+        raise SiatError(f"No se pudo consultar el SIAT de Rosario: {exc}") from exc
 
     installments = parse_siat_html(page)
     if installments:
@@ -280,6 +280,17 @@ def _empty_month(period: str) -> dict:
     }
 
 
+def overdue_months(rows: Iterable[SiatInstallment], current_month: str) -> list[str]:
+    """Meses Pendiente de Pago distintos del mes que se está cobrando."""
+    return sorted(
+        {
+            row.period
+            for row in rows
+            if row.status == "pendiente" and row.period != current_month
+        }
+    )
+
+
 def build_tgi_charge(
     rows: Iterable[SiatInstallment],
     current_month: str,
@@ -287,6 +298,7 @@ def build_tgi_charge(
     locked_catchup: Optional[dict] = None,
     locked_current: Optional[dict] = None,
     fetched_on: Optional[date] = None,
+    skip_catchup: bool = False,
 ) -> dict:
     """Mes actual + el pendiente más antiguo que no esté ya asignado a otro alquiler.
 
@@ -320,7 +332,7 @@ def build_tgi_charge(
         current = {**current, "capital": 0.0, "interest": 0.0, "total": 0.0}
 
     catchup = None
-    locked_period = (locked_catchup or {}).get("period")
+    locked_period = None if skip_catchup else (locked_catchup or {}).get("period")
     if locked_period and locked_period != current_month:
         if locked_period in grouped:
             fresh = summarize_month(grouped[locked_period], locked_period)
@@ -337,7 +349,7 @@ def build_tgi_charge(
                 "total": _round(locked_catchup.get("total")),
                 "kept": True,
             }
-    else:
+    elif not skip_catchup:
         pending_months = sorted(
             month
             for month, month_rows in grouped.items()

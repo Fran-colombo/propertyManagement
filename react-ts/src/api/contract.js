@@ -31,8 +31,9 @@ export const applyContractIndex = async (contractId, value, newIndexValue) => {
   });
 };
 
-export const syncContractTgi = async (contractId) => {
-  return await apiFetch(`/contracts/${contractId}/tgi/sync`, {
+export const syncContractTgi = async (contractId, debtPlan) => {
+  const query = debtPlan ? `?debt_plan=${encodeURIComponent(debtPlan)}` : "";
+  return await apiFetch(`/contracts/${contractId}/tgi/sync${query}`, {
     method: "POST",
   });
 };

@@ -36,6 +36,7 @@ class RentalContractSimpleResponse(BaseModel):
     base_rent: Optional[float] = None
     pays_epe: Optional[bool] = None
     pays_tgi: Optional[bool] = None
+    tgi_mode: Optional[str] = None
     pays_api: Optional[bool] = None
     fire_insurance: Optional[bool] = None
     document_path: Optional[str] = None
@@ -133,6 +134,7 @@ class ContractPeriodResponse(BaseModel):
                 'base_rent': contract_obj.base_rent,
                 'pays_epe': getattr(contract_obj, 'pays_epe', False),
                 'pays_tgi': getattr(contract_obj, 'pays_tgi', False),
+                'tgi_mode': getattr(contract_obj, 'tgi_mode', None),
                 'pays_api': getattr(contract_obj, 'pays_api', False),
                 'fire_insurance': getattr(contract_obj, 'fire_insurance', False),
                 'document_path': getattr(contract_obj, 'document_path', None),

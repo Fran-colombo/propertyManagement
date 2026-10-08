@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Button, Form, Spinner, Alert, Row, Col } from "react-bootstrap";
-import { createContract, parseContractDocument, uploadContractDocument } from "../api/contract";
+import { createContract, parseContractDocument, syncContractTgi, uploadContractDocument } from "../api/contract";
 import { getProperties } from "../api/property";
 import { getOwners, getTenants } from "../api/person";
 import { getGarages } from "../api/garage";
@@ -10,6 +10,7 @@ import FeedbackModal from "./FeedbackModal";
 import TenantModal from "./TenantModal";
 import SearchableSelect from "./SearchableSelect";
 import HistoricalRentTiers from "./HistoricalRentTiers";
+import TgiDebtPlanChoice from "./TgiDebtPlanChoice";
 import {
   buildDefaultTiers,
   isPastStart,
@@ -38,8 +39,7 @@ const emptyForm = {
   pays_epe: false,
   epe_amount: "",
   tgi_amount: "",
-  tgi_account: "",
-  tgi_code: "",
+  tgi_mode: "manual",
   api_amount: "",
   fire_insurance_amount: "",
   notes: "",
@@ -64,6 +64,14 @@ function propertyLabel(p) {
   if (p.floor) parts.push(`Piso ${p.floor}`);
   if (p.apartment) parts.push(`Depto ${p.apartment}`);
   return parts.join(" · ");
+}
+
+function propertyForTgi(form, properties, garages) {
+  const propertyId = form.garage_only
+    ? garages.find((g) => String(g.id) === String(form.garage_id))?.property_id
+    : form.property_id;
+  if (!propertyId) return null;
+  return properties.find((p) => String(p.id) === String(propertyId)) || null;
 }
 
 function garageLabel(g) {
@@ -94,6 +102,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   const [ipcCurrentHint, setIpcCurrentHint] = useState("");
   const [rentTiers, setRentTiers] = useState([]);
   const [showTenantModal, setShowTenantModal] = useState(false);
+  const [debtPrompt, setDebtPrompt] = useState(null);
 
   useEffect(() => {
     if (show) {
@@ -106,6 +115,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       setIpcCurrentHint("");
       setRentTiers([]);
       setShowTenantModal(false);
+      setDebtPrompt(null);
       loadData();
     }
   }, [show]);
@@ -411,8 +421,14 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
     form.current_index_value,
   ]);
 
+  const tgiProperty = propertyForTgi(form, properties, garages);
+  const tgiCredentialsReady = Boolean(
+    String(tgiProperty?.tgi_account || "").trim() &&
+      String(tgiProperty?.tgi_code || "").trim()
+  );
   const servicesTotal =
     (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
+    (form.pays_tgi && form.tgi_mode === "manual" ? Number(form.tgi_amount) || 0 : 0) +
     (form.pays_api ? Number(form.api_amount) || 0 : 0) +
     (form.fire_insurance ? Number(form.fire_insurance_amount) || 0 : 0);
 
@@ -429,8 +445,8 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       new Date(form.end_date) > new Date(form.start_date) &&
       form.tenant_id &&
       (!form.pays_tgi ||
-        (String(form.tgi_account || "").trim() &&
-          String(form.tgi_code || "").trim())) &&
+        form.tgi_mode === "manual" ||
+        (form.tgi_mode === "siat" && tgiCredentialsReady)) &&
       hasTarget &&
       form.currency &&
       form.base_rent &&
@@ -469,9 +485,12 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
             ? Number(form.current_index_value)
             : null,
         epe_amount: optionalAmount(form.pays_epe, form.epe_amount),
-        tgi_amount: null,
-        tgi_account: form.pays_tgi ? String(form.tgi_account || "").trim() : null,
-        tgi_code: form.pays_tgi ? String(form.tgi_code || "").trim() : null,
+        tgi_mode: form.pays_tgi ? form.tgi_mode : null,
+        tgi_amount:
+          form.pays_tgi && form.tgi_mode === "manual"
+            ? optionalAmount(true, form.tgi_amount)
+            : null,
+        tgi_debt_plan: null,
         api_amount: optionalAmount(form.pays_api, form.api_amount),
         fire_insurance_amount: optionalAmount(
           form.fire_insurance,
@@ -484,6 +503,8 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         payload.historical_rents = serializedTiers;
       }
       delete payload.garage_only;
+      delete payload.tgi_account;
+      delete payload.tgi_code;
       const created = await createContract(payload);
       let uploadWarning = "";
       if (documentFile && created?.id) {
@@ -494,6 +515,14 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
             uploadErr.message ||
             "No se pudo subir el archivo. Podés adjuntarlo después desde Editar contrato.";
         }
+      }
+      if (created?.needs_debt_plan) {
+        setDebtPrompt({
+          contractId: created.id,
+          overdue: created.overdue_periods || [],
+          uploadWarning,
+        });
+        return;
       }
       if (created?.tgi_sync_error || uploadWarning) {
         const parts = ["El contrato se creó."];
@@ -532,6 +561,38 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
     if (variant !== "danger") {
       onCreated?.();
       onHide();
+    }
+  };
+
+  const applyDebtPlan = async (plan) => {
+    if (!debtPrompt?.contractId) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const result = await syncContractTgi(debtPrompt.contractId, plan);
+      const uploadWarning = debtPrompt.uploadWarning;
+      setDebtPrompt(null);
+      if (result?.tgi_sync_error || uploadWarning) {
+        const parts = ["El contrato se creó."];
+        if (result?.tgi_sync_error) parts.push(`No se pudo traer el TGI: ${result.tgi_sync_error}`);
+        if (result?.note) parts.push(result.note);
+        if (uploadWarning) parts.push(uploadWarning);
+        setFeedback({
+          variant: "warning",
+          title: "Contrato creado",
+          message: parts.join(" "),
+        });
+        return;
+      }
+      setFeedback({
+        variant: "success",
+        title: "Contrato creado",
+        message: result?.note || "El contrato se creó y el TGI quedó cargado.",
+      });
+    } catch (err) {
+      setError(err.message || "No se pudo aplicar el plan de TGI.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -858,8 +919,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
               <p className="text-muted small mb-2">
                 Si el inquilino paga un servicio, marcá la casilla y cargá el
                 monto mensual. Se suma al alquiler (alquiler + servicios =
-                total). El TGI no tiene un monto fijo: se consulta en el SIAT
-                con la cuenta y el código de gestión.
+                total). El TGI puede cargarse a mano o tomarse de la cuenta de la propiedad.
               </p>
               {[
                 ["fire_insurance", "Seguro contra incendio", "fire_insurance_amount"],
@@ -902,31 +962,52 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                 />
                 {form.pays_tgi && (
                   <div className="border rounded p-2 ms-4">
-                    <Form.Group className="mb-2">
-                      <Form.Label className="small mb-1">Cuenta (sin guiones)</Form.Label>
+                    <Form.Check
+                      type="radio"
+                      name="tgi_mode"
+                      id="create-tgi-manual"
+                      label="Manual"
+                      checked={form.tgi_mode === "manual"}
+                      onChange={() => setForm((prev) => ({ ...prev, tgi_mode: "manual" }))}
+                    />
+                    <Form.Check
+                      type="radio"
+                      name="tgi_mode"
+                      id="create-tgi-siat"
+                      label="Desde el SIAT"
+                      checked={form.tgi_mode === "siat"}
+                      onChange={() => setForm((prev) => ({ ...prev, tgi_mode: "siat" }))}
+                    />
+                    {form.tgi_mode === "manual" && (
                       <Form.Control
-                        name="tgi_account"
-                        value={form.tgi_account}
+                        className="mt-2"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        name="tgi_amount"
+                        value={form.tgi_amount}
                         onChange={handleChange}
-                        placeholder="Número de cuenta"
-                        required
+                        onWheel={(e) => e.target.blur()}
+                        placeholder="Monto mensual"
+                        style={{ maxWidth: 180 }}
                       />
-                    </Form.Group>
-                    <Form.Group className="mb-1">
-                      <Form.Label className="small mb-1">Código de gestión personal</Form.Label>
-                      <Form.Control
-                        name="tgi_code"
-                        value={form.tgi_code}
-                        onChange={handleChange}
-                        placeholder="Código de la boleta"
-                        required
-                      />
-                    </Form.Group>
-                    <Form.Text className="text-muted">
-                      Con esos datos se busca el monto de cada mes en el SIAT.
-                      Si está en fecha se cobra ese mes; si hay deuda, también
-                      el vencido más antiguo, hasta regularizar.
-                    </Form.Text>
+                    )}
+                    {form.tgi_mode === "siat" && (
+                      <Form.Text className="text-muted d-block mt-2">
+                        {tgiCredentialsReady
+                          ? `Se usa la cuenta ${tgiProperty.tgi_account} de la propiedad.`
+                          : "Cargá la cuenta y el código de TGI en la propiedad antes de elegir esta opción."}
+                      </Form.Text>
+                    )}
+                    {debtPrompt && (
+                      <div className="mt-2">
+                        <TgiDebtPlanChoice
+                          overdue={debtPrompt.overdue}
+                          busy={submitting}
+                          onChoose={applyDebtPlan}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -985,7 +1066,7 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
           <Button variant="secondary" onClick={onHide}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" disabled={!isValid() || loading || submitting}>
+          <Button type="submit" variant="primary" disabled={!isValid() || loading || submitting || !!debtPrompt}>
             {submitting ? "Guardando..." : "Guardar"}
           </Button>
         </Modal.Footer>

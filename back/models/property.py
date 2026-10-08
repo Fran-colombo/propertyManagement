@@ -18,6 +18,8 @@ class Property(Base):
     direction = Column(String)
     floor = Column(String)
     apartment = Column(String)
+    tgi_account = Column(String, nullable=True)
+    tgi_code = Column(String, nullable=True)
     status = Column(Integer, default=1)
     management_status = Column(String, default="ACTIVE")
     owner = relationship("Owner", back_populates="properties")

@@ -163,6 +163,8 @@ class PropertyService:
             direction=prop.direction,
             floor=prop.floor,
             apartment=prop.apartment,
+            tgi_account=getattr(prop, "tgi_account", None),
+            tgi_code=getattr(prop, "tgi_code", None),
             owner=OwnerSimpleResponse(
                 id=prop.owner.id,
                 name=prop.owner.name,

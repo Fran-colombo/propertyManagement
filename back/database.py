@@ -85,6 +85,8 @@ def _ensure_sqlite_columns():
             "tgi_amount": "FLOAT",
             "tgi_account": "TEXT",
             "tgi_code": "TEXT",
+            "tgi_mode": "TEXT",
+            "tgi_debt_plan": "TEXT",
             "api_amount": "FLOAT",
             "fire_insurance_amount": "FLOAT",
         },
@@ -107,6 +109,8 @@ def _ensure_sqlite_columns():
         },
         "properties": {
             "management_status": "TEXT DEFAULT 'ACTIVE'",
+            "tgi_account": "TEXT",
+            "tgi_code": "TEXT",
         },
         "property_sale_payments": {
             "kind": "TEXT DEFAULT 'cuota'",
@@ -121,6 +125,63 @@ def _ensure_sqlite_columns():
             for col, col_type in cols.items():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+
+        if (
+            "properties" in inspector.get_table_names()
+            and "rental_contracts" in inspector.get_table_names()
+        ):
+            conn.execute(
+                text(
+                    """
+                    UPDATE properties
+                    SET tgi_account = (
+                        SELECT rc.tgi_account FROM rental_contracts rc
+                        WHERE rc.property_id = properties.id
+                          AND rc.tgi_account IS NOT NULL
+                          AND TRIM(rc.tgi_account) != ''
+                        ORDER BY rc.id DESC LIMIT 1
+                    )
+                    WHERE tgi_account IS NULL OR TRIM(tgi_account) = ''
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE properties
+                    SET tgi_code = (
+                        SELECT rc.tgi_code FROM rental_contracts rc
+                        WHERE rc.property_id = properties.id
+                          AND rc.tgi_code IS NOT NULL
+                          AND TRIM(rc.tgi_code) != ''
+                        ORDER BY rc.id DESC LIMIT 1
+                    )
+                    WHERE tgi_code IS NULL OR TRIM(tgi_code) = ''
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE rental_contracts
+                    SET tgi_mode = 'siat'
+                    WHERE pays_tgi = 1
+                      AND (tgi_mode IS NULL OR TRIM(tgi_mode) = '')
+                      AND tgi_account IS NOT NULL
+                      AND TRIM(tgi_account) != ''
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE rental_contracts
+                    SET tgi_mode = 'manual'
+                    WHERE pays_tgi = 1
+                      AND (tgi_mode IS NULL OR TRIM(tgi_mode) = '')
+                    """
+                )
+            )
 
         if "all_contracts" in inspector.get_table_names():
             conn.execute(

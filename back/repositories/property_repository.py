@@ -1,6 +1,7 @@
 from typing import List
 from sqlalchemy.orm import Session, joinedload
 from schemas.propertyDTO import CreatePropertyDTO, UpdatePropertyDTO
+from services.siat_tgi_service import clean_tgi_account, clean_tgi_code
 from models.property import Property, Garage
 from models.contract import RentalContract
 from models.person import Owner
@@ -17,6 +18,10 @@ class PropertyRepository:
             
             if "real_agency_id" in property_data and property_data["real_agency_id"] is None:
                 del property_data["real_agency_id"]
+            if "tgi_account" in property_data:
+                property_data["tgi_account"] = clean_tgi_account(property_data.get("tgi_account"))
+            if "tgi_code" in property_data:
+                property_data["tgi_code"] = clean_tgi_code(property_data.get("tgi_code"))
 
             new_property = Property(**property_data)
             self.db.add(new_property)
@@ -82,6 +87,10 @@ class PropertyRepository:
     def update_property(self, property_obj: Property, data: UpdatePropertyDTO) -> Property:
         try:
             updates = data.model_dump(exclude_unset=True)
+            if "tgi_account" in updates:
+                updates["tgi_account"] = clean_tgi_account(updates.get("tgi_account"))
+            if "tgi_code" in updates:
+                updates["tgi_code"] = clean_tgi_code(updates.get("tgi_code"))
             for field, value in updates.items():
                 setattr(property_obj, field, value)
             self.db.commit()

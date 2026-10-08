@@ -33,6 +33,8 @@ class CreateContractDTO(BaseModel):
     tgi_amount: Optional[float] = Field(None, ge=0)
     tgi_account: Optional[str] = None
     tgi_code: Optional[str] = None
+    tgi_mode: Optional[str] = None
+    tgi_debt_plan: Optional[str] = None
     api_amount: Optional[float] = Field(None, ge=0)
     fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
@@ -49,6 +51,8 @@ class UpdateContractDTO(BaseModel):
     tgi_amount: Optional[float] = Field(None, ge=0)
     tgi_account: Optional[str] = None
     tgi_code: Optional[str] = None
+    tgi_mode: Optional[str] = None
+    tgi_debt_plan: Optional[str] = None
     api_amount: Optional[float] = Field(None, ge=0)
     fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
@@ -81,6 +85,12 @@ class ContractResponse(BaseModel):
     tgi_amount: Optional[float] = None
     tgi_account: Optional[str] = None
     tgi_code: Optional[str] = None
+    tgi_mode: Optional[str] = None
+    tgi_debt_plan: Optional[str] = None
+    property_tgi_account: Optional[str] = None
+    property_tgi_code: Optional[str] = None
+    needs_debt_plan: bool = False
+    overdue_periods: Optional[List[str]] = None
     api_amount: Optional[float] = None
     fire_insurance_amount: Optional[float] = None
     status: int
@@ -116,6 +126,10 @@ class ContractResponse(BaseModel):
             "tgi_amount": getattr(db_contract, "tgi_amount", None),
             "tgi_account": getattr(db_contract, "tgi_account", None),
             "tgi_code": getattr(db_contract, "tgi_code", None),
+            "tgi_mode": getattr(db_contract, "tgi_mode", None),
+            "tgi_debt_plan": getattr(db_contract, "tgi_debt_plan", None),
+            "property_tgi_account": _property_tgi_value(db_contract, "tgi_account"),
+            "property_tgi_code": _property_tgi_value(db_contract, "tgi_code"),
             "api_amount": getattr(db_contract, "api_amount", None),
             "fire_insurance_amount": getattr(db_contract, "fire_insurance_amount", None),
             "notes": db_contract.notes,
@@ -129,12 +143,26 @@ class ContractResponse(BaseModel):
         }
         return cls(**contract_dict)
     
+def _property_tgi_value(db_contract, field: str) -> Optional[str]:
+    prop = getattr(db_contract, "property", None)
+    if prop is None:
+        garage = getattr(db_contract, "garage", None)
+        prop = getattr(garage, "property", None) if garage is not None else None
+    value = getattr(prop, field, None) if prop is not None else None
+    if value:
+        return value
+    return getattr(db_contract, field, None)
+
+
 class TgiSyncResult(BaseModel):
     tgi_sync_error: Optional[str] = None
     period_id: Optional[int] = None
     tgi_amount: Optional[float] = None
     tgi_detail: Optional[dict] = None
     note: Optional[str] = None
+    needs_debt_plan: bool = False
+    overdue_periods: Optional[List[str]] = None
+    tgi_debt_plan: Optional[str] = None
 
 
 class RentalContractResponse(BaseModel):

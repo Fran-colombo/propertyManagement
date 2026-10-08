@@ -37,6 +37,8 @@ class CreatePropertyDTO(BaseModel):
     direction: str
     floor: Optional[str] = None
     apartment: Optional[str] = None
+    tgi_account: Optional[str] = None
+    tgi_code: Optional[str] = None
     real_agency_id: Optional[int] = None
     owner_id: int
 
@@ -51,6 +53,8 @@ class UpdatePropertyDTO(BaseModel):
     direction: Optional[str] = None
     floor: Optional[str] = None
     apartment: Optional[str] = None
+    tgi_account: Optional[str] = None
+    tgi_code: Optional[str] = None
     owner_id: Optional[int] = None
 
     @validator('owner_id')
@@ -95,6 +99,8 @@ class PropertyResponse(BaseModel):
     direction: str
     floor: Optional[str] = None
     apartment: Optional[str] = None
+    tgi_account: Optional[str] = None
+    tgi_code: Optional[str] = None
     owner: Optional[OwnerSimpleResponse] = None
     rental_contract: Optional[RentalContractWithPeriodsResponse] = None
     garages: List[GarageResponse] = []

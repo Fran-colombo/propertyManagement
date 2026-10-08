@@ -83,9 +83,13 @@ def apply_index(
 
 
 @router.post("/{contract_id}/tgi/sync", response_model=TgiSyncResult)
-def sync_contract_tgi(contract_id: int, db: Session = Depends(get_db)):
+def sync_contract_tgi(
+    contract_id: int,
+    debt_plan: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     service = RentalContractService(db)
-    return service.sync_contract_tgi(contract_id)
+    return service.sync_contract_tgi(contract_id, debt_plan)
 
 
 @router.patch("/{contract_id}", response_model=ContractResponse)
