@@ -83,6 +83,8 @@ def _ensure_sqlite_columns():
             "last_index_value": "FLOAT",
             "epe_amount": "FLOAT",
             "tgi_amount": "FLOAT",
+            "tgi_account": "TEXT",
+            "tgi_code": "TEXT",
             "api_amount": "FLOAT",
             "fire_insurance_amount": "FLOAT",
         },
@@ -91,6 +93,7 @@ def _ensure_sqlite_columns():
             "is_prorated": "BOOLEAN DEFAULT 0",
             "proration_note": "TEXT",
             "late_fee_amount": "FLOAT DEFAULT 0",
+            "tgi_detail": "TEXT",
         },
         "contract_terminations": {
             "waive_remaining_rent": "BOOLEAN DEFAULT 0",

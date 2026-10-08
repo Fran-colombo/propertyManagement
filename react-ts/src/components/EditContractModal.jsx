@@ -19,6 +19,8 @@ const emptyForm = {
   fire_insurance: false,
   epe_amount: "",
   tgi_amount: "",
+  tgi_account: "",
+  tgi_code: "",
   api_amount: "",
   fire_insurance_amount: "",
   notes: "",
@@ -28,7 +30,6 @@ const emptyForm = {
 
 const SERVICE_ROWS = [
   ["pays_epe", "Paga EPE", "epe_amount"],
-  ["pays_tgi", "Paga TGI", "tgi_amount"],
   ["pays_api", "Paga API", "api_amount"],
   ["fire_insurance", "Seguro contra incendio", "fire_insurance_amount"],
 ];
@@ -97,6 +98,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           fire_insurance: !!data.fire_insurance,
           epe_amount: data.epe_amount ?? "",
           tgi_amount: data.tgi_amount ?? "",
+          tgi_account: data.tgi_account ?? "",
+          tgi_code: data.tgi_code ?? "",
           api_amount: data.api_amount ?? "",
           fire_insurance_amount: data.fire_insurance_amount ?? "",
           notes: data.notes || "",
@@ -124,6 +127,13 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!contractId || !loaded) return;
+    if (
+      form.pays_tgi &&
+      (!String(form.tgi_account || "").trim() || !String(form.tgi_code || "").trim())
+    ) {
+      setError("Si el contrato paga TGI, completá la cuenta y el código de gestión personal.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -134,7 +144,9 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         pays_api: form.pays_api,
         fire_insurance: form.fire_insurance,
         epe_amount: optionalAmount(form.pays_epe, form.epe_amount),
-        tgi_amount: optionalAmount(form.pays_tgi, form.tgi_amount),
+        tgi_amount: null,
+        tgi_account: form.pays_tgi ? String(form.tgi_account || "").trim() : null,
+        tgi_code: form.pays_tgi ? String(form.tgi_code || "").trim() : null,
         api_amount: optionalAmount(form.pays_api, form.api_amount),
         fire_insurance_amount: optionalAmount(
           form.fire_insurance,
@@ -147,19 +159,22 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
       if (showRentTiers && serializedTiers.length >= 1) {
         payload.historical_rents = serializedTiers;
       }
-      await updateContract(contractId, payload);
+      const saved = await updateContract(contractId, payload);
       if (file) {
         await uploadContractDocument(contractId, file);
       }
       if (onSaved) onSaved();
+      const tgiWarning = saved?.tgi_sync_error
+        ? ` No se pudo traer el TGI: ${saved.tgi_sync_error}`
+        : "";
       setFeedback({
-        variant: "success",
+        variant: tgiWarning ? "warning" : "success",
         title: "Contrato actualizado",
-        message: form.mark_past_as_paid
+        message: (form.mark_past_as_paid
           ? "Los meses anteriores a hoy quedaron como ya cobrados y no se cuentan como transferencias nuevas. Si los habías cargado como pago, se corrigieron."
           : showRentTiers && serializeTiers(rentTiers).length
             ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos (incluye meses ya marcados como pagados de carga inicial)."
-            : "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.",
+            : "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.") + tgiWarning,
       });
     } catch (err) {
       setFeedback({
@@ -183,7 +198,6 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const documentHref = mediaUrl(form.document_path);
   const servicesTotal =
     (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
-    (form.pays_tgi ? Number(form.tgi_amount) || 0 : 0) +
     (form.pays_api ? Number(form.api_amount) || 0 : 0) +
     (form.fire_insurance ? Number(form.fire_insurance_amount) || 0 : 0);
 
@@ -241,9 +255,10 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                 />
               )}
               <p className="text-muted small">
-                Activá EPE, TGI, API o el seguro e indicá el monto mensual.
-                Ese valor se suma al alquiler (alquiler + servicios = total) en
-                los meses pendientes. Si un mes cambia, lo ajustás en Impuestos.
+                Activá EPE, API o el seguro e indicá el monto mensual.
+                Ese valor se suma al alquiler en los meses pendientes.
+                El TGI se consulta en el SIAT con la cuenta y el código: al
+                guardar se carga el mes actual y, si hay deuda, el vencido más antiguo.
               </p>
               {SERVICE_ROWS.map(([checkName, label, amountName]) => (
                 <div
@@ -272,6 +287,42 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                   )}
                 </div>
               ))}
+              <div className="mb-2">
+                <Form.Check
+                  className="mb-1"
+                  label="Paga TGI"
+                  name="pays_tgi"
+                  checked={form.pays_tgi}
+                  onChange={handleChange}
+                />
+                {form.pays_tgi && (
+                  <div className="border rounded p-2">
+                    <Form.Group className="mb-2">
+                      <Form.Label className="small mb-1">Cuenta (sin guiones)</Form.Label>
+                      <Form.Control
+                        name="tgi_account"
+                        value={form.tgi_account}
+                        onChange={handleChange}
+                        placeholder="Número de cuenta"
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-1">
+                      <Form.Label className="small mb-1">Código de gestión personal</Form.Label>
+                      <Form.Control
+                        name="tgi_code"
+                        value={form.tgi_code}
+                        onChange={handleChange}
+                        placeholder="Código de la boleta"
+                      />
+                    </Form.Group>
+                    <Form.Text className="text-muted">
+                      Si el mes está en fecha se muestra ese importe. Si hay
+                      meses vencidos, se suma solo el más antiguo hasta que
+                      la deuda quede al día.
+                    </Form.Text>
+                  </div>
+                )}
+              </div>
               {servicesTotal > 0 && (
                 <Alert variant="secondary" className="py-2 small">
                   Servicios: <strong>${money(servicesTotal)}</strong> (se suman

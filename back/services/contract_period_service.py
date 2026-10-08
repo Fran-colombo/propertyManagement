@@ -2,7 +2,7 @@ import calendar
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from models.contract_period import ContractPeriod
 from schemas.contract_periodDTO import ContractPeriodResponse
 from schemas.enums.enums import PaymentStatusEnum
@@ -90,8 +90,62 @@ class ContractPeriodService:
             print(f"Error in get_overdue_periods for contract {contract_id}: {str(e)}")
             raise
  
-    def get_all_pending_periods(self) -> List[ContractPeriod]:
+    def _dedupe_periods(self, groups: List[List[ContractPeriod]]) -> List[ContractPeriod]:
+        seen = set()
+        merged: List[ContractPeriod] = []
+        for group in groups:
+            for period in group:
+                if period.id in seen:
+                    continue
+                seen.add(period.id)
+                merged.append(period)
+        return merged
+
+    def _ended_contract_periods(self, today: date) -> List[ContractPeriod]:
+        """Latest period of leases that already ended but are still active."""
+        latest_end = (
+            self.db.query(
+                ContractPeriod.contract_id.label("contract_id"),
+                func.max(ContractPeriod.end_date).label("max_end"),
+            )
+            .group_by(ContractPeriod.contract_id)
+            .subquery()
+        )
         return (
+            self.db.query(ContractPeriod)
+            .options(*_period_load())
+            .join(RentalContract, ContractPeriod.contract_id == RentalContract.id)
+            .join(
+                latest_end,
+                and_(
+                    ContractPeriod.contract_id == latest_end.c.contract_id,
+                    ContractPeriod.end_date == latest_end.c.max_end,
+                ),
+            )
+            .filter(
+                RentalContract.status == 1,
+                RentalContract.end_date < today,
+                ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
+            )
+            .all()
+        )
+
+    def _older_unpaid_periods(self, first_day: date) -> List[ContractPeriod]:
+        return (
+            self.db.query(ContractPeriod)
+            .options(*_period_load())
+            .join(RentalContract, ContractPeriod.contract_id == RentalContract.id)
+            .filter(
+                RentalContract.status == 1,
+                ContractPeriod.due_date < first_day,
+                ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
+                ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
+            )
+            .all()
+        )
+
+    def get_all_pending_periods(self) -> List[ContractPeriod]:
+        pending = (
             self.db.query(ContractPeriod)
             .options(*_period_load())
             .filter(
@@ -103,6 +157,9 @@ class ContractPeriodService:
                 ContractPeriod.contract_id,
             )
             .all()
+        )
+        return self._dedupe_periods(
+            [self._ended_contract_periods(date.today()), pending]
         )
 
     def get_all_relevant_periods(self) -> List[ContractPeriod]:
@@ -153,10 +210,14 @@ class ContractPeriodService:
         elif payment != "all":
             query = query.filter(ContractPeriod.payment_status != PaymentStatusEnum.PAGADO)
 
-        return query.order_by(
+        month_periods = query.order_by(
             ContractPeriod.due_date.asc(),
             ContractPeriod.contract_id,
         ).all()
+        groups = [self._ended_contract_periods(date.today()), month_periods]
+        if payment != "paid":
+            groups.insert(1, self._older_unpaid_periods(first_day))
+        return self._dedupe_periods(groups)
 
         
         

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.contract_period import ContractPeriod
 from pydantic import BaseModel, Field
+import json
 from datetime import date
 from models.transactions import Transaction
 
@@ -155,6 +156,7 @@ def update_period_taxes(period_id: int, taxes: PeriodTaxesUpdate, db: Session = 
         period.epe_amount = taxes.epe if taxes.epe != 0 else None
     if taxes.tgi is not None:
         period.tgi_amount = taxes.tgi if taxes.tgi != 0 else None
+        period.tgi_detail = json.dumps({"manual": True})
     if taxes.api is not None:
         period.api_amount = taxes.api if taxes.api != 0 else None
     if taxes.fire_insurance is not None:

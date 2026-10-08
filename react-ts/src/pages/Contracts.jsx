@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button, Spinner, Table, Alert, Form, Tab, Tabs, Row, Col, Card } from "react-bootstrap";
 import { getAllPendingPeriods, registerPayment, updateTaxes, getPeriodsByMonth } from "../api/contract_period";
+import { syncContractTgi } from "../api/contract";
 import PayPeriodModal from "../components/PayPeriodModal";
-import EditTaxesModal from "../components/EditTaxesModal";
+import EditTaxesModal, { tgiBreakdownLines } from "../components/EditTaxesModal";
 import CreateContractModal from "../components/CreateContractModal";
 import UpdateIndexModal from "../components/UpdateIndexModal";
 import CancelContractModal from "../components/CancelContractModal";
@@ -14,6 +15,38 @@ function parseISODate(value) {
   const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
   if (!y || !m || !d) return null;
   return new Date(y, m - 1, d);
+}
+
+function formatPropertyAddress(property, garageLabel) {
+  if (!property) return garageLabel || "Dirección no disponible";
+  const parts = [];
+  if (property.direction) parts.push(property.direction);
+  if (property.floor) parts.push(`Piso ${property.floor}`);
+  if (property.apartment) parts.push(`Depto ${property.apartment}`);
+  return parts.length ? parts.join(" · ") : garageLabel || "Dirección no disponible";
+}
+
+function sortActivePeriods(list, year, month) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const monthStart = new Date(year, month - 1, 1);
+  const rank = (period) => {
+    const end = parseISODate(period.contract?.end_date);
+    const due = parseISODate(period.due_date || period.start_date);
+    const unpaid =
+      period.payment_status !== "PAGADO" &&
+      period.payment_status !== "CONTRATO_TERMINADO";
+    if (end && end < today) return 0;
+    if (unpaid && due && due < monthStart) return 1;
+    return 2;
+  };
+  return (list || []).slice().sort((a, b) => {
+    const byGroup = rank(a) - rank(b);
+    if (byGroup !== 0) return byGroup;
+    const da = parseISODate(a.due_date || a.start_date) || 0;
+    const db = parseISODate(b.due_date || b.start_date) || 0;
+    return da - db;
+  });
 }
 
 const MONTH_NAMES = [
@@ -41,6 +74,7 @@ const ContractsTable = () => {
   const [filterMonth, setFilterMonth] = useState(today.getMonth() + 1);
   const [showAllPending, setShowAllPending] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState("pending");
+  const [syncingTgiId, setSyncingTgiId] = useState(null);
 
   useEffect(() => {
     loadPeriods();
@@ -55,11 +89,7 @@ const ContractsTable = () => {
         ? await getAllPendingPeriods()
         : await getPeriodsByMonth(filterYear, filterMonth, paymentFilter);
 
-      const list = (data || []).slice().sort((a, b) => {
-        const da = new Date(a.due_date || a.start_date);
-        const db = new Date(b.due_date || b.start_date);
-        return da - db;
-      });
+      const list = sortActivePeriods(data || [], filterYear, filterMonth);
 
       const allTenants = list
         .map((p) => p.contract?.tenant)
@@ -85,6 +115,25 @@ const ContractsTable = () => {
   const handleTaxUpdate = async (periodId, taxData) => {
     await updateTaxes(periodId, taxData);
     loadPeriods();
+  };
+
+  const handleSyncTgi = async (contractId) => {
+    if (!contractId) return;
+    setSyncingTgiId(contractId);
+    setError(null);
+    try {
+      const result = await syncContractTgi(contractId);
+      if (result?.tgi_sync_error) {
+        setError(result.tgi_sync_error);
+      } else if (result?.note) {
+        setError(result.note);
+      }
+      await loadPeriods();
+    } catch (err) {
+      setError(err.message || "No se pudo consultar el TGI en el SIAT.");
+    } finally {
+      setSyncingTgiId(null);
+    }
   };
 
   const getFilteredPeriods = () => {
@@ -186,6 +235,17 @@ const ContractsTable = () => {
             Ver contrato
           </Button>
         )}
+        {period.contract?.id && period.contract?.pays_tgi && period.payment_status !== "PAGADO" && (
+          <Button
+            variant="outline-info"
+            size="sm"
+            onClick={() => handleSyncTgi(period.contract.id)}
+            disabled={syncingTgiId === period.contract.id}
+            title="Consulta el SIAT y carga el TGI del mes que se está cobrando, más el vencido más antiguo"
+          >
+            {syncingTgiId === period.contract.id ? "Consultando TGI..." : "Actualizar TGI"}
+          </Button>
+        )}
         {period.contract?.id && (
           <Button
             variant="outline-danger"
@@ -217,11 +277,36 @@ const ContractsTable = () => {
         period.payment_status !== "PAGADO" &&
         period.payment_status !== "CONTRATO_TERMINADO";
       const tenant = period.contract?.tenant;
-      const propertyAddress =
-        period.contract?.property?.direction ||
-        period.contract?.garage_label ||
-        "Dirección no disponible";
-      return { taxes, totalTaxes, dueDate, isOverdue, tenant, propertyAddress };
+      const propertyAddress = formatPropertyAddress(
+        period.contract?.property,
+        period.contract?.garage_label
+      );
+      const contractEnd = parseISODate(period.contract?.end_date);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const contractEnded = !!(contractEnd && contractEnd < todayStart);
+      const periodStart = parseISODate(period.start_date);
+      const periodEnd = parseISODate(period.end_date);
+      const monthStart = new Date(filterYear, filterMonth - 1, 1);
+      const monthEnd = new Date(filterYear, filterMonth, 0);
+      const overlapsMonth =
+        periodStart &&
+        periodEnd &&
+        periodStart <= monthEnd &&
+        periodEnd >= monthStart;
+      const outsideMonth = !showAllPending && !overlapsMonth;
+      const tgiLines = tgiBreakdownLines(period.tgi_detail);
+      return {
+        taxes,
+        totalTaxes,
+        dueDate,
+        isOverdue,
+        tenant,
+        propertyAddress,
+        contractEnded,
+        outsideMonth,
+        tgiLines,
+      };
     };
 
     return (
@@ -231,8 +316,16 @@ const ContractsTable = () => {
         <>
           <div className="d-lg-none">
             {tablePeriods.map((period) => {
-              const { totalTaxes, dueDate, isOverdue, tenant, propertyAddress } =
-                periodMeta(period);
+              const {
+                totalTaxes,
+                dueDate,
+                isOverdue,
+                tenant,
+                propertyAddress,
+                contractEnded,
+                outsideMonth,
+                tgiLines,
+              } = periodMeta(period);
               return (
                 <Card
                   key={period.id}
@@ -262,6 +355,12 @@ const ContractsTable = () => {
                     </div>
                     <div className="small mb-2 text-break-all">
                       <strong>Dirección:</strong> {propertyAddress}
+                      {contractEnded && (
+                        <span className="badge bg-dark ms-2">Contrato vencido</span>
+                      )}
+                      {!contractEnded && outsideMonth && (
+                        <span className="badge bg-secondary ms-2">Mes anterior</span>
+                      )}
                     </div>
                     {title.includes("Agencia") && (
                       <div className="small mb-2">
@@ -291,6 +390,9 @@ const ContractsTable = () => {
                       Total ${period.total_amount.toLocaleString()} · Pagado $
                       {period.amount_paid.toLocaleString()}
                       {totalTaxes > 0 && ` · Impuestos $${totalTaxes.toLocaleString()}`}
+                      {tgiLines.map((line) => (
+                        <div key={line} className="text-muted">{line}</div>
+                      ))}
                       {Number(period.late_fee_amount) > 0 &&
                         ` · Recargo $${Number(period.late_fee_amount).toLocaleString()}`}
                       {(period.contract?.last_index_value ?? period.contract?.base_index_value) != null && (
@@ -331,8 +433,16 @@ const ContractsTable = () => {
           </thead>
           <tbody>
             {tablePeriods.map((period) => {
-              const { totalTaxes, dueDate, isOverdue, tenant, propertyAddress } =
-                periodMeta(period);
+              const {
+                totalTaxes,
+                dueDate,
+                isOverdue,
+                tenant,
+                propertyAddress,
+                contractEnded,
+                outsideMonth,
+                tgiLines,
+              } = periodMeta(period);
 
               return (
                 <tr key={period.id} className={isOverdue ? "table-danger" : ""}>
@@ -346,7 +456,19 @@ const ContractsTable = () => {
                       "Inquilino no disponible"
                     )}
                   </td>
-                  <td>{propertyAddress}</td>
+                  <td>
+                    {propertyAddress}
+                    {contractEnded && (
+                      <div>
+                        <span className="badge bg-dark">Contrato vencido</span>
+                      </div>
+                    )}
+                    {!contractEnded && outsideMonth && (
+                      <div>
+                        <span className="badge bg-secondary">Mes anterior</span>
+                      </div>
+                    )}
+                  </td>
                   {title.includes("Agencia") && (
                     <td>{period.contract?.real_agency?.name || "-"}</td>
                   )}
@@ -395,7 +517,14 @@ const ContractsTable = () => {
                         ).toLocaleString("es-AR", { maximumFractionDigits: 2 })
                       : "—"}
                   </td>
-                  <td>${totalTaxes.toLocaleString()}</td>
+                  <td>
+                    ${totalTaxes.toLocaleString()}
+                    {tgiLines.map((line) => (
+                      <small key={line} className="text-muted d-block">
+                        {line}
+                      </small>
+                    ))}
+                  </td>
                   <td>
                     ${period.total_amount.toLocaleString()}
                     {Number(period.late_fee_amount) > 0 && (
@@ -551,7 +680,7 @@ const ContractsTable = () => {
             ? `Mostrando períodos pagados de ${MONTH_NAMES[filterMonth - 1]} ${filterYear}.`
             : paymentFilter === "all"
             ? `Mostrando todos los períodos de ${MONTH_NAMES[filterMonth - 1]} ${filterYear}.`
-            : `Mostrando períodos pendientes de ${MONTH_NAMES[filterMonth - 1]} ${filterYear}, ordenados por vencimiento.`}
+            : `Mostrando períodos pendientes de ${MONTH_NAMES[filterMonth - 1]} ${filterYear}. Los contratos vencidos y las cuotas impagas de meses anteriores aparecen primero.`}
         </p>
       )}
 

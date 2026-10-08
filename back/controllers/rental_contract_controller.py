@@ -8,7 +8,7 @@ from schemas.contract_periodDTO import ContractPeriodResponse
 from database import get_db, UPLOADS_ROOT
 from services.rental_contract_service import RentalContractService
 from services.contract_document_parser import parse_contract_pdf
-from schemas.contractDTO import CreateContractDTO, ContractResponse, UpdateContractDTO
+from schemas.contractDTO import CreateContractDTO, ContractResponse, TgiSyncResult, UpdateContractDTO
 from schemas.updateIndexDTO import ApplyIndexDTO
 
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
@@ -80,6 +80,12 @@ def apply_index(
 ):
     service = RentalContractService(db)
     return service.apply_index(contract_id, dto.value, dto.new_index_value)
+
+
+@router.post("/{contract_id}/tgi/sync", response_model=TgiSyncResult)
+def sync_contract_tgi(contract_id: int, db: Session = Depends(get_db)):
+    service = RentalContractService(db)
+    return service.sync_contract_tgi(contract_id)
 
 
 @router.patch("/{contract_id}", response_model=ContractResponse)

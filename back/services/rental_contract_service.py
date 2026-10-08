@@ -10,7 +10,7 @@ from models.contract import RentalContract
 from models.contract_period import ContractPeriod
 from models.property import Garage, Property, RealAgency
 from models.person import Tenant
-from schemas.contractDTO import ContractResponse, CreateContractDTO, UpdateContractDTO
+from schemas.contractDTO import ContractResponse, CreateContractDTO, TgiSyncResult, UpdateContractDTO
 from schemas.enums.enums import AdjustmentFrequencyEnum, PaymentStatusEnum, CurrencyEnum, IndexTypeEnum
 from utils.proration import (
     is_partial_month,
@@ -22,6 +22,16 @@ from utils.proration import (
     prorate,
 )
 from utils.contract_display import property_display_label, contract_owner, contract_location_label
+from services.siat_tgi_service import (
+    SiatError,
+    assigned_months_from_details,
+    build_tgi_charge,
+    clean_tgi_account,
+    clean_tgi_code,
+    dump_tgi_detail,
+    fetch_siat_installments,
+    parse_tgi_detail,
+)
 from services.ipc_service import (
     get_ipc_for_date,
     get_ipc_series,
@@ -96,10 +106,19 @@ class RentalContractService:
             )
 
         try:
+            self._require_tgi_credentials(
+                contract_data.pays_tgi,
+                contract_data.tgi_account,
+                contract_data.tgi_code,
+            )
             contract_dict = contract_data.dict(exclude_unset=True)
             contract_dict.pop("mark_past_as_paid", None)
             current_index_value = contract_dict.pop("current_index_value", None)
             historical_rents = contract_dict.pop("historical_rents", None)
+            if "tgi_account" in contract_dict:
+                contract_dict["tgi_account"] = clean_tgi_account(contract_dict.get("tgi_account"))
+            if "tgi_code" in contract_dict:
+                contract_dict["tgi_code"] = clean_tgi_code(contract_dict.get("tgi_code"))
             garage = self._handle_garage_assignment(contract_dict)
 
             property_obj = self.db.query(Property).filter_by(id=contract_dict["property_id"]).first()
@@ -145,7 +164,9 @@ class RentalContractService:
             self.db.add(all_contract)
             self.db.commit()
 
-            return ContractResponse.from_orm(contract)
+            response = ContractResponse.from_orm(contract)
+            response.tgi_sync_error = self._try_sync_tgi(contract)
+            return response
 
         except HTTPException:
             self.db.rollback()
@@ -163,6 +184,11 @@ class RentalContractService:
             raise HTTPException(status_code=404, detail="Garage no encontrado")
         if garage.rental_contract is not None and garage.rental_contract.status == 1:
             raise HTTPException(status_code=400, detail="El garage ya está alquilado")
+        self._require_tgi_credentials(
+            contract_data.pays_tgi,
+            contract_data.tgi_account,
+            contract_data.tgi_code,
+        )
 
         try:
             base_index = self._resolve_base_index(contract_data)
@@ -186,6 +212,8 @@ class RentalContractService:
                 pays_epe=contract_data.pays_epe,
                 epe_amount=contract_data.epe_amount,
                 tgi_amount=contract_data.tgi_amount,
+                tgi_account=clean_tgi_account(contract_data.tgi_account),
+                tgi_code=clean_tgi_code(contract_data.tgi_code),
                 api_amount=contract_data.api_amount,
                 fire_insurance_amount=contract_data.fire_insurance_amount,
                 notes=contract_data.notes,
@@ -222,7 +250,9 @@ class RentalContractService:
                 end_date=contract.end_date,
             ))
             self.db.commit()
-            return ContractResponse.from_orm(contract)
+            response = ContractResponse.from_orm(contract)
+            response.tgi_sync_error = self._try_sync_tgi(contract)
+            return response
         except HTTPException:
             self.db.rollback()
             raise
@@ -319,11 +349,19 @@ class RentalContractService:
             .filter(ContractPeriod.contract_id == contract.id)
             .all()
         )
+        variable_tgi = self._tgi_is_variable(contract)
         for period in periods:
             if unpaid_only and period.payment_status == PaymentStatusEnum.PAGADO:
                 continue
             period.epe_amount = (contract.epe_amount or 0) if contract.pays_epe else 0
-            period.tgi_amount = (contract.tgi_amount or 0) if contract.pays_tgi else 0
+            if not contract.pays_tgi:
+                period.tgi_amount = 0
+                period.tgi_detail = None
+            elif variable_tgi:
+                # El monto fijo se limpia solo después de una consulta exitosa al SIAT.
+                pass
+            else:
+                period.tgi_amount = contract.tgi_amount or 0
             period.api_amount = (contract.api_amount or 0) if contract.pays_api else 0
             period.fire_proof_amount = (
                 (contract.fire_insurance_amount or 0) if contract.fire_insurance else 0
@@ -335,6 +373,154 @@ class RentalContractService:
             )
             period.total_amount = period_total(period, rent_base)
         self.db.commit()
+
+    def _tgi_is_variable(self, contract: RentalContract) -> bool:
+        return bool(
+            getattr(contract, "pays_tgi", False)
+            and clean_tgi_account(getattr(contract, "tgi_account", None))
+            and clean_tgi_code(getattr(contract, "tgi_code", None))
+        )
+
+    def _period_tgi_locked(self, period: ContractPeriod) -> bool:
+        detail = parse_tgi_detail(getattr(period, "tgi_detail", None))
+        if not detail:
+            return False
+        if detail.get("manual"):
+            return True
+        return bool(detail.get("current") or detail.get("catchup"))
+
+    def _require_tgi_credentials(self, pays_tgi: bool, account, code) -> None:
+        if pays_tgi and (not clean_tgi_account(account) or not clean_tgi_code(code)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Si el contrato paga TGI, indicá la cuenta y el código de gestión personal.",
+            )
+
+    def _try_sync_tgi(self, contract: RentalContract) -> Optional[str]:
+        if not self._tgi_is_variable(contract):
+            return None
+        try:
+            result = self.sync_contract_tgi(contract.id)
+            return result.tgi_sync_error
+        except HTTPException as exc:
+            detail = exc.detail
+            return detail if isinstance(detail, str) else str(detail)
+        except Exception as exc:
+            return f"No se pudo consultar el TGI en el SIAT: {exc}"
+
+    def _choose_tgi_period(self, periods: List[ContractPeriod], today: date) -> Optional[ContractPeriod]:
+        open_periods = [
+            period
+            for period in periods
+            if self._status_value(period.payment_status)
+            not in (
+                PaymentStatusEnum.PAGADO.value,
+                PaymentStatusEnum.CONTRATO_TERMINADO.value,
+            )
+        ]
+        if not open_periods:
+            return None
+        containing = [
+            period
+            for period in open_periods
+            if period.start_date and period.end_date and period.start_date <= today <= period.end_date
+        ]
+        if containing:
+            return sorted(containing, key=lambda period: period.start_date)[0]
+
+        def distance(period: ContractPeriod) -> int:
+            if period.start_date and period.start_date > today:
+                return (period.start_date - today).days
+            if period.end_date and period.end_date < today:
+                return (today - period.end_date).days
+            return 0
+
+        return min(open_periods, key=lambda period: (distance(period), period.start_date or today))
+
+    def sync_contract_tgi(self, contract_id: int) -> TgiSyncResult:
+        contract = self.get_contract(contract_id)
+        if not contract.pays_tgi:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este contrato no paga TGI.",
+            )
+        account = clean_tgi_account(contract.tgi_account)
+        code = clean_tgi_code(contract.tgi_code)
+        if not account or not code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Si el contrato paga TGI, indicá la cuenta y el código de gestión personal.",
+            )
+        periods = (
+            self.db.query(ContractPeriod)
+            .filter(ContractPeriod.contract_id == contract.id)
+            .order_by(ContractPeriod.start_date.asc())
+            .all()
+        )
+        target = self._choose_tgi_period(periods, date.today())
+        if not target or not target.due_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No hay un mes impago para cargar el TGI.",
+            )
+        try:
+            installments = fetch_siat_installments(account, code)
+        except SiatError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+
+        own = parse_tgi_detail(target.tgi_detail)
+        locked_catchup = None
+        locked_current = None
+        if own and not own.get("manual"):
+            locked_catchup = own.get("catchup")
+            locked_current = own.get("current")
+        assigned = assigned_months_from_details(
+            parse_tgi_detail(period.tgi_detail)
+            for period in periods
+            if period.id != target.id
+        )
+        current_month = f"{target.due_date.year:04d}-{target.due_date.month:02d}"
+        charge = build_tgi_charge(
+            installments,
+            current_month,
+            assigned=assigned,
+            locked_catchup=locked_catchup,
+            locked_current=locked_current,
+        )
+        for period in periods:
+            if period.id == target.id:
+                continue
+            status_name = self._status_value(period.payment_status)
+            if status_name in (
+                PaymentStatusEnum.PAGADO.value,
+                PaymentStatusEnum.CONTRATO_TERMINADO.value,
+            ):
+                continue
+            if not self._period_tgi_locked(period):
+                period.tgi_amount = 0
+                period.tgi_detail = None
+                rent_base = (
+                    period.indexed_amount
+                    if period.indexed_amount is not None
+                    else period.base_rent
+                )
+                period.total_amount = period_total(period, rent_base)
+        target.tgi_amount = charge["total"]
+        target.tgi_detail = dump_tgi_detail(charge)
+        rent_base = target.indexed_amount if target.indexed_amount is not None else target.base_rent
+        target.total_amount = period_total(target, rent_base)
+        self.db.commit()
+        self.db.refresh(target)
+        note = charge.get("note")
+        return TgiSyncResult(
+            period_id=target.id,
+            tgi_amount=target.tgi_amount,
+            tgi_detail=charge,
+            note=note,
+        )
 
     def _status_value(self, status) -> str:
         return status.value if hasattr(status, "value") else str(status or "")
@@ -896,7 +1082,16 @@ class RentalContractService:
                         detail="Agencia inmobiliaria no encontrada",
                     )
         for field, value in payload.items():
+            if field == "tgi_account":
+                value = clean_tgi_account(value)
+            elif field == "tgi_code":
+                value = clean_tgi_code(value)
             setattr(contract, field, value)
+        self._require_tgi_credentials(
+            bool(contract.pays_tgi),
+            contract.tgi_account,
+            contract.tgi_code,
+        )
         self.db.flush()
         self._apply_service_amounts(contract, unpaid_only=True)
         if historical_rents:
@@ -906,7 +1101,9 @@ class RentalContractService:
         else:
             self.db.commit()
         self.db.refresh(contract)
-        return ContractResponse.from_orm(contract)
+        response = ContractResponse.from_orm(contract)
+        response.tgi_sync_error = self._try_sync_tgi(contract)
+        return response
 
     def update_period_rent(
         self,

@@ -38,6 +38,8 @@ const emptyForm = {
   pays_epe: false,
   epe_amount: "",
   tgi_amount: "",
+  tgi_account: "",
+  tgi_code: "",
   api_amount: "",
   fire_insurance_amount: "",
   notes: "",
@@ -411,7 +413,6 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
 
   const servicesTotal =
     (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
-    (form.pays_tgi ? Number(form.tgi_amount) || 0 : 0) +
     (form.pays_api ? Number(form.api_amount) || 0 : 0) +
     (form.fire_insurance ? Number(form.fire_insurance_amount) || 0 : 0);
 
@@ -427,6 +428,9 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       form.end_date &&
       new Date(form.end_date) > new Date(form.start_date) &&
       form.tenant_id &&
+      (!form.pays_tgi ||
+        (String(form.tgi_account || "").trim() &&
+          String(form.tgi_code || "").trim())) &&
       hasTarget &&
       form.currency &&
       form.base_rent &&
@@ -465,7 +469,9 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
             ? Number(form.current_index_value)
             : null,
         epe_amount: optionalAmount(form.pays_epe, form.epe_amount),
-        tgi_amount: optionalAmount(form.pays_tgi, form.tgi_amount),
+        tgi_amount: null,
+        tgi_account: form.pays_tgi ? String(form.tgi_account || "").trim() : null,
+        tgi_code: form.pays_tgi ? String(form.tgi_code || "").trim() : null,
         api_amount: optionalAmount(form.pays_api, form.api_amount),
         fire_insurance_amount: optionalAmount(
           form.fire_insurance,
@@ -479,19 +485,28 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       }
       delete payload.garage_only;
       const created = await createContract(payload);
+      let uploadWarning = "";
       if (documentFile && created?.id) {
         try {
           await uploadContractDocument(created.id, documentFile);
         } catch (uploadErr) {
-          setFeedback({
-            variant: "warning",
-            title: "Contrato creado",
-            message:
-              uploadErr.message ||
-              "El contrato se creó, pero no se pudo subir el archivo. Podés adjuntarlo después desde Editar contrato.",
-          });
-          return;
+          uploadWarning =
+            uploadErr.message ||
+            "No se pudo subir el archivo. Podés adjuntarlo después desde Editar contrato.";
         }
+      }
+      if (created?.tgi_sync_error || uploadWarning) {
+        const parts = ["El contrato se creó."];
+        if (created?.tgi_sync_error) {
+          parts.push(`No se pudo traer el TGI: ${created.tgi_sync_error}`);
+        }
+        if (uploadWarning) parts.push(uploadWarning);
+        setFeedback({
+          variant: "warning",
+          title: "Contrato creado",
+          message: parts.join(" "),
+        });
+        return;
       }
       setFeedback({
         variant: "success",
@@ -843,12 +858,12 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
               <p className="text-muted small mb-2">
                 Si el inquilino paga un servicio, marcá la casilla y cargá el
                 monto mensual. Se suma al alquiler (alquiler + servicios =
-                total). Después lo podés cambiar mes a mes en Impuestos.
+                total). El TGI no tiene un monto fijo: se consulta en el SIAT
+                con la cuenta y el código de gestión.
               </p>
               {[
                 ["fire_insurance", "Seguro contra incendio", "fire_insurance_amount"],
                 ["pays_api", "Paga API", "api_amount"],
-                ["pays_tgi", "Paga TGI", "tgi_amount"],
                 ["pays_epe", "Paga EPE", "epe_amount"],
               ].map(([checkName, label, amountName]) => (
                 <div
@@ -877,6 +892,44 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                   )}
                 </div>
               ))}
+              <div className="mb-2">
+                <Form.Check
+                  className="mb-1"
+                  label="Paga TGI"
+                  name="pays_tgi"
+                  checked={form.pays_tgi}
+                  onChange={handleChange}
+                />
+                {form.pays_tgi && (
+                  <div className="border rounded p-2 ms-4">
+                    <Form.Group className="mb-2">
+                      <Form.Label className="small mb-1">Cuenta (sin guiones)</Form.Label>
+                      <Form.Control
+                        name="tgi_account"
+                        value={form.tgi_account}
+                        onChange={handleChange}
+                        placeholder="Número de cuenta"
+                        required
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-1">
+                      <Form.Label className="small mb-1">Código de gestión personal</Form.Label>
+                      <Form.Control
+                        name="tgi_code"
+                        value={form.tgi_code}
+                        onChange={handleChange}
+                        placeholder="Código de la boleta"
+                        required
+                      />
+                    </Form.Group>
+                    <Form.Text className="text-muted">
+                      Con esos datos se busca el monto de cada mes en el SIAT.
+                      Si está en fecha se cobra ese mes; si hay deuda, también
+                      el vencido más antiguo, hasta regularizar.
+                    </Form.Text>
+                  </div>
+                )}
+              </div>
               {(form.base_rent || servicesTotal > 0) && (
                 <Alert variant="secondary" className="py-2 small mt-2">
                   Alquiler ${money(rentPreview)}

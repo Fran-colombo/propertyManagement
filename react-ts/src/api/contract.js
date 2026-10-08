@@ -31,6 +31,12 @@ export const applyContractIndex = async (contractId, value, newIndexValue) => {
   });
 };
 
+export const syncContractTgi = async (contractId) => {
+  return await apiFetch(`/contracts/${contractId}/tgi/sync`, {
+    method: "POST",
+  });
+};
+
 export const updateContract = async (contractId, data) => {
   return await apiFetch(`/contracts/${contractId}`, {
     method: "PATCH",

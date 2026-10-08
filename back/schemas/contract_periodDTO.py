@@ -3,6 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from utils.proration import period_rent, days_overdue
 from utils.contract_display import contract_location_label
+from services.siat_tgi_service import parse_tgi_detail
 
 class TenantResponse(BaseModel):
     id: int
@@ -31,6 +32,7 @@ class RentalContractSimpleResponse(BaseModel):
     base_index_value: Optional[float] = None
     last_index_value: Optional[float] = None
     start_date: Optional[date] = None
+    end_date: Optional[date] = None
     base_rent: Optional[float] = None
     pays_epe: Optional[bool] = None
     pays_tgi: Optional[bool] = None
@@ -81,6 +83,7 @@ class ContractPeriodResponse(BaseModel):
     period_rent: Optional[float] = None
     late_fee_amount: Optional[float] = 0
     days_overdue: Optional[int] = 0
+    tgi_detail: Optional[dict] = None
 
     @classmethod
     def from_orm(cls, period):
@@ -126,6 +129,7 @@ class ContractPeriodResponse(BaseModel):
                 'base_index_value': getattr(contract_obj, 'base_index_value', None),
                 'last_index_value': getattr(contract_obj, 'last_index_value', None),
                 'start_date': contract_obj.start_date,
+                'end_date': contract_obj.end_date,
                 'base_rent': contract_obj.base_rent,
                 'pays_epe': getattr(contract_obj, 'pays_epe', False),
                 'pays_tgi': getattr(contract_obj, 'pays_tgi', False),
@@ -156,6 +160,7 @@ class ContractPeriodResponse(BaseModel):
         period_dict['period_rent'] = period_rent(period)
         period_dict['late_fee_amount'] = getattr(period, 'late_fee_amount', 0) or 0
         period_dict['days_overdue'] = days_overdue(getattr(period, 'due_date', None))
+        period_dict['tgi_detail'] = parse_tgi_detail(getattr(period, 'tgi_detail', None))
         status = getattr(period, 'payment_status', None)
         period_dict['payment_status'] = status.value if hasattr(status, 'value') else status
         period_dict['payment_date'] = getattr(period, 'payment_date', None)

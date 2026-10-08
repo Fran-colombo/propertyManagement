@@ -31,6 +31,8 @@ class CreateContractDTO(BaseModel):
     pays_epe: bool = False
     epe_amount: Optional[float] = Field(None, ge=0)
     tgi_amount: Optional[float] = Field(None, ge=0)
+    tgi_account: Optional[str] = None
+    tgi_code: Optional[str] = None
     api_amount: Optional[float] = Field(None, ge=0)
     fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
@@ -45,6 +47,8 @@ class UpdateContractDTO(BaseModel):
     pays_epe: Optional[bool] = None
     epe_amount: Optional[float] = Field(None, ge=0)
     tgi_amount: Optional[float] = Field(None, ge=0)
+    tgi_account: Optional[str] = None
+    tgi_code: Optional[str] = None
     api_amount: Optional[float] = Field(None, ge=0)
     fire_insurance_amount: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
@@ -75,12 +79,15 @@ class ContractResponse(BaseModel):
     pays_epe: bool
     epe_amount: Optional[float] = None
     tgi_amount: Optional[float] = None
+    tgi_account: Optional[str] = None
+    tgi_code: Optional[str] = None
     api_amount: Optional[float] = None
     fire_insurance_amount: Optional[float] = None
     status: int
     notes: Optional[str] = None
     document_path: Optional[str] = None
     active_taxes: Optional[Dict[str, bool]] = None
+    tgi_sync_error: Optional[str] = None
     
 
     @classmethod
@@ -107,6 +114,8 @@ class ContractResponse(BaseModel):
             "pays_epe": db_contract.pays_epe,
             "epe_amount": getattr(db_contract, "epe_amount", None),
             "tgi_amount": getattr(db_contract, "tgi_amount", None),
+            "tgi_account": getattr(db_contract, "tgi_account", None),
+            "tgi_code": getattr(db_contract, "tgi_code", None),
             "api_amount": getattr(db_contract, "api_amount", None),
             "fire_insurance_amount": getattr(db_contract, "fire_insurance_amount", None),
             "notes": db_contract.notes,
@@ -120,6 +129,14 @@ class ContractResponse(BaseModel):
         }
         return cls(**contract_dict)
     
+class TgiSyncResult(BaseModel):
+    tgi_sync_error: Optional[str] = None
+    period_id: Optional[int] = None
+    tgi_amount: Optional[float] = None
+    tgi_detail: Optional[dict] = None
+    note: Optional[str] = None
+
+
 class RentalContractResponse(BaseModel):
     id: int
     tenant: TenantSimpleResponse

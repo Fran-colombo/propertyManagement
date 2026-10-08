@@ -2,6 +2,39 @@ import { useState, useEffect } from "react";
 import { Modal, Form, Button, Row, Col, Alert } from "react-bootstrap";
 import FeedbackModal from "./FeedbackModal";
 
+const TGI_MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function tgiMonthLabel(period) {
+  const match = /^(\d{4})-(\d{2})$/.exec(period || "");
+  if (!match) return period || "";
+  return `${TGI_MONTHS[Number(match[2]) - 1]} ${match[1]}`;
+}
+
+export function tgiBreakdownLines(detail) {
+  if (!detail || detail.manual) return [];
+  const lines = [];
+  const current = detail.current;
+  if (current && Number(current.total) > 0) {
+    const interest = Number(current.interest) || 0;
+    lines.push(
+      interest > 0
+        ? `TGI ${tgiMonthLabel(current.period)} $${money(current.capital)} + interés $${money(interest)}`
+        : `TGI ${tgiMonthLabel(current.period)} $${money(current.total)}`
+    );
+  }
+  const catchup = detail.catchup;
+  if (catchup && Number(catchup.total) > 0) {
+    const interest = Number(catchup.interest) || 0;
+    lines.push(
+      interest > 0
+        ? `TGI ${tgiMonthLabel(catchup.period)} $${money(catchup.capital)} + interés $${money(interest)}`
+        : `TGI ${tgiMonthLabel(catchup.period)} $${money(catchup.total)}`
+    );
+  }
+  if (detail.note) lines.push(detail.note);
+  return lines;
+}
+
 function money(n) {
   return Number(n || 0).toLocaleString("es-AR", {
     minimumFractionDigits: 2,
@@ -103,6 +136,16 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
             <Col md={6}>
               <Form.Group className="mb-3">
                 <Form.Label>TGI</Form.Label>
+                {tgiBreakdownLines(period?.tgi_detail).length > 0 && (
+                  <div className="small text-muted mb-1">
+                    {tgiBreakdownLines(period.tgi_detail).map((line) => (
+                      <div key={line}>{line}</div>
+                    ))}
+                  </div>
+                )}
+                {period?.tgi_detail?.manual && (
+                  <div className="small text-muted mb-1">Monto cargado a mano.</div>
+                )}
                 <Form.Control
                   type="number"
                   value={taxData.tgi}

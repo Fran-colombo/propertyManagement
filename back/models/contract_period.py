@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Date, Float, Enum, String, Boolean
+from sqlalchemy import Column, Integer, ForeignKey, Date, Float, Enum, String, Boolean, Text
 from sqlalchemy.orm import relationship
 from database import Base
 from schemas.enums.enums import IndexTypeEnum, PaymentStatusEnum
@@ -24,6 +24,7 @@ class ContractPeriod(Base):
 
     epe_amount = Column(Float, default=0.0)
     tgi_amount = Column(Float, default=0.0)
+    tgi_detail = Column(Text, nullable=True)
     api_amount = Column(Float, default=0.0)
     fire_proof_amount = Column(Float, default=0.0)
 
