@@ -40,6 +40,8 @@ const emptyForm = {
   epe_amount: "",
   tgi_amount: "",
   tgi_mode: "manual",
+  tgi_account: "",
+  tgi_code: "",
   api_amount: "",
   fire_insurance_amount: "",
   notes: "",
@@ -315,6 +317,13 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
       if (name === "garage_only" && !checked) {
         next.garage_id = null;
       }
+      if (name === "pays_tgi" && checked && !prev.pays_tgi) {
+        const prop = propertyForTgi(next, properties, garages);
+        next.tgi_mode =
+          String(prop?.tgi_account || "").trim() && String(prop?.tgi_code || "").trim()
+            ? "siat"
+            : "manual";
+      }
       return next;
     });
   };
@@ -422,9 +431,11 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
   ]);
 
   const tgiProperty = propertyForTgi(form, properties, garages);
+  const propertyTgiAccount = String(tgiProperty?.tgi_account || "").trim();
+  const propertyTgiCode = String(tgiProperty?.tgi_code || "").trim();
   const tgiCredentialsReady = Boolean(
-    String(tgiProperty?.tgi_account || "").trim() &&
-      String(tgiProperty?.tgi_code || "").trim()
+    (propertyTgiAccount || String(form.tgi_account || "").trim()) &&
+      (propertyTgiCode || String(form.tgi_code || "").trim())
   );
   const servicesTotal =
     (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
@@ -503,8 +514,13 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         payload.historical_rents = serializedTiers;
       }
       delete payload.garage_only;
-      delete payload.tgi_account;
-      delete payload.tgi_code;
+      const typedAccount = String(form.tgi_account || "").trim();
+      const typedCode = String(form.tgi_code || "").trim();
+      const sendTypedTgi = form.pays_tgi && form.tgi_mode === "siat";
+      if (sendTypedTgi && !propertyTgiAccount && typedAccount) payload.tgi_account = typedAccount;
+      else delete payload.tgi_account;
+      if (sendTypedTgi && !propertyTgiCode && typedCode) payload.tgi_code = typedCode;
+      else delete payload.tgi_code;
       const created = await createContract(payload);
       let uploadWarning = "";
       if (documentFile && created?.id) {
@@ -992,13 +1008,41 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                         style={{ maxWidth: 180 }}
                       />
                     )}
-                    {form.tgi_mode === "siat" && (
-                      <Form.Text className="text-muted d-block mt-2">
-                        {tgiCredentialsReady
-                          ? `Se usa la cuenta ${tgiProperty.tgi_account} de la propiedad.`
-                          : "Cargá la cuenta y el código de TGI en la propiedad antes de elegir esta opción."}
-                      </Form.Text>
-                    )}
+                    {form.tgi_mode === "siat" &&
+                      (propertyTgiAccount && propertyTgiCode ? (
+                        <Form.Text className="text-muted d-block mt-2">
+                          Se usa la cuenta {propertyTgiAccount} de la propiedad.
+                        </Form.Text>
+                      ) : (
+                        <div className="mt-2">
+                          <div className="d-flex flex-wrap gap-2">
+                            {!propertyTgiAccount && (
+                              <Form.Control
+                                name="tgi_account"
+                                value={form.tgi_account}
+                                onChange={handleChange}
+                                placeholder="Cuenta TGI"
+                                style={{ maxWidth: 180 }}
+                              />
+                            )}
+                            {!propertyTgiCode && (
+                              <Form.Control
+                                name="tgi_code"
+                                value={form.tgi_code}
+                                onChange={handleChange}
+                                placeholder="Código de gestión"
+                                style={{ maxWidth: 180 }}
+                              />
+                            )}
+                          </div>
+                          <Form.Text className="text-muted d-block mt-1">
+                            {propertyTgiAccount
+                              ? `La propiedad tiene la cuenta ${propertyTgiAccount}; falta el código. `
+                              : ""}
+                            Se guarda en la propiedad para los próximos contratos.
+                          </Form.Text>
+                        </div>
+                      ))}
                     {debtPrompt && (
                       <div className="mt-2">
                         <TgiDebtPlanChoice

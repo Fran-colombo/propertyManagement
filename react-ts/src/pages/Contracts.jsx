@@ -11,6 +11,14 @@ import EditContractModal from "../components/EditContractModal";
 import TgiDebtPlanChoice from "../components/TgiDebtPlanChoice";
 import { mediaUrl } from "../utils/mediaUrl";
 
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function parseISODate(value) {
   if (!value) return null;
   const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
@@ -69,7 +77,7 @@ const ContractsTable = () => {
   const [contractToCancel, setContractToCancel] = useState(null);
   const [contractToEdit, setContractToEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedTenant, setSelectedTenant] = useState("all");
+  const [tenantQuery, setTenantQuery] = useState("");
   const [tenants, setTenants] = useState([]);
   const [filterYear, setFilterYear] = useState(today.getFullYear());
   const [filterMonth, setFilterMonth] = useState(today.getMonth() + 1);
@@ -149,9 +157,11 @@ const ContractsTable = () => {
   const getFilteredPeriods = () => {
     let filtered = periods;
 
-    if (selectedTenant !== "all") {
-      const tenantId = parseInt(selectedTenant, 10);
-      filtered = filtered.filter((p) => p.contract?.tenant?.id === tenantId);
+    const query = normalizeText(tenantQuery);
+    if (query) {
+      filtered = filtered.filter((p) =>
+        normalizeText(p.contract?.tenant?.name).includes(query)
+      );
     }
 
     return filtered;
@@ -640,17 +650,18 @@ const ContractsTable = () => {
         <Col xs={12} md={3}>
           <Form.Group controlId="tenantFilter">
             <Form.Label>Inquilino</Form.Label>
-            <Form.Select
-              value={selectedTenant}
-              onChange={(e) => setSelectedTenant(e.target.value)}
-            >
-              <option value="all">Todos los inquilinos</option>
+            <Form.Control
+              type="search"
+              list="tenantFilterOptions"
+              value={tenantQuery}
+              onChange={(e) => setTenantQuery(e.target.value)}
+              placeholder="Buscar por nombre"
+            />
+            <datalist id="tenantFilterOptions">
               {tenants.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  {tenant.name} - {tenant.email}
-                </option>
+                <option key={tenant.id} value={tenant.name} />
               ))}
-            </Form.Select>
+            </datalist>
           </Form.Group>
         </Col>
         <Col xs={12} md={4}>

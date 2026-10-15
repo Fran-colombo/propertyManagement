@@ -23,6 +23,8 @@ const emptyForm = {
   tgi_mode: "manual",
   property_tgi_account: "",
   property_tgi_code: "",
+  tgi_account: "",
+  tgi_code: "",
   api_amount: "",
   fire_insurance_amount: "",
   notes: "",
@@ -105,6 +107,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           tgi_mode: data.tgi_mode || (data.pays_tgi && (data.property_tgi_account || data.tgi_account) ? "siat" : "manual"),
           property_tgi_account: data.property_tgi_account || data.tgi_account || "",
           property_tgi_code: data.property_tgi_code || data.tgi_code || "",
+          tgi_account: "",
+          tgi_code: "",
           api_amount: data.api_amount ?? "",
           fire_insurance_amount: data.fire_insurance_amount ?? "",
           notes: data.notes || "",
@@ -123,20 +127,24 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: type === "checkbox" ? checked : value };
+      if (name === "pays_tgi" && checked && !prev.pays_tgi) {
+        next.tgi_mode =
+          prev.property_tgi_account && prev.property_tgi_code ? "siat" : "manual";
+      }
+      return next;
+    });
   };
+
+  const tgiAccount = String(form.property_tgi_account || form.tgi_account || "").trim();
+  const tgiCode = String(form.property_tgi_code || form.tgi_code || "").trim();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!contractId || !loaded) return;
-    if (form.pays_tgi && form.tgi_mode === "siat" && (
-      !String(form.property_tgi_account || "").trim() ||
-      !String(form.property_tgi_code || "").trim()
-    )) {
-      setError("Cargá la cuenta y el código de TGI en la propiedad.");
+    if (form.pays_tgi && form.tgi_mode === "siat" && (!tgiAccount || !tgiCode)) {
+      setError("Para traer el TGI del SIAT completá la cuenta y el código de gestión, o elegí Manual.");
       return;
     }
     if (form.pays_tgi && form.tgi_mode !== "manual" && form.tgi_mode !== "siat") {
@@ -166,6 +174,14 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         notes: form.notes,
         mark_past_as_paid: !!form.mark_past_as_paid,
       };
+      if (form.pays_tgi && form.tgi_mode === "siat") {
+        if (!form.property_tgi_account && form.tgi_account.trim()) {
+          payload.tgi_account = form.tgi_account.trim();
+        }
+        if (!form.property_tgi_code && form.tgi_code.trim()) {
+          payload.tgi_code = form.tgi_code.trim();
+        }
+      }
       const serializedTiers = serializeTiers(rentTiers);
       if (showRentTiers && serializedTiers.length >= 1) {
         payload.historical_rents = serializedTiers;
@@ -374,13 +390,41 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                         style={{ maxWidth: 180 }}
                       />
                     )}
-                    {form.tgi_mode === "siat" && (
-                      <Form.Text className="text-muted d-block mt-2">
-                        {form.property_tgi_account && form.property_tgi_code
-                          ? `Se usa la cuenta ${form.property_tgi_account} de la propiedad.`
-                          : "Cargá la cuenta y el código de TGI en la propiedad."}
-                      </Form.Text>
-                    )}
+                    {form.tgi_mode === "siat" &&
+                      (form.property_tgi_account && form.property_tgi_code ? (
+                        <Form.Text className="text-muted d-block mt-2">
+                          Se usa la cuenta {form.property_tgi_account} de la propiedad.
+                        </Form.Text>
+                      ) : (
+                        <div className="mt-2">
+                          <div className="d-flex flex-wrap gap-2">
+                            {!form.property_tgi_account && (
+                              <Form.Control
+                                name="tgi_account"
+                                value={form.tgi_account}
+                                onChange={handleChange}
+                                placeholder="Cuenta TGI"
+                                style={{ maxWidth: 180 }}
+                              />
+                            )}
+                            {!form.property_tgi_code && (
+                              <Form.Control
+                                name="tgi_code"
+                                value={form.tgi_code}
+                                onChange={handleChange}
+                                placeholder="Código de gestión"
+                                style={{ maxWidth: 180 }}
+                              />
+                            )}
+                          </div>
+                          <Form.Text className="text-muted d-block mt-1">
+                            {form.property_tgi_account
+                              ? `La propiedad tiene la cuenta ${form.property_tgi_account}; falta el código. `
+                              : ""}
+                            Se guarda en la propiedad para los próximos contratos.
+                          </Form.Text>
+                        </div>
+                      ))}
                     {debtPrompt && (
                       <div className="mt-2">
                         <TgiDebtPlanChoice

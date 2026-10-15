@@ -135,6 +135,7 @@ class RentalContractService:
 
             self.db.add(contract)
             self.db.flush()
+            self._store_tgi_credentials(contract, contract.tgi_account, contract.tgi_code)
             self._validate_tgi(contract)
 
             self._generate_contract_periods(contract)
@@ -215,6 +216,7 @@ class RentalContractService:
             contract.garage = garage
             self.db.add(contract)
             self.db.flush()
+            self._store_tgi_credentials(contract, contract.tgi_account, contract.tgi_code)
             self._validate_tgi(contract)
             self._generate_contract_periods(contract)
             historical_rents = getattr(contract_data, "historical_rents", None)
@@ -380,7 +382,7 @@ class RentalContractService:
             return True
         return bool(detail.get("current") or detail.get("catchup"))
 
-    def _property_tgi_credentials(self, contract: RentalContract) -> tuple:
+    def _tgi_property(self, contract: RentalContract) -> Optional[Property]:
         prop = getattr(contract, "property", None)
         if prop is None and getattr(contract, "property_id", None):
             prop = self.db.query(Property).filter(Property.id == contract.property_id).first()
@@ -389,15 +391,28 @@ class RentalContractService:
             if garage is None:
                 garage = self.db.query(Garage).filter(Garage.id == contract.garage_id).first()
             prop = getattr(garage, "property", None) if garage is not None else None
-        if prop is not None:
-            account = clean_tgi_account(getattr(prop, "tgi_account", None))
-            code = clean_tgi_code(getattr(prop, "tgi_code", None))
-            if account and code:
-                return account, code
+        return prop
+
+    def _property_tgi_credentials(self, contract: RentalContract) -> tuple:
+        prop = self._tgi_property(contract)
+        account = clean_tgi_account(getattr(prop, "tgi_account", None)) if prop is not None else None
+        code = clean_tgi_code(getattr(prop, "tgi_code", None)) if prop is not None else None
         return (
-            clean_tgi_account(getattr(contract, "tgi_account", None)),
-            clean_tgi_code(getattr(contract, "tgi_code", None)),
+            account or clean_tgi_account(getattr(contract, "tgi_account", None)),
+            code or clean_tgi_code(getattr(contract, "tgi_code", None)),
         )
+
+    def _store_tgi_credentials(self, contract: RentalContract, account, code) -> None:
+        account = clean_tgi_account(account)
+        code = clean_tgi_code(code)
+        if not account and not code:
+            return
+        prop = self._tgi_property(contract)
+        target = prop if prop is not None else contract
+        if account:
+            target.tgi_account = account
+        if code:
+            target.tgi_code = code
 
     def _validate_tgi(self, contract: RentalContract) -> None:
         if not contract.pays_tgi:
@@ -417,7 +432,7 @@ class RentalContractService:
         if not account or not code:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cargá la cuenta y el código de TGI en la propiedad.",
+                detail="Para traer el TGI del SIAT falta la cuenta o el código de gestión. Completalos en el contrato o elegí Manual.",
             )
 
     def _attach_tgi_sync(self, response: ContractResponse, result: Optional[TgiSyncResult]) -> ContractResponse:
@@ -489,7 +504,7 @@ class RentalContractService:
         if not account or not code:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cargá la cuenta y el código de TGI en la propiedad.",
+                detail="Falta la cuenta o el código de gestión del TGI. Completalos en Editar contrato.",
             )
         periods = (
             self.db.query(ContractPeriod)
@@ -1136,14 +1151,13 @@ class RentalContractService:
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail="Agencia inmobiliaria no encontrada",
                     )
+        tgi_account = payload.pop("tgi_account", None)
+        tgi_code = payload.pop("tgi_code", None)
         for field, value in payload.items():
-            if field == "tgi_account":
-                value = clean_tgi_account(value)
-            elif field == "tgi_code":
-                value = clean_tgi_code(value)
-            elif field == "tgi_mode":
+            if field == "tgi_mode":
                 value = str(value or "").strip().lower() or None
             setattr(contract, field, value)
+        self._store_tgi_credentials(contract, tgi_account, tgi_code)
         self._validate_tgi(contract)
         self.db.flush()
         self._apply_service_amounts(contract, unpaid_only=True)
