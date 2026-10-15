@@ -45,11 +45,12 @@ function LoginPage() {
     <div
       className="min-vh-100 d-flex align-items-center justify-content-center"
       style={{
-        background: "url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSYkFvWRRoSpdvSHWgcAIWJmIv8S7u3YYjEUw&s') no-repeat center center",
+        background:
+          "linear-gradient(rgba(15, 30, 50, 0.35), rgba(15, 30, 50, 0.45)), url('/login-bg.jpg') no-repeat center center",
         backgroundSize: 'cover'
       }}
     >
-      <div className="bg-white rounded shadow-lg p-4" style={{ maxWidth: 420, width: '100%' }}>
+      <div className="bg-white rounded-4 shadow-lg p-4" style={{ maxWidth: 420, width: '100%' }}>
         <div className="text-center mb-4">
           <h4 className="mt-3 fw-bold">Gestor de Propiedades</h4>
           <p className="text-muted">Conkreto Construcciones SRL</p>
