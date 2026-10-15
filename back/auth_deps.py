@@ -20,3 +20,12 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     if not payload.get("sub"):
         raise credentials_error
     return payload
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un administrador puede hacer esto",
+        )
+    return user

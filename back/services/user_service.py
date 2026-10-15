@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 from fastapi import HTTPException
 from models.user_model import RoleEnum, User
 from repositories import user_repository as user_repo
-from schemas.user_schemas import CreateUser
+from schemas.user_schemas import CreateUser, UpdateUser, UserResponse
 
 
 
@@ -15,24 +15,83 @@ ALGORITHM = "HS256"
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def create_user(db: Session, user_data: CreateUser):
-    existing = user_repo.get_by_email(db, user_data.email)
-    if existing:
-        if existing.status == 1:
-            raise HTTPException(status_code=400, detail="Email ya registrado")
-        else:
-            raise HTTPException(status_code=400, detail="Usuario desactivado")
-
+    email = user_data.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Email inválido")
+    name = user_data.name.strip()
+    surname = user_data.surname.strip()
+    if not name or not surname:
+        raise HTTPException(status_code=400, detail="Completá nombre y apellido")
+    role = RoleEnum(user_data.role)
     hashed_pw = bcrypt_context.hash(user_data.password)
 
+    existing = user_repo.get_by_email(db, email)
+    if existing:
+        if existing.status == 1:
+            raise HTTPException(status_code=400, detail="Ya hay un usuario con ese email")
+        existing.name = name.capitalize()
+        existing.surname = surname.capitalize()
+        existing.password = hashed_pw
+        existing.role = role
+        existing.status = 1
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     new_user = User(
-        name=user_data.name.capitalize(),
-        surname=user_data.surname.capitalize(),
-        email=user_data.email,
+        name=name.capitalize(),
+        surname=surname.capitalize(),
+        email=email,
         password=hashed_pw,
-        role=RoleEnum.user,
+        role=role,
         status=1
     )
     return user_repo.create(db, new_user)
+
+
+def list_users(db: Session):
+    return user_repo.get_all(db)
+
+
+def _active_admin_count(db: Session) -> int:
+    return sum(
+        1 for u in user_repo.get_all(db)
+        if u.status == 1 and _role_value(u) == RoleEnum.admin.value
+    )
+
+
+def update_user(db: Session, user_id: int, data: UpdateUser, current_user_id: int):
+    user = user_repo.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    changes = data.model_dump(exclude_unset=True)
+    removes_admin = _role_value(user) == RoleEnum.admin.value and user.status == 1 and (
+        changes.get("role") == RoleEnum.user.value or changes.get("status") == 0
+    )
+    if removes_admin and user.id == current_user_id:
+        raise HTTPException(status_code=400, detail="No podés quitarte el acceso de administrador a vos mismo")
+    if removes_admin and _active_admin_count(db) <= 1:
+        raise HTTPException(status_code=400, detail="Tiene que quedar al menos un administrador activo")
+    if changes.get("password"):
+        user.password = bcrypt_context.hash(changes["password"])
+    if changes.get("role"):
+        user.role = RoleEnum(changes["role"])
+    if changes.get("status") is not None:
+        user.status = changes["status"]
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def to_response(user: User) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        name=user.name or "",
+        surname=user.surname or "",
+        email=user.email or "",
+        role=_role_value(user),
+        status=user.status if user.status is not None else 1,
+    )
 
 def _role_value(user: User) -> str:
     role = getattr(user, "role", None)
@@ -43,7 +102,9 @@ def _role_value(user: User) -> str:
 
 def authenticate(db: Session, email: str, password: str):
     try:
-        user = user_repo.get_by_email(db, email)
+        user = user_repo.get_by_email(db, email) or user_repo.get_by_email(
+            db, (email or "").strip().lower()
+        )
     except Exception as e:
         print(f"[auth] ERROR loading user {email}: {e}", flush=True)
         db.rollback()

@@ -6,8 +6,11 @@ import {
   uploadReceiptSignature,
 } from "../api/settings";
 import { mediaUrl } from "../utils/mediaUrl";
+import useAuth from "../../hooks/useAuth";
+import UsersSettings from "../components/UsersSettings";
 
 export default function Settings() {
+  const { role, userId } = useAuth();
   const [path, setPath] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -125,6 +128,7 @@ export default function Settings() {
           </div>
         </Card.Body>
       </Card>
+      {role === "admin" && <UsersSettings currentUserId={userId} />}
     </div>
   );
 }

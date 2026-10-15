@@ -8,6 +8,9 @@ def get_by_email(db: Session, email: str):
 def get_by_id(db: Session, user_id: int):
     return db.query(User).filter(User.id == user_id).first()
 
+def get_all(db: Session):
+    return db.query(User).order_by(User.status.desc(), User.name, User.surname).all()
+
 def create(db: Session, user: User):
     db.add(user)
     db.commit()
