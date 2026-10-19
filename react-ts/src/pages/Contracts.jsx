@@ -195,11 +195,11 @@ const ContractsTable = () => {
   const { withAgency, withoutAgency } = splitPeriodsByAgency(displayedPeriods);
 
   const PeriodsTable = ({ periods: tablePeriods, title }) => {
-    const renderPeriodActions = (period) => {
+    const renderPeriodActions = (period, stacked = false) => {
       const isPaid = period.payment_status === "PAGADO";
       const hasPayments = Number(period.amount_paid) > 0;
       return (
-      <div className="d-flex flex-wrap gap-2">
+      <div className={stacked ? "d-grid gap-1" : "d-flex flex-wrap gap-2"}>
         {!isPaid && (
           <Button
             variant="success"
@@ -457,7 +457,7 @@ const ContractsTable = () => {
             })}
           </div>
           <div className="table-responsive d-none d-lg-block">
-        <Table striped bordered hover>
+        <Table striped bordered hover size="sm" className="small mb-0">
           <thead>
             <tr>
               <th>Inquilino</th>
@@ -467,7 +467,6 @@ const ContractsTable = () => {
               <th>Vencimiento</th>
               <th>Monto Base</th>
               <th>Monto Indexado</th>
-              <th>IPC</th>
               <th>Impuestos</th>
               <th>Total</th>
               <th>Pagado</th>
@@ -551,15 +550,16 @@ const ContractsTable = () => {
                         </small>
                       </div>
                     )}
-                  </td>
-                  <td>
                     {(period.contract?.last_index_value ??
-                      period.contract?.base_index_value) != null
-                      ? Number(
+                      period.contract?.base_index_value) != null && (
+                      <small className="text-muted d-block">
+                        IPC{" "}
+                        {Number(
                           period.contract.last_index_value ??
                             period.contract.base_index_value
-                        ).toLocaleString("es-AR", { maximumFractionDigits: 2 })
-                      : "—"}
+                        ).toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                      </small>
+                    )}
                   </td>
                   <td>
                     ${totalTaxes.toLocaleString()}
@@ -599,7 +599,7 @@ const ContractsTable = () => {
                       {isOverdue ? "VENCIDO" : period.payment_status}
                     </span>
                   </td>
-                  <td>{renderPeriodActions(period)}</td>
+                  <td>{renderPeriodActions(period, true)}</td>
                 </tr>
               );
             })}
