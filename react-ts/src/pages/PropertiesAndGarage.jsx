@@ -10,6 +10,7 @@ import EditContractModal from "../components/EditContractModal";
 import SellPropertyModal from "../components/SellPropertyModal";
 import FeedbackModal from "../components/FeedbackModal";
 import { mediaUrl } from "../utils/mediaUrl";
+import { paymentSummary } from "../utils/paymentInfo";
 import {
   openCashReceiptPrint,
   saleInstallmentConcept,
@@ -746,6 +747,11 @@ const PropertiesAndGarages = () => {
                           >
                             {period.payment_status}
                           </Badge>
+                          {paymentSummary(period) && (
+                            <div>
+                              <small className="text-muted">{paymentSummary(period)}</small>
+                            </div>
+                          )}
                           {period.payment_status === "PAGADO" && (
                             <div className="mt-2">
                               <Button

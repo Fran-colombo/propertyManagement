@@ -9,7 +9,9 @@ import UpdateIndexModal from "../components/UpdateIndexModal";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
 import TgiDebtPlanChoice from "../components/TgiDebtPlanChoice";
+import PeriodPaymentsModal from "../components/PeriodPaymentsModal";
 import { mediaUrl } from "../utils/mediaUrl";
+import { paymentSummary } from "../utils/paymentInfo";
 
 function normalizeText(value) {
   return String(value || "")
@@ -69,6 +71,7 @@ const ContractsTable = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showPayModal, setShowPayModal] = useState(false);
+  const [showPaymentsModal, setShowPaymentsModal] = useState(false);
   const [showTaxesModal, setShowTaxesModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showIndexModal, setShowIndexModal] = useState(false);
@@ -192,31 +195,49 @@ const ContractsTable = () => {
   const { withAgency, withoutAgency } = splitPeriodsByAgency(displayedPeriods);
 
   const PeriodsTable = ({ periods: tablePeriods, title }) => {
-    const renderPeriodActions = (period) => (
+    const renderPeriodActions = (period) => {
+      const isPaid = period.payment_status === "PAGADO";
+      const hasPayments = Number(period.amount_paid) > 0;
+      return (
       <div className="d-flex flex-wrap gap-2">
-        <Button
-          variant="success"
-          size="sm"
-          onClick={() => {
-            setSelectedPeriod(period);
-            setShowPayModal(true);
-          }}
-          disabled={period.payment_status === "PAGADO"}
-        >
-          Pagar
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            setSelectedPeriod(period);
-            setShowTaxesModal(true);
-          }}
-          disabled={period.payment_status === "PAGADO"}
-        >
-          Impuestos
-        </Button>
-        {period.contract?.id &&
+        {!isPaid && (
+          <Button
+            variant="success"
+            size="sm"
+            onClick={() => {
+              setSelectedPeriod(period);
+              setShowPayModal(true);
+            }}
+          >
+            Pagar
+          </Button>
+        )}
+        {hasPayments && (
+          <Button
+            variant={isPaid ? "success" : "outline-success"}
+            size="sm"
+            onClick={() => {
+              setSelectedPeriod(period);
+              setShowPaymentsModal(true);
+            }}
+          >
+            Ver pago
+          </Button>
+        )}
+        {!isPaid && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setSelectedPeriod(period);
+              setShowTaxesModal(true);
+            }}
+          >
+            Impuestos
+          </Button>
+        )}
+        {!isPaid &&
+          period.contract?.id &&
           period.contract?.currency !== "DOLARES" &&
           period.contract?.index_type && (
             <Button
@@ -226,7 +247,6 @@ const ContractsTable = () => {
                 setSelectedPeriod(period);
                 setShowIndexModal(true);
               }}
-              disabled={period.payment_status === "PAGADO"}
             >
               Índice
             </Button>
@@ -279,7 +299,8 @@ const ContractsTable = () => {
           </Button>
         )}
       </div>
-    );
+      );
+    };
 
     const periodMeta = (period) => {
       const taxes = period.taxes || {};
@@ -415,6 +436,9 @@ const ContractsTable = () => {
                       ))}
                       {Number(period.late_fee_amount) > 0 &&
                         ` · Recargo $${Number(period.late_fee_amount).toLocaleString()}`}
+                      {paymentSummary(period) && (
+                        <div className="text-muted">{paymentSummary(period)}</div>
+                      )}
                       {(period.contract?.last_index_value ?? period.contract?.base_index_value) != null && (
                         <>
                           {" "}
@@ -556,7 +580,12 @@ const ContractsTable = () => {
                       </div>
                     )}
                   </td>
-                  <td>${period.amount_paid.toLocaleString()}</td>
+                  <td>
+                    ${period.amount_paid.toLocaleString()}
+                    {paymentSummary(period) && (
+                      <small className="text-muted d-block">{paymentSummary(period)}</small>
+                    )}
+                  </td>
                   <td>
                     <span
                       className={`badge bg-${
@@ -750,6 +779,12 @@ const ContractsTable = () => {
         onHide={() => setShowPayModal(false)}
         period={selectedPeriod}
         onPay={handlePayment}
+      />
+
+      <PeriodPaymentsModal
+        show={showPaymentsModal}
+        onHide={() => setShowPaymentsModal(false)}
+        period={selectedPeriod}
       />
 
       <EditTaxesModal
