@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Card, Spinner, Row, Col, Badge, Button, Modal, Table, Alert, Form, Pagination } from "react-bootstrap";
+import { Card, Spinner, Row, Col, Badge, Button, ButtonGroup, Dropdown, Modal, Table, Alert, Form, Pagination } from "react-bootstrap";
+import { Grid, ListUl } from "react-bootstrap-icons";
 import { apiFetch } from "../api/clients";
 import { deleteProperty } from "../api/property";
 import { getPeriodsByContract } from "../api/contract_period";
@@ -23,6 +24,44 @@ const OCCUPANCY_ALL = "all";
 const OCCUPANCY_RENTED = "rented";
 const OCCUPANCY_AVAILABLE = "available";
 const PAGE_SIZE = 12;
+const VIEW_MODE_KEY = "propertiesViewMode";
+const VIEW_CARDS = "cards";
+const VIEW_TABLE = "table";
+
+function readViewMode() {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === VIEW_TABLE ? VIEW_TABLE : VIEW_CARDS;
+  } catch {
+    return VIEW_CARDS;
+  }
+}
+
+function ViewModeToggle({ value, onChange }) {
+  return (
+    <ButtonGroup size="sm" aria-label="Cambiar vista">
+      <Button
+        variant={value === VIEW_CARDS ? "secondary" : "outline-secondary"}
+        onClick={() => onChange(VIEW_CARDS)}
+        title="Ver como tarjetas"
+      >
+        <Grid className="me-1" />
+        Tarjetas
+      </Button>
+      <Button
+        variant={value === VIEW_TABLE ? "secondary" : "outline-secondary"}
+        onClick={() => onChange(VIEW_TABLE)}
+        title="Ver como tabla"
+      >
+        <ListUl className="me-1" />
+        Tabla
+      </Button>
+    </ButtonGroup>
+  );
+}
+
+function formatDate(value) {
+  return value ? new Date(value).toLocaleDateString() : "—";
+}
 
 function matchesOccupancy(isRented, filter) {
   if (filter === OCCUPANCY_RENTED) return isRented;
@@ -103,6 +142,15 @@ const PropertiesAndGarages = () => {
   const [garageSearch, setGarageSearch] = useState("");
   const [propertyPage, setPropertyPage] = useState(1);
   const [garagePage, setGaragePage] = useState(1);
+  const [viewMode, setViewModeState] = useState(readViewMode);
+  const setViewMode = (mode) => {
+    setViewModeState(mode);
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode);
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [editingProperty, setEditingProperty] = useState(null);
   const [editingGarage, setEditingGarage] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -551,6 +599,193 @@ const PropertiesAndGarages = () => {
     </Card>
   );
 
+  const PropertiesTable = ({ items }) => (
+    <div className="table-responsive">
+      <Table striped bordered hover size="sm" className="small align-middle">
+        <thead>
+          <tr>
+            <th>Dirección</th>
+            <th>Dueño</th>
+            <th>Inquilino</th>
+            <th>Contrato hasta</th>
+            <th>Período actual</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((prop) => {
+            const contract = prop.rental_contract;
+            const period = prop.currentPeriod;
+            const unit = [
+              prop.floor && `Piso ${prop.floor}`,
+              prop.apartment && `Depto ${prop.apartment}`,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <tr key={prop.id}>
+                <td>
+                  <div className="fw-semibold">{prop.direction}</div>
+                  {unit && <small className="text-muted d-block">{unit}</small>}
+                  {prop.garages?.map((g) => (
+                    <Badge
+                      key={g.id}
+                      bg={g.rental_contract_id ? "secondary" : "info"}
+                      className="me-1"
+                    >
+                      Garage N° {g.number}
+                    </Badge>
+                  ))}
+                </td>
+                <td>{prop.owner?.name || "Sin dueño"}</td>
+                <td>
+                  {contract ? (
+                    contract.tenant?.name || "Sin inquilino"
+                  ) : prop.management_status === "DELIVERED" ? (
+                    <Badge bg="info">Entregada</Badge>
+                  ) : (
+                    <Badge bg="success">Disponible</Badge>
+                  )}
+                </td>
+                <td>{contract ? formatDate(contract.end_date) : "—"}</td>
+                <td>
+                  {period ? (
+                    <>
+                      <Badge bg={period.payment_status === "PAGADO" ? "success" : "warning"}>
+                        {period.payment_status || "PENDIENTE"} - $
+                        {prop.monthlyPayment?.total.toLocaleString()}
+                      </Badge>
+                      <small className="text-muted d-block">
+                        {formatDate(period.start_date)} al {formatDate(period.end_date)}
+                      </small>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="text-nowrap">
+                  <div className="d-flex gap-1">
+                    {contract && (
+                      <Button
+                        variant="outline-primary"
+                        size="sm"
+                        onClick={() => openPropertyPayments(prop)}
+                      >
+                        Pagos
+                      </Button>
+                    )}
+                    <Dropdown align="end">
+                      <Dropdown.Toggle variant="outline-secondary" size="sm">
+                        Más
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu popperConfig={{ strategy: "fixed" }}>
+                        {contract?.document_path && (
+                          <Dropdown.Item
+                            href={mediaUrl(contract.document_path)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Ver contrato
+                          </Dropdown.Item>
+                        )}
+                        {contract && (
+                          <>
+                            <Dropdown.Item
+                              onClick={() => {
+                                setContractToEdit(contract);
+                                setShowEditModal(true);
+                              }}
+                            >
+                              Editar contrato
+                            </Dropdown.Item>
+                            <Dropdown.Item
+                              className="text-danger"
+                              onClick={() => {
+                                setContractToCancel(contract);
+                                setShowCancelModal(true);
+                              }}
+                            >
+                              Finalizar contrato
+                            </Dropdown.Item>
+                            <Dropdown.Divider />
+                          </>
+                        )}
+                        <Dropdown.Item onClick={() => setEditingProperty(prop)}>
+                          Editar propiedad
+                        </Dropdown.Item>
+                        <Dropdown.Item onClick={() => setPropertyToSell(prop)}>
+                          Vender
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          className="text-danger"
+                          onClick={() => setPendingDeleteProp(prop)}
+                        >
+                          Eliminar
+                        </Dropdown.Item>
+                      </Dropdown.Menu>
+                    </Dropdown>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </div>
+  );
+
+  const GaragesTable = ({ items }) => (
+    <div className="table-responsive">
+      <Table striped bordered hover size="sm" className="small align-middle">
+        <thead>
+          <tr>
+            <th>Garage</th>
+            <th>Dueño</th>
+            <th>Asociado a</th>
+            <th>Inquilino</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((garage) => (
+            <tr key={garage.id}>
+              <td className="fw-semibold">N° {garage.number}</td>
+              <td>{garage.owner_name || "Sin dueño"}</td>
+              <td>{garage.property_direction || <span className="text-muted">—</span>}</td>
+              <td>{garage.rental_contract_id ? garage.tenant_name || "Sin inquilino" : "—"}</td>
+              <td>
+                <Badge bg={garage.rental_contract_id ? "secondary" : "info"}>
+                  {garage.rental_contract_id ? "Alquilado" : "Disponible"}
+                </Badge>
+              </td>
+              <td className="text-nowrap">
+                <div className="d-flex gap-1">
+                  {garage.rental_contract_id && (
+                    <Button
+                      variant="outline-primary"
+                      size="sm"
+                      onClick={() => openGaragePayments(garage)}
+                    >
+                      Pagos
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={() => setEditingGarage(garage)}
+                  >
+                    Editar
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </div>
+  );
+
   if (loading && properties.length === 0 && garages.length === 0) {
     return <Spinner animation="border" className="m-5" />;
   }
@@ -584,6 +819,7 @@ const PropertiesAndGarages = () => {
                 <option value={OCCUPANCY_RENTED}>Alquilados</option>
                 <option value={OCCUPANCY_AVAILABLE}>Disponibles</option>
               </Form.Select>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
               <Button variant="primary" onClick={() => setShowCreateModal(true)}>
                 + Nueva Propiedad
               </Button>
@@ -601,13 +837,17 @@ const PropertiesAndGarages = () => {
           </Alert>
         ) : (
           <>
-          <Row xs={1} md={2} lg={3}>
-            {pagedProperties.map(prop => (
-              <Col key={prop.id} className="mb-4">
-                <PropertyCard prop={prop} />
-              </Col>
-            ))}
-          </Row>
+          {viewMode === VIEW_TABLE ? (
+            <PropertiesTable items={pagedProperties} />
+          ) : (
+            <Row xs={1} md={2} lg={3}>
+              {pagedProperties.map(prop => (
+                <Col key={prop.id} className="mb-4">
+                  <PropertyCard prop={prop} />
+                </Col>
+              ))}
+            </Row>
+          )}
           <ListPagination
             page={Math.min(propertyPage, propertyPages)}
             pages={propertyPages}
@@ -642,6 +882,7 @@ const PropertiesAndGarages = () => {
             <option value={OCCUPANCY_RENTED}>Alquilados</option>
             <option value={OCCUPANCY_AVAILABLE}>Disponibles</option>
           </Form.Select>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
           <Button variant="outline-primary" onClick={() => setShowCreateGarageModal(true)}>
             + Nuevo Garage
           </Button>
@@ -658,13 +899,17 @@ const PropertiesAndGarages = () => {
           </Alert>
         ) : (
           <>
-          <Row xs={1} md={2} lg={3}>
-            {pagedGarages.map(garage => (
-              <Col key={garage.id} className="mb-4">
-                <GarageCard garage={garage} />
-              </Col>
-            ))}
-          </Row>
+          {viewMode === VIEW_TABLE ? (
+            <GaragesTable items={pagedGarages} />
+          ) : (
+            <Row xs={1} md={2} lg={3}>
+              {pagedGarages.map(garage => (
+                <Col key={garage.id} className="mb-4">
+                  <GarageCard garage={garage} />
+                </Col>
+              ))}
+            </Row>
+          )}
           <ListPagination
             page={Math.min(garagePage, garagePages)}
             pages={garagePages}
