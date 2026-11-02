@@ -785,6 +785,7 @@ const ContractsTable = () => {
         show={showPaymentsModal}
         onHide={() => setShowPaymentsModal(false)}
         period={selectedPeriod}
+        onChanged={loadPeriods}
       />
 
       <EditTaxesModal

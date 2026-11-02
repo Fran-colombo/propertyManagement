@@ -9,6 +9,7 @@ import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
 import SellPropertyModal from "../components/SellPropertyModal";
 import FeedbackModal from "../components/FeedbackModal";
+import PeriodPaymentsModal from "../components/PeriodPaymentsModal";
 import { mediaUrl } from "../utils/mediaUrl";
 import { paymentSummary } from "../utils/paymentInfo";
 import {
@@ -109,6 +110,7 @@ const PropertiesAndGarages = () => {
   const [showPeriodsModal, setShowPeriodsModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [loadingPeriods, setLoadingPeriods] = useState(false);
+  const [paymentsPeriod, setPaymentsPeriod] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateGarageModal, setShowCreateGarageModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -286,6 +288,19 @@ const PropertiesAndGarages = () => {
       garageLabel: prop.rental_contract?.garage_label,
     });
     setShowPeriodsModal(true);
+  };
+
+  const refreshSelectedPeriods = async () => {
+    const contractId = paymentsPeriod?.contract_id || selectedPayment?.contract?.id;
+    if (contractId) {
+      try {
+        const periods = await getPeriodsByContract(contractId);
+        setSelectedPayment((prev) => (prev ? { ...prev, periods: periods || [] } : prev));
+      } catch (err) {
+        console.error("Error reloading periods:", err);
+      }
+    }
+    loadData();
   };
 
   const openGaragePayments = async (garage) => {
@@ -747,9 +762,17 @@ const PropertiesAndGarages = () => {
                           >
                             {period.payment_status}
                           </Badge>
-                          {paymentSummary(period) && (
+                          {Number(period.amount_paid) > 0 && (
                             <div>
                               <small className="text-muted">{paymentSummary(period)}</small>
+                              <Button
+                                size="sm"
+                                variant="link"
+                                className="p-0 ms-2 align-baseline small"
+                                onClick={() => setPaymentsPeriod(period)}
+                              >
+                                Ver / cambiar fecha
+                              </Button>
                             </div>
                           )}
                           {period.payment_status === "PAGADO" && (
@@ -827,6 +850,17 @@ const PropertiesAndGarages = () => {
           onCreated={loadData}
           garage={editingGarage}
         />
+      <PeriodPaymentsModal
+        show={!!paymentsPeriod}
+        onHide={() => setPaymentsPeriod(null)}
+        period={
+          paymentsPeriod && {
+            ...paymentsPeriod,
+            contract: { tenant: { name: selectedPayment?.tenantName } },
+          }
+        }
+        onChanged={refreshSelectedPeriods}
+      />
       <CancelContractModal
         show={showCancelModal}
         onHide={() => {

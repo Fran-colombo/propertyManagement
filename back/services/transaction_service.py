@@ -386,6 +386,51 @@ class TransactionService:
         self.db.refresh(record)
         return self._history_to_dto(record)
 
+    def update_payment_date(self, history_id: int, new_date: date) -> TransactionHistoryResponse:
+        record = (
+            self.db.query(TransactionHistory)
+            .filter(TransactionHistory.id == history_id)
+            .first()
+        )
+        if not record:
+            raise HTTPException(status_code=404, detail="Pago no encontrado")
+        if record.sale_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Las cuotas de ventas se editan desde Ventas.",
+            )
+        if new_date > date.today():
+            raise HTTPException(status_code=400, detail="La fecha de pago no puede ser futura.")
+
+        old_date = record.date
+        record.date = new_date
+        if record.remitted_at and record.remitted_at == old_date:
+            record.remitted_at = new_date
+        if record.transaction_id:
+            tx = self.db.query(Transaction).get(record.transaction_id)
+            if tx:
+                tx.date = new_date
+
+        if record.period_id:
+            period = self.db.query(ContractPeriod).get(record.period_id)
+            if period:
+                self.db.flush()
+                latest = (
+                    self.db.query(func.max(TransactionHistory.date))
+                    .filter(
+                        TransactionHistory.period_id == period.id,
+                        TransactionHistory.sale_id.is_(None),
+                        TransactionHistory.amount > 0,
+                    )
+                    .scalar()
+                )
+                if latest:
+                    period.payment_date = latest
+
+        self.db.commit()
+        self.db.refresh(record)
+        return self._history_to_dto(record)
+
     def get_all(self) -> list[TransactionResponseDTO]:
         """Obtiene todas las transacciones (método original)"""
         txs = self.db.query(Transaction).all()

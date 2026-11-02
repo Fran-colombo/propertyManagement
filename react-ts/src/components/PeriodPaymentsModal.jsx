@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Modal, Button, Table, Spinner, Alert, Badge } from "react-bootstrap";
-import { getTransactionsByPeriod } from "../api/transaction";
+import { Modal, Button, Table, Spinner, Alert, Badge, Form } from "react-bootstrap";
+import { getTransactionsByPeriod, updatePaymentDate } from "../api/transaction";
 import { formatISODate, paymentMethodLabel } from "../utils/paymentInfo";
 
 function money(n) {
@@ -10,33 +10,74 @@ function money(n) {
   });
 }
 
-export default function PeriodPaymentsModal({ show, onHide, period }) {
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export default function PeriodPaymentsModal({ show, onHide, period, onChanged }) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editDate, setEditDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [changed, setChanged] = useState(false);
+
+  const loadPayments = async (periodId, isCancelled = () => false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getTransactionsByPeriod(periodId);
+      if (!isCancelled()) setPayments(data || []);
+    } catch (err) {
+      if (!isCancelled()) {
+        setPayments([]);
+        setError(err.message || "No se pudieron cargar los pagos.");
+      }
+    } finally {
+      if (!isCancelled()) setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!show || !period?.id) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getTransactionsByPeriod(period.id)
-      .then((data) => {
-        if (!cancelled) setPayments(data || []);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setPayments([]);
-          setError(err.message || "No se pudieron cargar los pagos.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    setEditingId(null);
+    setChanged(false);
+    loadPayments(period.id, () => cancelled);
     return () => {
       cancelled = true;
     };
   }, [show, period?.id]);
+
+  const handleClose = () => {
+    setEditingId(null);
+    if (changed) onChanged?.();
+    onHide();
+  };
+
+  const startEdit = (payment) => {
+    setEditingId(payment.history_id);
+    setEditDate(String(payment.date || "").slice(0, 10));
+    setError(null);
+  };
+
+  const saveDate = async () => {
+    if (!editDate) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updatePaymentDate(editingId, editDate);
+      setEditingId(null);
+      setChanged(true);
+      await loadPayments(period.id);
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la fecha.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const tenantName = period?.contract?.tenant?.name;
   const remaining = Math.max(
@@ -45,7 +86,7 @@ export default function PeriodPaymentsModal({ show, onHide, period }) {
   );
 
   return (
-    <Modal show={show} onHide={onHide} size="lg">
+    <Modal show={show} onHide={handleClose} size="lg">
       <Modal.Header closeButton>
         <Modal.Title>Pagos del período</Modal.Title>
       </Modal.Header>
@@ -63,14 +104,13 @@ export default function PeriodPaymentsModal({ show, onHide, period }) {
             {remaining > 0.009 && <> · Falta ${money(remaining)}</>}
           </p>
         )}
+        {error && <Alert variant="danger">{error}</Alert>}
         {loading ? (
           <div className="text-center py-4">
             <Spinner animation="border" />
           </div>
-        ) : error ? (
-          <Alert variant="danger">{error}</Alert>
         ) : payments.length === 0 ? (
-          <Alert variant="info">No hay pagos registrados para este período.</Alert>
+          !error && <Alert variant="info">No hay pagos registrados para este período.</Alert>
         ) : (
           <div className="table-responsive">
             <Table striped bordered size="sm" className="mb-0">
@@ -86,7 +126,53 @@ export default function PeriodPaymentsModal({ show, onHide, period }) {
               <tbody>
                 {payments.map((p) => (
                   <tr key={p.history_id || p.id}>
-                    <td>{formatISODate(p.date) || "—"}</td>
+                    <td style={{ minWidth: 150 }}>
+                      {editingId && editingId === p.history_id ? (
+                        <>
+                          <Form.Control
+                            type="date"
+                            size="sm"
+                            value={editDate}
+                            max={todayIso()}
+                            onChange={(e) => setEditDate(e.target.value)}
+                            disabled={saving}
+                          />
+                          <div className="d-flex gap-1 mt-1">
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={saveDate}
+                              disabled={saving || !editDate}
+                            >
+                              {saving ? "Guardando..." : "Guardar"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={() => setEditingId(null)}
+                              disabled={saving}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {formatISODate(p.date) || "—"}
+                          {p.history_id > 0 && (
+                            <Button
+                              size="sm"
+                              variant="link"
+                              className="p-0 ms-2 align-baseline"
+                              onClick={() => startEdit(p)}
+                              disabled={editingId !== null}
+                            >
+                              Cambiar
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </td>
                     <td className={Number(p.amount) < 0 ? "text-danger" : ""}>
                       ${money(p.amount)}
                     </td>
@@ -116,7 +202,7 @@ export default function PeriodPaymentsModal({ show, onHide, period }) {
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="secondary" onClick={onHide}>
+        <Button variant="secondary" onClick={handleClose}>
           Cerrar
         </Button>
       </Modal.Footer>

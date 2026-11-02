@@ -38,6 +38,14 @@ export async function registerCreditNote(periodId, data) {
   });
 }
 
+export async function updatePaymentDate(historyId, paymentDate) {
+  return await apiFetch(`/transactions/history/${historyId}/date`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payment_date: paymentDate }),
+  });
+}
+
 export async function remitToOwner(historyId) {
   return await apiFetch(`/transactions/history/${historyId}/remit`, {
     method: "POST",

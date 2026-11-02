@@ -348,6 +348,16 @@ def remit_to_owner(history_id: int, db: Session = Depends(get_db)):
     return service.mark_remitted(history_id)
 
 
+class PaymentDateUpdate(BaseModel):
+    payment_date: date
+
+
+@router.patch("/history/{history_id}/date", response_model=TransactionHistoryResponse)
+def update_payment_date(history_id: int, data: PaymentDateUpdate, db: Session = Depends(get_db)):
+    service = TransactionService(db)
+    return service.update_payment_date(history_id, data.payment_date)
+
+
 @router.get("/", response_model=PaginatedTransactionHistoryResponse)
 def get_transactions(
     page: int = Query(1, ge=1),
