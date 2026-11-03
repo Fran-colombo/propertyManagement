@@ -103,14 +103,14 @@ export function saleInstallmentConcept(sale, installment) {
   return `pago de cuota ${n}/${total}`;
 }
 
-/** Dates for a sale receipt: the cuota due date, not the sale or an old cobro. */
+/** Receipt is dated on the day it was paid; the "mes" line follows the cuota due date. */
 export function saleReceiptDates(sale, installment) {
   const due = installment?.due_date || null;
   const paid = installment?.paid_at || null;
   const sold = sale?.sale_date || null;
   return {
     periodDate: due || paid || sold,
-    issuedAt: due || paid || sold,
+    issuedAt: paid || due || sold,
   };
 }
 

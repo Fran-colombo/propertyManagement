@@ -21,13 +21,14 @@ def create_property(
 
 @router.get("/", response_model=List[PropertyResponse])
 def get_properties(
+    include_sold: bool = False,
     service: PropertyService = Depends(get_service),
     db: Session = Depends(get_db)
 ):
     from services.rental_contract_service import RentalContractService
     RentalContractService(db).release_properties_from_ended_contracts()
     
-    return service.get_properties()
+    return service.get_properties(include_sold=include_sold)
 
 @router.post("/{prop_id}/sell", response_model=PropertySaleResponse)
 def sell_property(

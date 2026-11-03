@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
 import { updatePeriodRent } from "../api/contract_period";
+import { formatISODate } from "../utils/paymentInfo";
 
 function money(n) {
   return Number(n || 0).toLocaleString("es-AR", {
@@ -54,9 +55,7 @@ export default function EditPeriodRentModal({
   };
 
   const label = period
-    ? `${new Date(period.start_date).toLocaleDateString("es-AR")} — ${new Date(
-        period.end_date
-      ).toLocaleDateString("es-AR")}`
+    ? `${formatISODate(period.start_date)} — ${formatISODate(period.end_date)}`
     : "";
 
   return (

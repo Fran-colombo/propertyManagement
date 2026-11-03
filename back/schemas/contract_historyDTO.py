@@ -20,13 +20,18 @@ class TenantMiniDTO(BaseModel):
 
 class AllContractResponse(BaseModel):
     id: int
+    kind: str = "alquiler"
     rental_contract_id: Optional[int] = None
+    sale_id: Optional[int] = None
+    sale_status: Optional[str] = None
+    currency: Optional[str] = None
+    total_amount: Optional[float] = None
     property_id: Optional[int] = None
-    tenant_id: int
+    tenant_id: Optional[int] = None
     tenant_name: Optional[str] = None
     start_date: date
-    end_date: date
-    cancelled: int
+    end_date: Optional[date] = None
+    cancelled: int = 0
     cancellation_reason: Optional[str] = None
     cancelled_by: Optional[str] = None
     settlement_amount: Optional[float] = None

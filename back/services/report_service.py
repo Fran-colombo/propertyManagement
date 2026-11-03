@@ -9,8 +9,16 @@ from models.contract_history import ContractHistory
 from models.contract_period import ContractPeriod
 from models.contract_termination import ContractTermination, SettlementDirectionEnum
 from models.property import Property
+from models.property_sale import PropertySale
 from schemas.enums.enums import PaymentStatusEnum
-from schemas.reportDTO import BilledLine, PropertyIncomeItem, PropertyIncomeReport, PropertyIncomeTotals
+from schemas.reportDTO import (
+    BilledLine,
+    PropertyIncomeItem,
+    PropertyIncomeReport,
+    PropertyIncomeTotals,
+    SaleLine,
+)
+from services.property_sale_service import _normalize_kind, _sale_payment_status
 from services.transaction_service import normalize_currency
 from utils.contract_display import iter_months
 
@@ -76,6 +84,60 @@ class ReportService:
         if contract.property_id in found:
             return contract.property_id
         return history_map.get(contract.id)
+
+    def _sale_income(self, found: dict, start_date: date, end_date: date):
+        """Installments due inside the range, billed/collected like rent periods."""
+        sales = (
+            self.db.query(PropertySale)
+            .options(joinedload(PropertySale.installments), joinedload(PropertySale.buyer))
+            .filter(PropertySale.property_id.in_(list(found.keys())))
+            .all()
+        )
+        billed = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
+        collected = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
+        lines = []
+        sold_on = {}
+        for sale in sales:
+            pid = sale.property_id
+            prop = found[pid]
+            if (prop.management_status or "") == "SOLD_OUT":
+                sold_on[pid] = sale.sale_date
+            currency_key = normalize_currency(sale.currency)
+            buyer = sale.buyer_name or (sale.buyer.name if sale.buyer else None)
+            installments = sorted(
+                sale.installments, key=lambda i: (i.due_date or date.max, i.id or 0)
+            )
+            cuotas = [i for i in installments if _normalize_kind(i.kind) != "adelanto"]
+            for inst in installments:
+                if not inst.due_date or not (start_date <= inst.due_date <= end_date):
+                    continue
+                amount = float(inst.amount or 0)
+                paid = float(inst.amount_paid or 0)
+                if _normalize_kind(inst.kind) == "adelanto":
+                    label = "Adelanto"
+                else:
+                    label = f"Cuota {cuotas.index(inst) + 1}/{len(cuotas)}"
+                billed[pid][currency_key] += amount
+                collected[pid][currency_key] += paid
+                lines.append(
+                    SaleLine(
+                        property_id=pid,
+                        direction=prop.direction,
+                        floor=prop.floor,
+                        apartment=prop.apartment,
+                        sale_id=sale.id,
+                        buyer_name=buyer,
+                        label=label,
+                        due_date=inst.due_date,
+                        paid_at=inst.paid_at if paid > 0 else None,
+                        currency=currency_key,
+                        amount=amount,
+                        amount_paid=paid,
+                        status=_sale_payment_status(amount, paid),
+                    )
+                )
+        lines.sort(key=lambda line: (line.property_id, line.due_date))
+        return billed, collected, lines, sold_on
 
     def property_income(
         self,
@@ -209,10 +271,15 @@ class ReportService:
                 )
             )
 
+        sale_billed, sale_collected, sale_lines, sold_on = self._sale_income(
+            found, start_date, end_date
+        )
+
         billed_lines = []
         for pid in ids:
             prop = found[pid]
             existing = period_lines[pid]
+            sale_date = sold_on.get(pid)
             for month_from, month_to in iter_months(start_date, end_date):
                 covers = [
                     line
@@ -233,6 +300,7 @@ class ReportService:
                         )
                     )
                 else:
+                    sold = sale_date is not None and month_to >= sale_date
                     billed_lines.append(
                         BilledLine(
                             property_id=pid,
@@ -246,8 +314,12 @@ class ReportService:
                             amount=0,
                             amount_paid=0,
                             payment_status=None,
-                            kind="vacant",
-                            note="No factura: no está ocupado",
+                            kind="sold" if sold else "vacant",
+                            note=(
+                                f"Vendida el {sale_date.strftime('%d/%m/%Y')}"
+                                if sold
+                                else "No factura: no está ocupado"
+                            ),
                         )
                     )
             billed_lines.extend(settlement_lines[pid])
@@ -260,22 +332,23 @@ class ReportService:
             billed_dolares = billed[pid]["DOLARES"]
             collected_pesos = collected[pid]["PESOS"]
             collected_dolares = collected[pid]["DOLARES"]
-            items.append(
-                PropertyIncomeItem(
-                    property_id=pid,
-                    direction=prop.direction,
-                    floor=prop.floor,
-                    apartment=prop.apartment,
-                    billed_pesos=billed_pesos,
-                    billed_dolares=billed_dolares,
-                    collected_pesos=collected_pesos,
-                    collected_dolares=collected_dolares,
-                )
+            item = PropertyIncomeItem(
+                property_id=pid,
+                direction=prop.direction,
+                floor=prop.floor,
+                apartment=prop.apartment,
+                billed_pesos=billed_pesos,
+                billed_dolares=billed_dolares,
+                collected_pesos=collected_pesos,
+                collected_dolares=collected_dolares,
+                sale_billed_pesos=sale_billed[pid]["PESOS"],
+                sale_billed_dolares=sale_billed[pid]["DOLARES"],
+                sale_collected_pesos=sale_collected[pid]["PESOS"],
+                sale_collected_dolares=sale_collected[pid]["DOLARES"],
             )
-            totals.billed_pesos += billed_pesos
-            totals.billed_dolares += billed_dolares
-            totals.collected_pesos += collected_pesos
-            totals.collected_dolares += collected_dolares
+            items.append(item)
+            for field in PropertyIncomeTotals.model_fields:
+                setattr(totals, field, getattr(totals, field) + getattr(item, field))
 
         return PropertyIncomeReport(
             start_date=start_date,
@@ -283,4 +356,5 @@ class ReportService:
             items=items,
             totals=totals,
             billed_lines=billed_lines,
+            sale_lines=sale_lines,
         )

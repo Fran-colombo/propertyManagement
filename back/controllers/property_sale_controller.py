@@ -1,8 +1,11 @@
+import os
+import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from controllers.rental_contract_controller import ALLOWED_CONTRACT_TYPES, CONTRACT_UPLOAD_DIR
 from database import get_db
 from schemas.saleDTO import (
     CollectSalePaymentDTO,
@@ -61,6 +64,29 @@ def sales_summary(service: PropertySaleService = Depends(get_service)):
 @router.get("/{sale_id}", response_model=PropertySaleResponse)
 def get_sale(sale_id: int, service: PropertySaleService = Depends(get_service)):
     return service.get_sale(sale_id)
+
+
+@router.post("/{sale_id}/document", response_model=PropertySaleResponse)
+async def upload_sale_document(
+    sale_id: int,
+    document: UploadFile = File(...),
+    service: PropertySaleService = Depends(get_service),
+):
+    service.get_sale(sale_id)
+    content_type = document.content_type or ""
+    if content_type not in ALLOWED_CONTRACT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Archivo inválido. Usá PDF o imagen (jpg/png/webp).",
+        )
+    ext = os.path.splitext(document.filename or "")[1].lower() or ".bin"
+    stored_name = f"sale_{sale_id}_{uuid.uuid4().hex}{ext}"
+    data = await document.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="El archivo está vacío")
+    with open(os.path.join(CONTRACT_UPLOAD_DIR, stored_name), "wb") as f:
+        f.write(data)
+    return service.attach_document(sale_id, f"/uploads/contracts/{stored_name}")
 
 
 @router.patch(

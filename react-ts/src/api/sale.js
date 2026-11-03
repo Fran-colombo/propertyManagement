@@ -44,6 +44,15 @@ export async function collectSaleInstallment(saleId, installmentId, data) {
   });
 }
 
+export async function uploadSaleDocument(saleId, file) {
+  const form = new FormData();
+  form.append("document", file);
+  return await apiFetch(`/sales/${saleId}/document`, {
+    method: "POST",
+    body: form,
+  });
+}
+
 export async function updateSaleInstallment(saleId, installmentId, data) {
   return await apiFetch(`/sales/${saleId}/installments/${installmentId}`, {
     method: "PATCH",

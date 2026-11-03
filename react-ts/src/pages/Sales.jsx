@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -14,7 +15,8 @@ import {
   Table,
 } from "react-bootstrap";
 import { Calendar, Pencil, Search } from "react-bootstrap-icons";
-import { collectSaleInstallment, getSales, updateSaleInstallment } from "../api/sale";
+import { collectSaleInstallment, getSales, updateSaleInstallment, uploadSaleDocument } from "../api/sale";
+import { mediaUrl } from "../utils/mediaUrl";
 import { updateProperty } from "../api/property";
 import FeedbackModal from "../components/FeedbackModal";
 import {
@@ -127,12 +129,17 @@ export default function Sales() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchParams] = useSearchParams();
+  const initialQuery = (searchParams.get("q") || "").trim();
+  const [searchTerm, setSearchTerm] = useState(initialQuery);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialQuery);
+  const [uploadingSaleId, setUploadingSaleId] = useState(null);
+  const docInput = useRef(null);
+  const docTarget = useRef(null);
   const [dateFilter, setDateFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [managingFilter, setManagingFilter] = useState("");
-  const [collectFilter, setCollectFilter] = useState("pending");
+  const [collectFilter, setCollectFilter] = useState(initialQuery ? "" : "pending");
   const [pendingSales, setPendingSales] = useState(0);
   const [pendingInstallments, setPendingInstallments] = useState(0);
   const [overdueInstallments, setOverdueInstallments] = useState(0);
@@ -207,6 +214,31 @@ export default function Sales() {
   useEffect(() => {
     load();
   }, [page, debouncedSearch, dateFilter, statusFilter, managingFilter, collectFilter]);
+
+  const pickDocument = (sale) => {
+    docTarget.current = sale;
+    if (docInput.current) {
+      docInput.current.value = "";
+      docInput.current.click();
+    }
+  };
+
+  const handleDocument = async (e) => {
+    const file = e.target.files?.[0];
+    const sale = docTarget.current;
+    if (!file || !sale) return;
+    setUploadingSaleId(sale.id);
+    setError("");
+    try {
+      await uploadSaleDocument(sale.id, file);
+      await load();
+    } catch (err) {
+      setError(err.message || "No se pudo adjuntar el contrato de venta.");
+    } finally {
+      setUploadingSaleId(null);
+      docTarget.current = null;
+    }
+  };
 
   const openPay = (sale, inst) => {
     setPayTarget({ sale, inst });
@@ -394,6 +426,13 @@ export default function Sales() {
 
   return (
     <div>
+      <input
+        ref={docInput}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        className="d-none"
+        onChange={handleDocument}
+      />
       <h2 className="h4">Ventas</h2>
       <p className="text-muted small">
         Lo primero que ves son las ventas con cuotas por cobrar. El detalle de cuotas sigue en el modal.
@@ -586,7 +625,7 @@ export default function Sales() {
                   const overdue = isOverdue(nextInst);
                   return (
                   <tr key={sale.id}>
-                    <td>{new Date(sale.sale_date).toLocaleDateString("es-AR")}</td>
+                    <td>{formatDueDay(sale.sale_date)}</td>
                     <td>{sale.property_direction}</td>
                     <td>{sale.buyer_name || "—"}</td>
                     <td>{isDollars(sale.currency) ? "Dólares" : "Pesos"}</td>
@@ -620,7 +659,7 @@ export default function Sales() {
                             {kindBadge(nextInst)}
                           </div>
                           <div className="small text-muted">
-                            Vence {new Date(nextInst.due_date).toLocaleDateString("es-AR")}
+                            Vence {formatDueDay(nextInst.due_date)}
                             {overdue && (
                               <>
                                 {" "}
@@ -640,16 +679,42 @@ export default function Sales() {
                       ) : (
                         <div className="small text-muted mb-1">{installmentSummary(sale)}</div>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline-primary"
-                        onClick={() => {
-                          setCuotasSale(sale);
-                          setPayTarget(null);
-                        }}
-                      >
-                        Ver cuotas
-                      </Button>
+                      <div className="d-flex flex-wrap gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline-primary"
+                          onClick={() => {
+                            setCuotasSale(sale);
+                            setPayTarget(null);
+                          }}
+                        >
+                          Ver cuotas
+                        </Button>
+                        {sale.document_path && (
+                          <Button
+                            size="sm"
+                            variant="outline-secondary"
+                            as="a"
+                            href={mediaUrl(sale.document_path)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Ver contrato
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline-secondary"
+                          disabled={uploadingSaleId === sale.id}
+                          onClick={() => pickDocument(sale)}
+                        >
+                          {uploadingSaleId === sale.id
+                            ? "Subiendo..."
+                            : sale.document_path
+                            ? "Reemplazar contrato"
+                            : "Adjuntar contrato"}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                   );
@@ -803,7 +868,14 @@ export default function Sales() {
                           )}
                         </td>
                         <td>{money(inst.amount, cuotasSale.currency)}</td>
-                        <td>{money(inst.amount_paid, cuotasSale.currency)}</td>
+                        <td>
+                          {money(inst.amount_paid, cuotasSale.currency)}
+                          {inst.paid_at && Number(inst.amount_paid) > 0 && (
+                            <small className="text-muted d-block">
+                              Pagado el {formatDueDay(inst.paid_at)}
+                            </small>
+                          )}
+                        </td>
                         <td>{pending ? money(inst.remaining, cuotasSale.currency) : "—"}</td>
                         <td>
                           {!pending ? (

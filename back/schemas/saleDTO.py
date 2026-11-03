@@ -72,6 +72,7 @@ class PropertySaleResponse(BaseModel):
     keep_managing: bool
     status: str
     notes: Optional[str] = None
+    document_path: Optional[str] = None
     installments: List[SaleInstallmentResponse] = []
 
 

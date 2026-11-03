@@ -21,7 +21,8 @@ function money(amount, currency) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function yearStartIso() {
@@ -32,10 +33,83 @@ function csvDate(value) {
   return formatEsDate(value);
 }
 
+function noBilling(line) {
+  return line.kind === "vacant" || line.kind === "sold";
+}
+
 function lineStatus(line) {
   if (line.kind === "vacant") return "No factura: no está ocupado";
+  if (line.kind === "sold") return line.note || "Vendida";
   if (line.kind === "settlement") return line.note || "Acuerdo de baja";
   return line.payment_status || "—";
+}
+
+const SALE_STATUS_LABELS = {
+  PAGADA: "Pagada",
+  PARCIAL: "Parcial",
+  PENDIENTE: "Pendiente",
+};
+
+function saleStatusLabel(status) {
+  return SALE_STATUS_LABELS[String(status || "").toUpperCase()] || status || "—";
+}
+
+function hasSales(report) {
+  const t = report?.totals || {};
+  return (
+    (report?.sale_lines || []).length > 0 ||
+    [t.sale_billed_pesos, t.sale_billed_dolares, t.sale_collected_pesos, t.sale_collected_dolares].some(
+      (v) => Number(v) !== 0
+    )
+  );
+}
+
+function saleItems(report) {
+  return (report?.items || []).filter((item) =>
+    [item.sale_billed_pesos, item.sale_billed_dolares, item.sale_collected_pesos, item.sale_collected_dolares].some(
+      (v) => Number(v) !== 0
+    )
+  );
+}
+
+function saleSections(report) {
+  if (!hasSales(report)) return [];
+  return [
+    {
+      heading: "Ventas",
+      headers: ["Propiedad", "Facturado $", "Facturado USD", "Cobrado $", "Cobrado USD"],
+      rows: saleItems(report).map((item) => [
+        propertyLabel(item),
+        money(item.sale_billed_pesos, "PESOS"),
+        money(item.sale_billed_dolares, "DOLARES"),
+        money(item.sale_collected_pesos, "PESOS"),
+        money(item.sale_collected_dolares, "DOLARES"),
+      ]),
+      footer: [
+        "Total ventas",
+        money(report.totals?.sale_billed_pesos, "PESOS"),
+        money(report.totals?.sale_billed_dolares, "DOLARES"),
+        money(report.totals?.sale_collected_pesos, "PESOS"),
+        money(report.totals?.sale_collected_dolares, "DOLARES"),
+      ],
+      emptyText: "No hay cuotas de venta en este rango.",
+    },
+    {
+      heading: "Detalle de cuotas de venta",
+      headers: ["Propiedad", "Comprador", "Cuota", "Vencimiento", "Monto", "Pagado", "Fecha de pago", "Estado"],
+      rows: (report.sale_lines || []).map((line) => [
+        propertyLabel(line),
+        line.buyer_name || "—",
+        line.label,
+        csvDate(line.due_date),
+        money(line.amount, line.currency),
+        money(line.amount_paid, line.currency),
+        line.paid_at ? csvDate(line.paid_at) : "—",
+        saleStatusLabel(line.status),
+      ]),
+      emptyText: "No hay cuotas de venta en este rango.",
+    },
+  ];
 }
 
 function exportReportTable(report) {
@@ -77,7 +151,7 @@ function exportReportTable(report) {
           "Nota",
         ],
         rows: (report.billed_lines || []).map((line) => {
-          const vacant = line.kind === "vacant";
+          const vacant = noBilling(line);
           return {
             className: vacant ? "vacant" : undefined,
             cells: [
@@ -88,12 +162,13 @@ function exportReportTable(report) {
               lineStatus(line),
               vacant ? "—" : money(line.amount, line.currency),
               vacant ? "—" : money(line.amount_paid, line.currency),
-              vacant ? "No factura: no está ocupado" : line.note || "—",
+              vacant ? lineStatus(line) : line.note || "—",
             ],
           };
         }),
         emptyText: "No hay períodos en este rango.",
       },
+      ...saleSections(report),
     ],
   });
 }
@@ -109,7 +184,7 @@ export default function IncomeReport() {
   const [report, setReport] = useState(null);
 
   useEffect(() => {
-    getProperties()
+    getProperties({ includeSold: true })
       .then((list) => setProperties(list || []))
       .catch(() => {
         setProperties([]);
@@ -122,7 +197,10 @@ export default function IncomeReport() {
     () =>
       properties.map((p) => ({
         value: p.id,
-        label: propertyLabel(p),
+        label:
+          p.management_status === "SOLD_OUT"
+            ? `${propertyLabel(p)} (vendida)`
+            : propertyLabel(p),
         search: `${p.direction} ${p.floor || ""} ${p.apartment || ""} ${p.owner?.name || ""}`,
       })),
     [properties]
@@ -169,6 +247,8 @@ export default function IncomeReport() {
         más el acuerdo de baja si el inquilino paga al dueño. Cobrado es lo pagado
         de esos mismos períodos (incluye cargas iniciales) y el acuerdo de baja.
         Los meses sin ocupación aparecen como «No factura: no está ocupado».
+        Las ventas van aparte: facturado son las cuotas que vencen en el rango y
+        cobrado lo pagado de esas cuotas.
       </p>
 
       {error && (
@@ -301,7 +381,7 @@ export default function IncomeReport() {
             </thead>
             <tbody>
               {(report.billed_lines || []).map((line, idx) => {
-                const vacant = line.kind === "vacant";
+                const vacant = noBilling(line);
                 return (
                   <tr key={`${line.property_id}-${line.kind}-${line.period_start}-${idx}`}>
                     <td>{propertyLabel(line)}</td>
@@ -310,7 +390,7 @@ export default function IncomeReport() {
                     <td>{csvDate(line.period_end)}</td>
                     <td>
                       {vacant ? (
-                        <span className="text-muted">No factura: no está ocupado</span>
+                        <span className="text-muted">{lineStatus(line)}</span>
                       ) : (
                         lineStatus(line)
                       )}
@@ -319,7 +399,7 @@ export default function IncomeReport() {
                     <td>{vacant ? "—" : money(line.amount_paid, line.currency)}</td>
                     <td>
                       <small className="text-muted">
-                        {vacant ? "No factura: no está ocupado" : line.note || "—"}
+                        {vacant ? lineStatus(line) : line.note || "—"}
                       </small>
                     </td>
                   </tr>
@@ -328,6 +408,75 @@ export default function IncomeReport() {
             </tbody>
           </Table>
         </div>
+        {hasSales(report) && (
+          <>
+            <h3 className="h5 mt-4">Ventas</h3>
+            <div className="table-responsive">
+              <Table striped bordered hover>
+                <thead>
+                  <tr>
+                    <th>Propiedad</th>
+                    <th>Facturado $</th>
+                    <th>Facturado USD</th>
+                    <th>Cobrado $</th>
+                    <th>Cobrado USD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {saleItems(report).map((item) => (
+                    <tr key={item.property_id}>
+                      <td>{propertyLabel(item)}</td>
+                      <td>{money(item.sale_billed_pesos, "PESOS")}</td>
+                      <td>{money(item.sale_billed_dolares, "DOLARES")}</td>
+                      <td>{money(item.sale_collected_pesos, "PESOS")}</td>
+                      <td>{money(item.sale_collected_dolares, "DOLARES")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="fw-bold">
+                    <td>Total ventas</td>
+                    <td>{money(report.totals.sale_billed_pesos, "PESOS")}</td>
+                    <td>{money(report.totals.sale_billed_dolares, "DOLARES")}</td>
+                    <td>{money(report.totals.sale_collected_pesos, "PESOS")}</td>
+                    <td>{money(report.totals.sale_collected_dolares, "DOLARES")}</td>
+                  </tr>
+                </tfoot>
+              </Table>
+            </div>
+            <h3 className="h5 mt-4">Detalle de cuotas de venta</h3>
+            <div className="table-responsive">
+              <Table striped bordered hover>
+                <thead>
+                  <tr>
+                    <th>Propiedad</th>
+                    <th>Comprador</th>
+                    <th>Cuota</th>
+                    <th>Vencimiento</th>
+                    <th>Monto</th>
+                    <th>Pagado</th>
+                    <th>Fecha de pago</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(report.sale_lines || []).map((line, idx) => (
+                    <tr key={`${line.sale_id}-${line.due_date}-${idx}`}>
+                      <td>{propertyLabel(line)}</td>
+                      <td>{line.buyer_name || "—"}</td>
+                      <td>{line.label}</td>
+                      <td>{csvDate(line.due_date)}</td>
+                      <td>{money(line.amount, line.currency)}</td>
+                      <td>{money(line.amount_paid, line.currency)}</td>
+                      <td>{line.paid_at ? csvDate(line.paid_at) : "—"}</td>
+                      <td>{saleStatusLabel(line.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          </>
+        )}
         </div>
       )}
     </div>

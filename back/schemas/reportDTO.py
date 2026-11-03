@@ -12,6 +12,26 @@ class PropertyIncomeItem(BaseModel):
     billed_dolares: float = 0
     collected_pesos: float = 0
     collected_dolares: float = 0
+    sale_billed_pesos: float = 0
+    sale_billed_dolares: float = 0
+    sale_collected_pesos: float = 0
+    sale_collected_dolares: float = 0
+
+
+class SaleLine(BaseModel):
+    property_id: int
+    direction: str
+    floor: Optional[str] = None
+    apartment: Optional[str] = None
+    sale_id: int
+    buyer_name: Optional[str] = None
+    label: str
+    due_date: date
+    paid_at: Optional[date] = None
+    currency: str
+    amount: float = 0
+    amount_paid: float = 0
+    status: str = "PENDIENTE"
 
 
 class BilledLine(BaseModel):
@@ -35,6 +55,10 @@ class PropertyIncomeTotals(BaseModel):
     billed_dolares: float = 0
     collected_pesos: float = 0
     collected_dolares: float = 0
+    sale_billed_pesos: float = 0
+    sale_billed_dolares: float = 0
+    sale_collected_pesos: float = 0
+    sale_collected_dolares: float = 0
 
 
 class PropertyIncomeReport(BaseModel):
@@ -43,3 +67,4 @@ class PropertyIncomeReport(BaseModel):
     items: List[PropertyIncomeItem]
     totals: PropertyIncomeTotals
     billed_lines: List[BilledLine] = []
+    sale_lines: List[SaleLine] = []

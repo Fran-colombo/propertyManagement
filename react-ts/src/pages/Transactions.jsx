@@ -4,6 +4,7 @@ import { Calendar, Cash, Search, Funnel, CreditCard, FileText } from "react-boot
 import { getAllTransactions, registerCreditNote, remitToOwner } from "../api/transaction";
 import CreditNoteModal from "../components/CreditNoteModal";
 import FeedbackModal from "../components/FeedbackModal";
+import { formatISODate } from "../utils/paymentInfo";
 
 const PAGE_SIZE = 20;
 
@@ -398,7 +399,7 @@ const Transactions = () => {
                     const isSale = String(transaction.method || "").toLowerCase() === "venta";
                     return (
                       <tr key={transaction.id}>
-                        <td>{new Date(transaction.date).toLocaleDateString("es-AR")}</td>
+                        <td>{formatISODate(transaction.date)}</td>
                         <td>{transaction.contract?.property_direction}</td>
                         <td>{transaction.contract?.owner?.name || "N/A"}</td>
                         <td>{transaction.contract?.tenant?.name || "N/A"}</td>
@@ -420,7 +421,7 @@ const Transactions = () => {
                             <Badge bg="success">
                               Rendido
                               {transaction.remitted_at
-                                ? ` ${new Date(transaction.remitted_at).toLocaleDateString("es-AR")}`
+                                ? ` ${formatISODate(transaction.remitted_at)}`
                                 : ""}
                             </Badge>
                           )}

@@ -11,7 +11,7 @@ import EditContractModal from "../components/EditContractModal";
 import TgiDebtPlanChoice from "../components/TgiDebtPlanChoice";
 import PeriodPaymentsModal from "../components/PeriodPaymentsModal";
 import { mediaUrl } from "../utils/mediaUrl";
-import { paymentSummary } from "../utils/paymentInfo";
+import { formatISODate, paymentSummary } from "../utils/paymentInfo";
 
 function normalizeText(value) {
   return String(value || "")
@@ -410,8 +410,8 @@ const ContractsTable = () => {
                     )}
                     <div className="small mb-1">
                       <strong>Período:</strong>{" "}
-                      {new Date(period.start_date).toLocaleDateString()} -{" "}
-                      {new Date(period.end_date).toLocaleDateString()}
+                      {formatISODate(period.start_date)} -{" "}
+                      {formatISODate(period.end_date)}
                       {period.is_prorated && (
                         <span className="badge bg-info text-dark ms-2">Proporcional</span>
                       )}
@@ -516,8 +516,8 @@ const ContractsTable = () => {
                     <td>{period.contract?.real_agency?.name || "-"}</td>
                   )}
                   <td>
-                    {new Date(period.start_date).toLocaleDateString()} -{" "}
-                    {new Date(period.end_date).toLocaleDateString()}
+                    {formatISODate(period.start_date)} -{" "}
+                    {formatISODate(period.end_date)}
                     {period.is_prorated && (
                       <div>
                         <span className="badge bg-info text-dark">Proporcional</span>

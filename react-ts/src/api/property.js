@@ -1,7 +1,7 @@
 import { apiFetch } from "./clients";
 
-export async function getProperties() {
-  return await apiFetch("/properties/");
+export async function getProperties({ includeSold = false } = {}) {
+  return await apiFetch(includeSold ? "/properties/?include_sold=true" : "/properties/");
 }
 
 export async function createProperty(propertyData) {

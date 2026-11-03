@@ -86,6 +86,7 @@ class PropertySaleService:
             keep_managing=bool(sale.keep_managing),
             status=sale.status,
             notes=sale.notes,
+            document_path=getattr(sale, "document_path", None),
             installments=[
                 SaleInstallmentResponse(
                     id=inst.id,
@@ -118,6 +119,12 @@ class PropertySaleService:
         if not sale:
             raise HTTPException(status_code=404, detail="Venta no encontrada")
         return sale
+
+    def attach_document(self, sale_id: int, document_path: str) -> PropertySaleResponse:
+        sale = self._load_sale(sale_id)
+        sale.document_path = document_path
+        self.db.commit()
+        return self._to_response(self._load_sale(sale_id))
 
     def _sale_paid_total(self, sale_id: int) -> float:
         self.db.flush()

@@ -2,7 +2,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import extract, or_
 from models.contract_history import ContractHistory
 from models.property import Property
-from models.person import Tenant
+from models.property_sale import PropertySale
+from models.person import Owner, Tenant
 
 
 class AllContractRepository:
@@ -51,28 +52,39 @@ class AllContractRepository:
             .all()
         )
 
-    def get_paginated(self, *, page: int, page_size: int, property_id=None, month=None, tenant=None):
-        count_query = self._apply_filters(
-            self.db.query(ContractHistory),
-            property_id=property_id,
-            month=month,
-            tenant=tenant,
-        )
-        total = count_query.order_by(None).count()
-
-        items_query = self._apply_filters(
-            self.db.query(ContractHistory).options(*self._options()),
-            property_id=property_id,
-            month=month,
-            tenant=tenant,
-        )
-        items = (
-            items_query.order_by(ContractHistory.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+    def get_filtered(self, *, property_id=None, month=None, tenant=None):
+        return (
+            self._apply_filters(
+                self.db.query(ContractHistory).options(*self._options()),
+                property_id=property_id,
+                month=month,
+                tenant=tenant,
+            )
+            .order_by(ContractHistory.id.desc())
             .all()
         )
-        return items, total
+
+    def get_sales(self, *, property_id=None, month=None, tenant=None):
+        query = self.db.query(PropertySale).options(
+            joinedload(PropertySale.property),
+            joinedload(PropertySale.seller),
+            joinedload(PropertySale.buyer),
+            joinedload(PropertySale.installments),
+        )
+        if property_id:
+            query = query.filter(PropertySale.property_id == property_id)
+        if month:
+            year_s, month_s = month.split("-", 1)
+            query = query.filter(
+                extract("year", PropertySale.sale_date) == int(year_s),
+                extract("month", PropertySale.sale_date) == int(month_s),
+            )
+        if tenant:
+            term = f"%{tenant.strip()}%"
+            query = query.outerjoin(Owner, PropertySale.buyer_owner_id == Owner.id).filter(
+                or_(PropertySale.buyer_name.ilike(term), Owner.name.ilike(term))
+            )
+        return query.all()
 
     def save(self, contract: ContractHistory):
         self.db.add(contract)

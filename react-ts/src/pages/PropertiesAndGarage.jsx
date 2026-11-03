@@ -12,7 +12,7 @@ import SellPropertyModal from "../components/SellPropertyModal";
 import FeedbackModal from "../components/FeedbackModal";
 import PeriodPaymentsModal from "../components/PeriodPaymentsModal";
 import { mediaUrl } from "../utils/mediaUrl";
-import { paymentSummary } from "../utils/paymentInfo";
+import { formatISODate, paymentSummary } from "../utils/paymentInfo";
 import {
   openCashReceiptPrint,
   saleInstallmentConcept,
@@ -60,7 +60,7 @@ function ViewModeToggle({ value, onChange }) {
 }
 
 function formatDate(value) {
-  return value ? new Date(value).toLocaleDateString() : "—";
+  return formatISODate(value) || "—";
 }
 
 function matchesOccupancy(isRented, filter) {
@@ -172,10 +172,11 @@ const PropertiesAndGarages = () => {
 
   const findCurrentPeriod = (periods) => {
     if (!periods) return null;
-    const today = new Date();
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     return periods.find(period => {
-      const startDate = new Date(period.start_date);
-      const endDate = new Date(period.end_date);
+      const startDate = String(period.start_date || "").slice(0, 10);
+      const endDate = String(period.end_date || "").slice(0, 10);
       return startDate <= today && today <= endDate;
     });
   };
@@ -446,7 +447,7 @@ const PropertiesAndGarages = () => {
               Contrato hasta:{" "}
               <strong>
                 {prop.rental_contract.end_date
-                  ? new Date(prop.rental_contract.end_date).toLocaleDateString()
+                  ? formatDate(prop.rental_contract.end_date)
                   : "Sin fecha"}
               </strong>
             </p>
@@ -467,8 +468,8 @@ const PropertiesAndGarages = () => {
                   </Badge>
                 </p>
                 <p>
-                  Del {new Date(prop.currentPeriod.start_date).toLocaleDateString()} al{" "}
-                  {new Date(prop.currentPeriod.end_date).toLocaleDateString()}
+                  Del {formatDate(prop.currentPeriod.start_date)} al{" "}
+                  {formatDate(prop.currentPeriod.end_date)}
                   {prop.currentPeriod.is_prorated && (
                     <>
                       {" "}
@@ -963,8 +964,8 @@ const PropertiesAndGarages = () => {
                         className={period.id === selectedPayment.currentPeriodId ? 'table-primary' : ''}
                       >
                         <td>
-                          {new Date(period.start_date).toLocaleDateString()} - {' '}
-                          {new Date(period.end_date).toLocaleDateString()}
+                          {formatDate(period.start_date)} - {' '}
+                          {formatDate(period.end_date)}
                           {period.is_prorated && (
                             <div>
                               <Badge bg="info" text="dark">Proporcional</Badge>

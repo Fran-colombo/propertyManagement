@@ -26,9 +26,9 @@ class PropertyService:
                 detail=f"Error al crear propiedad: {str(e)}"
             )
 
-    def get_properties(self) -> List[PropertyResponse]:
+    def get_properties(self, include_sold: bool = False) -> List[PropertyResponse]:
         try:
-            properties = self.repo.get_properties()
+            properties = self.repo.get_properties(include_sold=include_sold)
             return [self._map_to_response(prop) for prop in properties]
         except Exception as e:
             raise HTTPException(

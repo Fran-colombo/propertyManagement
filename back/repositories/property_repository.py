@@ -39,14 +39,15 @@ class PropertyRepository:
             self.db.rollback()
             raise ValueError(f"Error al crear propiedad: {str(e)}")
 
-    def get_properties(self) -> List[Property]:
+    def get_properties(self, include_sold: bool = False) -> List[Property]:
+        statuses = ("ACTIVE", "DELIVERED", "SOLD_OUT") if include_sold else ("ACTIVE", "DELIVERED")
         return (
             self.db.query(Property)
             .filter(Property.status == 1)
             .filter(
                 or_(
                     Property.management_status.is_(None),
-                    Property.management_status.in_(("ACTIVE", "DELIVERED")),
+                    Property.management_status.in_(statuses),
                 )
             )
             .options(

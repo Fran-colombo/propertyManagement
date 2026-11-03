@@ -17,6 +17,7 @@ class PropertySale(Base):
     keep_managing = Column(Boolean, default=True)
     status = Column(String, default="PENDIENTE")
     notes = Column(String, nullable=True)
+    document_path = Column(String, nullable=True)
 
     property = relationship("Property", back_populates="sales")
     seller = relationship("Owner", foreign_keys=[seller_owner_id])

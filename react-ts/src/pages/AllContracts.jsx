@@ -1,20 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getContractHistory } from "../api/contract";
 import { getPeriodsByContract } from "../api/contract_period";
 import { getProperties } from "../api/property";
+import { uploadSaleDocument } from "../api/sale";
+import { formatMoney } from "../utils/exportTable";
 import { Table, Button, Modal, Badge, Alert, Pagination, Form, Row, Col } from "react-bootstrap";
 import CancelContractModal from "../components/CancelContractModal";
 import EditContractModal from "../components/EditContractModal";
 import EditPeriodRentModal from "../components/EditPeriodRentModal";
 import { mediaUrl } from "../utils/mediaUrl";
+import { formatISODate } from "../utils/paymentInfo";
 
 const PAGE_SIZE = 20;
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function propertyLabel(p) {
   const parts = [p.direction];
   if (p.floor) parts.push(`Piso ${p.floor}`);
   if (p.apartment) parts.push(`Depto ${p.apartment}`);
   return parts.join(" · ");
+}
+
+function isSale(contract) {
+  return contract?.kind === "venta";
+}
+
+function saleStatusBadge(status) {
+  const value = String(status || "").toUpperCase();
+  if (value === "PAGADA") return <Badge bg="success">Pagada</Badge>;
+  if (value === "PARCIAL") return <Badge bg="warning" text="dark">Parcial</Badge>;
+  return <Badge bg="secondary">Pendiente</Badge>;
 }
 
 function historyPropertyLabel(contract) {
@@ -46,9 +66,38 @@ const AllContracts = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(0);
+  const [uploadingSaleId, setUploadingSaleId] = useState(null);
+  const saleFileInput = useRef(null);
+  const saleUploadTarget = useRef(null);
+  const navigate = useNavigate();
 
   const resolveContractId = (contract) =>
     contract.rental_contract_id || contract.id;
+
+  const pickSaleDocument = (contract) => {
+    saleUploadTarget.current = contract;
+    if (saleFileInput.current) {
+      saleFileInput.current.value = "";
+      saleFileInput.current.click();
+    }
+  };
+
+  const handleSaleDocument = async (e) => {
+    const file = e.target.files?.[0];
+    const target = saleUploadTarget.current;
+    if (!file || !target?.sale_id) return;
+    setUploadingSaleId(target.sale_id);
+    setError("");
+    try {
+      await uploadSaleDocument(target.sale_id, file);
+      await loadContracts();
+    } catch (err) {
+      setError(err.message || "No se pudo adjuntar el contrato de venta.");
+    } finally {
+      setUploadingSaleId(null);
+      saleUploadTarget.current = null;
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -110,7 +159,7 @@ const AllContracts = () => {
   };
 
   useEffect(() => {
-    getProperties()
+    getProperties({ includeSold: true })
       .then((list) => setProperties(list || []))
       .catch(() => setProperties([]));
   }, []);
@@ -136,13 +185,20 @@ const AllContracts = () => {
     <div>
       <h2 className="h4">Historial de contratos</h2>
       <p className="text-muted small">
-        Se listan todos, del más reciente al más viejo. El mes y la propiedad son filtros opcionales.
+        Se listan todos, de alquiler y de venta, del más reciente al más viejo. El mes y la propiedad son filtros opcionales.
       </p>
+      <input
+        ref={saleFileInput}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        className="d-none"
+        onChange={handleSaleDocument}
+      />
       <Row className="g-3 mb-3">
         <Col xs={12} md={4}>
           <Form.Control
             type="text"
-            placeholder="Buscar por inquilino..."
+            placeholder="Buscar por inquilino o comprador..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -156,6 +212,7 @@ const AllContracts = () => {
             {properties.map((p) => (
               <option key={p.id} value={p.id}>
                 {propertyLabel(p)}
+                {p.management_status === "SOLD_OUT" ? " (vendida)" : ""}
               </option>
             ))}
           </Form.Select>
@@ -198,7 +255,7 @@ const AllContracts = () => {
               <tr>
                 <th>Propiedad</th>
                 <th>Dueño</th>
-                <th>Inquilino</th>
+                <th>Inquilino / Comprador</th>
                 <th>Fecha Inicio</th>
                 <th>Fecha Fin</th>
                 <th>Contrato</th>
@@ -207,8 +264,73 @@ const AllContracts = () => {
               </tr>
             </thead>
             <tbody>
-              {contracts.map((contract) => (
-                <tr key={contract.id}>
+              {contracts.map((contract) => isSale(contract) ? (
+                <tr key={`venta-${contract.id}`}>
+                  <td>
+                    {historyPropertyLabel(contract)}{" "}
+                    <Badge bg="primary">Venta</Badge>
+                  </td>
+                  <td>{contract.owner_name || "Sin dueño"}</td>
+                  <td>{contract.tenant?.name || contract.tenant_name || "Sin comprador"}</td>
+                  <td>{formatISODate(contract.start_date) || "—"}</td>
+                  <td>
+                    {formatISODate(contract.end_date) || "—"}
+                    {contract.end_date && (
+                      <small className="text-muted d-block">Última cuota</small>
+                    )}
+                  </td>
+                  <td>
+                    {contract.document_path ? (
+                      <Button
+                        variant="outline-primary"
+                        size="sm"
+                        as="a"
+                        href={mediaUrl(contract.document_path)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Ver contrato
+                      </Button>
+                    ) : (
+                      <span className="text-muted">Sin archivo</span>
+                    )}
+                  </td>
+                  <td>
+                    {saleStatusBadge(contract.sale_status)}
+                    {contract.total_amount != null && (
+                      <small className="d-block">
+                        Total {formatMoney(contract.total_amount, contract.currency)}
+                      </small>
+                    )}
+                  </td>
+                  <td className="d-flex flex-wrap gap-2">
+                    <Button
+                      variant="info"
+                      size="sm"
+                      onClick={() =>
+                        navigate(
+                          `/sales?q=${encodeURIComponent(contract.tenant_name || contract.tenant?.name || "")}`
+                        )
+                      }
+                    >
+                      Ver cuotas
+                    </Button>
+                    <Button
+                      variant="outline-secondary"
+                      size="sm"
+                      disabled={uploadingSaleId === contract.sale_id}
+                      onClick={() => pickSaleDocument(contract)}
+                    >
+                      {uploadingSaleId === contract.sale_id
+                        ? "Subiendo..."
+                        : contract.document_path
+                        ? "Reemplazar contrato"
+                        : "Adjuntar contrato"}
+                    </Button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={`alquiler-${contract.id}`}>
                   <td>
                     {historyPropertyLabel(contract)}
                   </td>
@@ -218,8 +340,8 @@ const AllContracts = () => {
                       "Sin dueño"}
                   </td>
                   <td>{contract.tenant?.name || contract.tenant_name || "Sin inquilino"}</td>
-                  <td>{new Date(contract.start_date).toLocaleDateString()}</td>
-                  <td>{new Date(contract.end_date).toLocaleDateString()}</td>
+                  <td>{formatISODate(contract.start_date) || "—"}</td>
+                  <td>{formatISODate(contract.end_date) || "—"}</td>
                   <td>
                     {contract.document_path ? (
                       <Button
@@ -240,7 +362,7 @@ const AllContracts = () => {
                     {contract.cancelled ? (
                       <div>
                         <Badge bg="danger">
-                          {new Date(contract.end_date) >= new Date(new Date().toDateString())
+                          {String(contract.end_date || "").slice(0, 10) >= todayIso()
                             ? "Baja programada"
                             : "Baja"}
                         </Badge>
@@ -252,7 +374,7 @@ const AllContracts = () => {
                         <div>
                           <small>
                             Ocupación hasta:{" "}
-                            {new Date(contract.end_date).toLocaleDateString()}
+                            {formatISODate(contract.end_date)}
                           </small>
                         </div>
                         {contract.settlement_amount > 0 && (
@@ -399,14 +521,14 @@ const AllContracts = () => {
                 {periods.map((period) => (
                   <tr key={period.id}>
                     <td>
-                      {new Date(period.start_date).toLocaleDateString()}
+                      {formatISODate(period.start_date)}
                       {period.is_prorated && (
                         <div>
                           <Badge bg="info" text="dark">Proporcional</Badge>
                         </div>
                       )}
                     </td>
-                    <td>{new Date(period.end_date).toLocaleDateString()}</td>
+                    <td>{formatISODate(period.end_date)}</td>
                     <td>
                       ${Number(period.period_rent || period.indexed_amount || 0).toLocaleString()}
                       {period.is_prorated && period.proration_note && (

@@ -32,6 +32,13 @@ const MONTHS_ES = [
   "diciembre",
 ];
 
+function saleStatusText(status) {
+  const value = String(status || "").toUpperCase();
+  if (value === "PAGADA") return "Venta pagada";
+  if (value === "PARCIAL") return "Venta parcial";
+  return "Venta pendiente";
+}
+
 function todayIso() {
   const d = new Date();
   const y = d.getFullYear();
@@ -625,23 +632,32 @@ export default function ExportPage() {
         sections: [
           {
             headers: [
+              "Tipo",
               "Propiedad",
               "Dueño",
-              "Inquilino",
+              "Inquilino / Comprador",
               "Inicio",
               "Fin",
               "Estado",
               "Archivo de contrato",
             ],
-            rows: items.map((item) => [
-              item.property_address || propertyLabel(item.property),
-              item.owner_name || "—",
-              item.tenant_name || item.tenant?.name || "—",
-              formatEsDate(item.start_date),
-              formatEsDate(item.end_date),
-              item.cancelled ? "Cancelado" : "Activo",
-              yesNo(Boolean(item.document_path)),
-            ]),
+            rows: items.map((item) => {
+              const sale = item.kind === "venta";
+              return [
+                sale ? "Venta" : "Alquiler",
+                item.property_address || propertyLabel(item.property),
+                item.owner_name || "—",
+                item.tenant_name || item.tenant?.name || "—",
+                formatEsDate(item.start_date),
+                item.end_date ? formatEsDate(item.end_date) : "—",
+                sale
+                  ? saleStatusText(item.sale_status)
+                  : item.cancelled
+                  ? "Cancelado"
+                  : "Activo",
+                yesNo(Boolean(item.document_path)),
+              ];
+            }),
             emptyText: "No hay contratos en el historial.",
           },
         ],

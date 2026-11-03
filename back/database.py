@@ -115,6 +115,9 @@ def _ensure_sqlite_columns():
         "property_sale_payments": {
             "kind": "TEXT DEFAULT 'cuota'",
         },
+        "property_sales": {
+            "document_path": "TEXT",
+        },
     }
 
     with engine.begin() as conn:
