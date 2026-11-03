@@ -72,7 +72,7 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
       setFeedback({
         variant: "success",
         title: "Impuestos actualizados",
-        message: "Los montos se guardaron y el total del mes se recalculó (alquiler + servicios).",
+        message: "Se actualizó solo este mes. Los otros períodos no se modificaron.",
       });
     } catch (err) {
       setFeedback({

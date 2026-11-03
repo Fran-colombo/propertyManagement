@@ -162,10 +162,6 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         fire_insurance: form.fire_insurance,
         epe_amount: optionalAmount(form.pays_epe, form.epe_amount),
         tgi_mode: form.pays_tgi ? form.tgi_mode : null,
-        tgi_amount:
-          form.pays_tgi && form.tgi_mode === "manual"
-            ? optionalAmount(true, form.tgi_amount)
-            : null,
         api_amount: optionalAmount(form.pays_api, form.api_amount),
         fire_insurance_amount: optionalAmount(
           form.fire_insurance,
@@ -208,8 +204,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         message: (form.mark_past_as_paid
           ? "Los meses anteriores a hoy quedaron como ya cobrados y no se cuentan como transferencias nuevas. Si los habías cargado como pago, se corrigieron."
           : showRentTiers && serializeTiers(rentTiers).length
-            ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos (incluye meses ya marcados como pagados de carga inicial)."
-            : "Los cambios se guardaron. Los montos de servicios se actualizaron en los meses que todavía no están pagados.") + tgiWarning,
+            ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos (incluye meses ya marcados como pagados de carga inicial). El TGI de cada mes no se toca: cambialo en Impuestos."
+            : "Los cambios se guardaron. EPE, API y seguro se actualizaron en los meses impagos. El TGI de cada mes no se toca: cambialo en Impuestos.") + tgiWarning,
       });
     } catch (err) {
       setFeedback({
@@ -233,7 +229,6 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const documentHref = mediaUrl(form.document_path);
   const servicesTotal =
     (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
-    (form.pays_tgi && form.tgi_mode === "manual" ? Number(form.tgi_amount) || 0 : 0) +
     (form.pays_api ? Number(form.api_amount) || 0 : 0) +
     (form.fire_insurance ? Number(form.fire_insurance_amount) || 0 : 0);
 
@@ -321,7 +316,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
               <p className="text-muted small">
                 Activá EPE, API o el seguro e indicá el monto mensual.
                 Ese valor se suma al alquiler en los meses pendientes.
-                El TGI se carga a mano o se consulta en el SIAT con la cuenta de la propiedad.
+                El TGI de cada mes se carga en Impuestos, en ese período. Acá solo se activa o se elige SIAT.
               </p>
               {SERVICE_ROWS.map(([checkName, label, amountName]) => (
                 <div
@@ -364,7 +359,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                       type="radio"
                       name="tgi_mode"
                       id="edit-tgi-manual"
-                      label="Manual"
+                      label="Manual (cada mes en Impuestos)"
                       checked={form.tgi_mode === "manual"}
                       onChange={() => setForm((prev) => ({ ...prev, tgi_mode: "manual" }))}
                     />
@@ -377,22 +372,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                       onChange={() => setForm((prev) => ({ ...prev, tgi_mode: "siat" }))}
                     />
                     {form.tgi_mode === "manual" && (
-                      <Form.Control
-                        className="mt-2"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        name="tgi_amount"
-                        value={form.tgi_amount}
-                        onChange={handleChange}
-                        onWheel={(e) => e.target.blur()}
-                        placeholder="Monto inicial"
-                        style={{ maxWidth: 180 }}
-                      />
-                    )}
-                    {form.tgi_mode === "manual" && (
                       <Form.Text className="text-muted d-block mt-1">
-                        Valor inicial. Cada mes se cambia por separado en Impuestos, sin afectar a los demás.
+                        Para cambiar el TGI de octubre o noviembre, usá Impuestos en esa fila. Este formulario no pisa esos montos.
                       </Form.Text>
                     )}
                     {form.tgi_mode === "siat" &&
@@ -444,8 +425,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
               </div>
               {servicesTotal > 0 && (
                 <Alert variant="secondary" className="py-2 small">
-                  Servicios: <strong>${money(servicesTotal)}</strong> (se suman
-                  al alquiler indexado de cada mes pendiente)
+                  Servicios fijos: <strong>${money(servicesTotal)}</strong> (EPE, API o seguro;
+                  se suman al alquiler de cada mes impago. El TGI no está acá.)
                 </Alert>
               )}
               <Form.Group className="mb-3 mt-3">

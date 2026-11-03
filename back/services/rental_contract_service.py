@@ -1155,6 +1155,9 @@ class RentalContractService:
                     )
         tgi_account = payload.pop("tgi_account", None)
         tgi_code = payload.pop("tgi_code", None)
+        # El TGI de cada mes vive en el período. El del contrato es solo un valor
+        # inicial y no se copia a los meses ya creados.
+        payload.pop("tgi_amount", None)
         for field, value in payload.items():
             if field == "tgi_mode":
                 value = str(value or "").strip().lower() or None
