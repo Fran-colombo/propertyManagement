@@ -93,15 +93,21 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
     }
   };
 
-  const active = period?.active_taxes || {};
   const rent = Number(period?.period_rent ?? period?.indexed_amount ?? 0);
   const taxSum =
-    (active.epe ? Number(taxData.epe) || 0 : 0) +
-    (active.tgi ? Number(taxData.tgi) || 0 : 0) +
-    (active.api ? Number(taxData.api) || 0 : 0) +
-    (active.fire_insurance ? Number(taxData.fire_insurance) || 0 : 0);
+    (Number(taxData.epe) || 0) +
+    (Number(taxData.tgi) || 0) +
+    (Number(taxData.api) || 0) +
+    (Number(taxData.fire_insurance) || 0);
   const lateFee = Number(period?.late_fee_amount || 0);
   const total = rent + taxSum + lateFee;
+
+  const setAmount = (field) => (e) => {
+    setTaxData((prev) => ({
+      ...prev,
+      [field]: parseFloat(e.target.value) || 0,
+    }));
+  };
 
   return (
     <>
@@ -117,32 +123,26 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
       <Form onSubmit={handleSubmit}>
         <Modal.Body>
           <p className="text-muted small">
-            Solo cambia este mes. El TGI (y el resto de impuestos) de los otros
-            períodos queda igual, y el saldo a pagar de esos meses no se toca.
-            El total de este mes es alquiler indexado + servicios.
+            Solo cambia este mes: EPE, TGI, API y seguro. Los otros períodos
+            quedan igual y su saldo a pagar no se toca. Cero si ese mes no
+            corresponde. El total es alquiler indexado + estos gastos.
           </p>
           <Row>
-            {active.epe &&
             <Col md={6}>
               <Form.Group className="mb-3">
                 <Form.Label>EPE</Form.Label>
                 <Form.Control
                   type="number"
                   value={taxData.epe}
-                  onChange={(e) => setTaxData({
-                    ...taxData,
-                    epe: parseFloat(e.target.value) || 0
-                  })}
+                  onChange={setAmount("epe")}
                   min="0"
                   step="0.01"
                 />
               </Form.Group>
             </Col>
-            }
-            { active.tgi &&
             <Col md={6}>
               <Form.Group className="mb-3">
-                <Form.Label>TGI de este mes</Form.Label>
+                <Form.Label>TGI</Form.Label>
                 {tgiBreakdownLines(period?.tgi_detail).length > 0 && (
                   <div className="small text-muted mb-1">
                     {tgiBreakdownLines(period.tgi_detail).map((line) => (
@@ -156,65 +156,44 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
                 <Form.Control
                   type="number"
                   value={taxData.tgi}
-                  onChange={(e) => setTaxData({
-                    ...taxData,
-                    tgi: parseFloat(e.target.value) || 0
-                  })}
+                  onChange={setAmount("tgi")}
                   min="0"
                   step="0.01"
                 />
               </Form.Group>
             </Col>
-            }
           </Row>
           <Row>
-            {active.api &&
             <Col md={6}>
               <Form.Group className="mb-3">
                 <Form.Label>API</Form.Label>
                 <Form.Control
                   type="number"
                   value={taxData.api}
-                  onChange={(e) => setTaxData({
-                    ...taxData,
-                    api: parseFloat(e.target.value) || 0
-                  })}
+                  onChange={setAmount("api")}
                   min="0"
                   step="0.01"
                 />
               </Form.Group>
             </Col>
-            }
-            {active.fire_insurance &&
             <Col md={6}>
               <Form.Group className="mb-3">
-                <Form.Label>Seguro Incendio</Form.Label>
+                <Form.Label>Seguro contra incendio</Form.Label>
                 <Form.Control
                   type="number"
                   value={taxData.fire_insurance}
-                  onChange={(e) => setTaxData({
-                    ...taxData,
-                    fire_insurance: parseFloat(e.target.value) || 0
-                  })}
+                  onChange={setAmount("fire_insurance")}
                   min="0"
                   step="0.01"
                 />
               </Form.Group>
             </Col>
-              }
           </Row>
-          {!active.epe && !active.tgi && !active.api && !active.fire_insurance && (
-            <p className="text-muted mb-0">
-              Este contrato no tiene impuestos activos. Activá EPE, TGI, API o seguro desde Editar contrato.
-            </p>
-          )}
-          {(active.epe || active.tgi || active.api || active.fire_insurance) && (
-            <Alert variant="secondary" className="mb-0 py-2">
-              Alquiler ${money(rent)} + servicios ${money(taxSum)}
-              {lateFee > 0 ? ` + recargo $${money(lateFee)}` : ""} ={" "}
-              <strong>total ${money(total)}</strong>
-            </Alert>
-          )}
+          <Alert variant="secondary" className="mb-0 py-2">
+            Alquiler ${money(rent)} + extras ${money(taxSum)}
+            {lateFee > 0 ? ` + recargo $${money(lateFee)}` : ""} ={" "}
+            <strong>total ${money(total)}</strong>
+          </Alert>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={onHide} disabled={saving}>

@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert, Spinner } from "react-bootstrap";
-import { getContract, syncContractTgi, updateContract, uploadContractDocument } from "../api/contract";
+import { getContract, updateContract, uploadContractDocument } from "../api/contract";
 import { getPeriodsByContract } from "../api/contract_period";
 import { getAllAgencies } from "../api/real_agency";
 import { mediaUrl } from "../utils/mediaUrl";
 import FeedbackModal from "./FeedbackModal";
 import HistoricalRentTiers from "./HistoricalRentTiers";
-import TgiDebtPlanChoice from "./TgiDebtPlanChoice";
 import {
   groupPeriodsIntoTiers,
   serializeTiers,
@@ -18,39 +17,21 @@ const emptyForm = {
   pays_tgi: false,
   pays_api: false,
   fire_insurance: false,
-  epe_amount: "",
-  tgi_amount: "",
   tgi_mode: "manual",
   property_tgi_account: "",
   property_tgi_code: "",
   tgi_account: "",
   tgi_code: "",
-  api_amount: "",
-  fire_insurance_amount: "",
   notes: "",
   document_path: null,
   mark_past_as_paid: false,
 };
 
-const SERVICE_ROWS = [
-  ["pays_epe", "Paga EPE", "epe_amount"],
-  ["pays_api", "Paga API", "api_amount"],
-  ["fire_insurance", "Seguro contra incendio", "fire_insurance_amount"],
+const SERVICE_CHECKS = [
+  ["pays_epe", "Paga EPE"],
+  ["pays_api", "Paga API"],
+  ["fire_insurance", "Seguro contra incendio"],
 ];
-
-function optionalAmount(enabled, value) {
-  if (!enabled) return null;
-  if (value === "" || value == null) return 0;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function money(n) {
-  return Number(n || 0).toLocaleString("es-AR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 export default function EditContractModal({ show, onHide, contractId, onSaved }) {
   const [loading, setLoading] = useState(false);
@@ -63,7 +44,6 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const [agencies, setAgencies] = useState([]);
   const [rentTiers, setRentTiers] = useState([]);
   const [showRentTiers, setShowRentTiers] = useState(false);
-  const [debtPrompt, setDebtPrompt] = useState(null);
 
   useEffect(() => {
     if (!show || !contractId) return;
@@ -74,7 +54,6 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
     setFeedback(null);
     setRentTiers([]);
     setShowRentTiers(false);
-    setDebtPrompt(null);
     setLoading(true);
     Promise.all([
       getContract(contractId),
@@ -102,15 +81,11 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           pays_tgi: !!data.pays_tgi,
           pays_api: !!data.pays_api,
           fire_insurance: !!data.fire_insurance,
-          epe_amount: data.epe_amount ?? "",
-          tgi_amount: data.tgi_amount ?? "",
           tgi_mode: data.tgi_mode || (data.pays_tgi && (data.property_tgi_account || data.tgi_account) ? "siat" : "manual"),
           property_tgi_account: data.property_tgi_account || data.tgi_account || "",
           property_tgi_code: data.property_tgi_code || data.tgi_code || "",
           tgi_account: "",
           tgi_code: "",
-          api_amount: data.api_amount ?? "",
-          fire_insurance_amount: data.fire_insurance_amount ?? "",
           notes: data.notes || "",
           document_path: data.document_path || null,
           mark_past_as_paid: false,
@@ -160,13 +135,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
         pays_tgi: form.pays_tgi,
         pays_api: form.pays_api,
         fire_insurance: form.fire_insurance,
-        epe_amount: optionalAmount(form.pays_epe, form.epe_amount),
         tgi_mode: form.pays_tgi ? form.tgi_mode : null,
-        api_amount: optionalAmount(form.pays_api, form.api_amount),
-        fire_insurance_amount: optionalAmount(
-          form.fire_insurance,
-          form.fire_insurance_amount
-        ),
         notes: form.notes,
         mark_past_as_paid: !!form.mark_past_as_paid,
       };
@@ -182,30 +151,19 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
       if (showRentTiers && serializedTiers.length >= 1) {
         payload.historical_rents = serializedTiers;
       }
-      const saved = await updateContract(contractId, payload);
+      await updateContract(contractId, payload);
       if (file) {
         await uploadContractDocument(contractId, file);
       }
-      if (saved?.needs_debt_plan) {
-        setDebtPrompt({
-          contractId,
-          overdue: saved.overdue_periods || [],
-        });
-        if (onSaved) onSaved();
-        return;
-      }
       if (onSaved) onSaved();
-      const tgiWarning = saved?.tgi_sync_error
-        ? ` No se pudo traer el TGI: ${saved.tgi_sync_error}`
-        : "";
       setFeedback({
-        variant: tgiWarning ? "warning" : "success",
+        variant: "success",
         title: "Contrato actualizado",
-        message: (form.mark_past_as_paid
+        message: form.mark_past_as_paid
           ? "Los meses anteriores a hoy quedaron como ya cobrados y no se cuentan como transferencias nuevas. Si los habías cargado como pago, se corrigieron."
           : showRentTiers && serializeTiers(rentTiers).length
-            ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos (incluye meses ya marcados como pagados de carga inicial). El TGI de cada mes no se toca: cambialo en Impuestos."
-            : "Los cambios se guardaron. EPE, API y seguro se actualizaron en los meses impagos. El TGI de cada mes no se toca: cambialo en Impuestos.") + tgiWarning,
+            ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos. EPE, TGI, API y seguro de cada mes se editan en Impuestos; el SIAT se consulta con Actualizar TGI."
+            : "Los cambios se guardaron. EPE, TGI, API y seguro de cada mes se editan en Impuestos. El SIAT no se consulta al guardar: usá Actualizar TGI.",
       });
     } catch (err) {
       setFeedback({
@@ -227,38 +185,6 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   };
 
   const documentHref = mediaUrl(form.document_path);
-  const servicesTotal =
-    (form.pays_epe ? Number(form.epe_amount) || 0 : 0) +
-    (form.pays_api ? Number(form.api_amount) || 0 : 0) +
-    (form.fire_insurance ? Number(form.fire_insurance_amount) || 0 : 0);
-
-  const applyDebtPlan = async (plan) => {
-    if (!debtPrompt?.contractId) return;
-    setSaving(true);
-    setError("");
-    try {
-      const result = await syncContractTgi(debtPrompt.contractId, plan);
-      setDebtPrompt(null);
-      if (onSaved) onSaved();
-      if (result?.tgi_sync_error) {
-        setFeedback({
-          variant: "warning",
-          title: "Contrato actualizado",
-          message: `Los cambios se guardaron. No se pudo traer el TGI: ${result.tgi_sync_error}`,
-        });
-        return;
-      }
-      setFeedback({
-        variant: "success",
-        title: "Contrato actualizado",
-        message: result?.note || "Los cambios se guardaron y el TGI quedó cargado.",
-      });
-    } catch (err) {
-      setError(err.message || "No se pudo aplicar el plan de TGI.");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <>
@@ -314,36 +240,19 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                 />
               )}
               <p className="text-muted small">
-                Activá EPE, API o el seguro e indicá el monto mensual.
-                Ese valor se suma al alquiler en los meses pendientes.
-                El TGI de cada mes se carga en Impuestos, en ese período. Acá solo se activa o se elige SIAT.
+                Acá solo se activa o se desactiva cada extra. El monto de EPE,
+                TGI, API y seguro de cada mes se carga en Impuestos, en esa fila.
+                Si desactivás uno, se pone en cero en los meses impagos.
               </p>
-              {SERVICE_ROWS.map(([checkName, label, amountName]) => (
-                <div
+              {SERVICE_CHECKS.map(([checkName, label]) => (
+                <Form.Check
                   key={checkName}
-                  className="d-flex flex-wrap align-items-center gap-2 mb-2"
-                >
-                  <Form.Check
-                    className="mb-0"
-                    label={label}
-                    name={checkName}
-                    checked={form[checkName]}
-                    onChange={handleChange}
-                  />
-                  {form[checkName] && (
-                    <Form.Control
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      name={amountName}
-                      value={form[amountName]}
-                      onChange={handleChange}
-                      onWheel={(e) => e.target.blur()}
-                      placeholder="Monto mensual"
-                      style={{ maxWidth: 180 }}
-                    />
-                  )}
-                </div>
+                  className="mb-2"
+                  label={label}
+                  name={checkName}
+                  checked={form[checkName]}
+                  onChange={handleChange}
+                />
               ))}
               <div className="mb-2">
                 <Form.Check
@@ -373,13 +282,14 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                     />
                     {form.tgi_mode === "manual" && (
                       <Form.Text className="text-muted d-block mt-1">
-                        Para cambiar el TGI de octubre o noviembre, usá Impuestos en esa fila. Este formulario no pisa esos montos.
+                        El TGI de cada mes se cambia en Impuestos. Este formulario no pisa esos montos.
                       </Form.Text>
                     )}
                     {form.tgi_mode === "siat" &&
                       (form.property_tgi_account && form.property_tgi_code ? (
                         <Form.Text className="text-muted d-block mt-2">
                           Se usa la cuenta {form.property_tgi_account} de la propiedad.
+                          Guardar no consulta el SIAT: en Contratos activos usá Actualizar TGI.
                         </Form.Text>
                       ) : (
                         <div className="mt-2">
@@ -408,27 +318,13 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                               ? `La propiedad tiene la cuenta ${form.property_tgi_account}; falta el código. `
                               : ""}
                             Se guarda en la propiedad para los próximos contratos.
+                            Guardar no consulta el SIAT: usá Actualizar TGI.
                           </Form.Text>
                         </div>
                       ))}
-                    {debtPrompt && (
-                      <div className="mt-2">
-                        <TgiDebtPlanChoice
-                          overdue={debtPrompt.overdue}
-                          busy={saving}
-                          onChoose={applyDebtPlan}
-                        />
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
-              {servicesTotal > 0 && (
-                <Alert variant="secondary" className="py-2 small">
-                  Servicios fijos: <strong>${money(servicesTotal)}</strong> (EPE, API o seguro;
-                  se suman al alquiler de cada mes impago. El TGI no está acá.)
-                </Alert>
-              )}
               <Form.Group className="mb-3 mt-3">
                 <Form.Label>Notas</Form.Label>
                 <Form.Control
@@ -464,7 +360,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           <Button variant="secondary" onClick={onHide} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" disabled={loading || saving || !loaded || !!debtPrompt}>
+          <Button type="submit" variant="primary" disabled={loading || saving || !loaded}>
             {saving ? "Guardando..." : "Guardar"}
           </Button>
         </Modal.Footer>

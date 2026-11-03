@@ -169,26 +169,57 @@ def _error_message(page: str) -> Optional[str]:
     return text or None
 
 
-def fetch_siat_installments(account: str, code: str, timeout: int = 30) -> list[SiatInstallment]:
+def _siat_timeout_message(exc: BaseException) -> str:
+    text = str(exc or "").lower()
+    if "timed out" in text or "timeout" in text or isinstance(exc, TimeoutError):
+        return (
+            "El SIAT de Rosario no respondió a tiempo. "
+            "No se cambió ningún mes. Probá de nuevo con Actualizar TGI."
+        )
+    return f"No se pudo consultar el SIAT de Rosario: {exc}"
+
+
+def fetch_siat_installments(account: str, code: str, timeout: int = 25) -> list[SiatInstallment]:
     account = clean_tgi_account(account)
     code = clean_tgi_code(code)
     if not account or not code:
         raise SiatError("Falta la cuenta o el código de gestión del TGI.")
 
+    last_error: Optional[BaseException] = None
+    for attempt, wait in enumerate((timeout, timeout + 15), start=1):
+        try:
+            return _fetch_siat_installments_once(account, code, wait)
+        except SiatError:
+            raise
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            if attempt == 1 and (
+                isinstance(exc, TimeoutError) or "timed out" in str(exc).lower()
+            ):
+                continue
+            raise SiatError(_siat_timeout_message(exc)) from exc
+    raise SiatError(_siat_timeout_message(last_error or TimeoutError("timed out")))
+
+
+def _fetch_siat_installments_once(account: str, code: str, timeout: int) -> list[SiatInstallment]:
     jar = CookieJar()
     opener = urllib.request.build_opener(
         urllib.request.HTTPCookieProcessor(jar),
         urllib.request.HTTPSHandler(context=ssl.create_default_context()),
     )
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        login = opener.open(
-            urllib.request.Request(SIAT_LOGIN_URL, headers=headers),
-            timeout=timeout,
-        )
-        login_html = login.read().decode("latin-1", "replace")
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise SiatError(f"No se pudo consultar el SIAT de Rosario: {exc}") from exc
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-AR,es;q=0.9",
+    }
+    login = opener.open(
+        urllib.request.Request(SIAT_LOGIN_URL, headers=headers),
+        timeout=timeout,
+    )
+    login_html = login.read().decode("latin-1", "replace")
 
     action_match = re.search(r'action="([^"]+)"', login_html)
     if not action_match:
@@ -218,11 +249,8 @@ def fetch_siat_installments(account: str, code: str, timeout: int = 30) -> list[
             "Referer": SIAT_LOGIN_URL,
         },
     )
-    try:
-        response = opener.open(request, timeout=timeout)
-        page = response.read().decode("latin-1", "replace")
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise SiatError(f"No se pudo consultar el SIAT de Rosario: {exc}") from exc
+    response = opener.open(request, timeout=timeout)
+    page = response.read().decode("latin-1", "replace")
 
     installments = parse_siat_html(page)
     if installments:

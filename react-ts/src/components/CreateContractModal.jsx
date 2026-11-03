@@ -553,12 +553,18 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
         });
         return;
       }
+      const tgiHint =
+        form.pays_tgi && form.tgi_mode === "siat"
+          ? " El TGI no se consulta al guardar: en Contratos activos usá Actualizar TGI."
+          : form.pays_tgi || form.pays_epe || form.pays_api || form.fire_insurance
+            ? " EPE, TGI, API y seguro de cada mes se editan en Impuestos."
+            : "";
       setFeedback({
         variant: "success",
         title: "Contrato creado",
-        message: form.mark_past_as_paid
+        message: (form.mark_past_as_paid
           ? "El contrato se creó correctamente. Los períodos anteriores a hoy quedaron marcados como pagados."
-          : "El contrato se creó correctamente.",
+          : "El contrato se creó correctamente.") + tgiHint,
       });
     } catch (err) {
       setFeedback({
@@ -933,9 +939,10 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
 
               <hr />
               <p className="text-muted small mb-2">
-                Si el inquilino paga un servicio, marcá la casilla y cargá el
-                monto mensual. Se suma al alquiler (alquiler + servicios =
-                total). El TGI puede cargarse a mano o tomarse de la cuenta de la propiedad.
+                Si el inquilino paga un extra, marcá la casilla y cargá el
+                monto inicial. Se suma al alquiler de cada mes. Después EPE,
+                API, seguro y TGI se editan mes a mes en Impuestos. El TGI
+                también puede tomarse del SIAT con Actualizar TGI.
               </p>
               {[
                 ["fire_insurance", "Seguro contra incendio", "fire_insurance_amount"],
@@ -1010,13 +1017,14 @@ export default function CreateContractModal({ show, onHide, onCreated }) {
                     )}
                     {form.tgi_mode === "manual" && (
                       <Form.Text className="text-muted d-block mt-1">
-                        Valor inicial. Después cada mes se puede cambiar en Impuestos sin tocar los demás.
+                        Valor inicial. Después cada mes se cambia en Impuestos, igual que EPE, API y seguro.
                       </Form.Text>
                     )}
                     {form.tgi_mode === "siat" &&
                       (propertyTgiAccount && propertyTgiCode ? (
                         <Form.Text className="text-muted d-block mt-2">
                           Se usa la cuenta {propertyTgiAccount} de la propiedad.
+                          Al guardar no se consulta el SIAT: después usá Actualizar TGI en el período.
                         </Form.Text>
                       ) : (
                         <div className="mt-2">

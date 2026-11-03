@@ -162,8 +162,7 @@ class RentalContractService:
             self.db.add(all_contract)
             self.db.commit()
 
-            response = ContractResponse.from_orm(contract)
-            return self._attach_tgi_sync(response, self._try_sync_tgi(contract))
+            return ContractResponse.from_orm(contract)
 
         except HTTPException:
             self.db.rollback()
@@ -246,8 +245,7 @@ class RentalContractService:
                 end_date=contract.end_date,
             ))
             self.db.commit()
-            response = ContractResponse.from_orm(contract)
-            return self._attach_tgi_sync(response, self._try_sync_tgi(contract))
+            return ContractResponse.from_orm(contract)
         except HTTPException:
             self.db.rollback()
             raise
@@ -338,7 +336,7 @@ class RentalContractService:
     def _apply_service_amounts(
         self, contract: RentalContract, *, unpaid_only: bool = False
     ) -> None:
-        """Copy contract service amounts onto periods and rebuild total = rent + services."""
+        """Seed extras on create; on update only turn off unpaid months. Totals = rent + extras."""
         periods = (
             self.db.query(ContractPeriod)
             .filter(ContractPeriod.contract_id == contract.id)
@@ -348,7 +346,10 @@ class RentalContractService:
         for period in periods:
             if unpaid_only and period.payment_status == PaymentStatusEnum.PAGADO:
                 continue
-            period.epe_amount = (contract.epe_amount or 0) if contract.pays_epe else 0
+            if not contract.pays_epe:
+                period.epe_amount = 0
+            elif not unpaid_only:
+                period.epe_amount = contract.epe_amount or 0
             if not contract.pays_tgi:
                 period.tgi_amount = 0
                 period.tgi_detail = None
@@ -359,11 +360,14 @@ class RentalContractService:
                 # Valor inicial al crear el contrato. Después cada mes se edita solo.
                 period.tgi_amount = contract.tgi_amount or 0
                 period.tgi_detail = None
-            # Si el contrato se edita después, no pisar el TGI de cada mes.
-            period.api_amount = (contract.api_amount or 0) if contract.pays_api else 0
-            period.fire_proof_amount = (
-                (contract.fire_insurance_amount or 0) if contract.fire_insurance else 0
-            )
+            if not contract.pays_api:
+                period.api_amount = 0
+            elif not unpaid_only:
+                period.api_amount = contract.api_amount or 0
+            if not contract.fire_insurance:
+                period.fire_proof_amount = 0
+            elif not unpaid_only:
+                period.fire_proof_amount = contract.fire_insurance_amount or 0
             rent_base = (
                 period.indexed_amount
                 if period.indexed_amount is not None
@@ -437,26 +441,6 @@ class RentalContractService:
                 detail="Para traer el TGI del SIAT falta la cuenta o el código de gestión. Completalos en el contrato o elegí Manual.",
             )
 
-    def _attach_tgi_sync(self, response: ContractResponse, result: Optional[TgiSyncResult]) -> ContractResponse:
-        if result is None:
-            return response
-        response.tgi_sync_error = result.tgi_sync_error
-        response.needs_debt_plan = bool(result.needs_debt_plan)
-        response.overdue_periods = result.overdue_periods
-        return response
-
-    def _try_sync_tgi(self, contract: RentalContract) -> Optional[TgiSyncResult]:
-        if not self._tgi_is_variable(contract):
-            return None
-        try:
-            return self.sync_contract_tgi(contract.id)
-        except HTTPException as exc:
-            detail = exc.detail
-            message = detail if isinstance(detail, str) else str(detail)
-            return TgiSyncResult(tgi_sync_error=message)
-        except Exception as exc:
-            return TgiSyncResult(tgi_sync_error=f"No se pudo consultar el TGI en el SIAT: {exc}")
-
     def _choose_tgi_period(self, periods: List[ContractPeriod], today: date) -> Optional[ContractPeriod]:
         open_periods = [
             period
@@ -523,10 +507,11 @@ class RentalContractService:
         try:
             installments = fetch_siat_installments(account, code)
         except SiatError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=str(exc),
-            ) from exc
+            return TgiSyncResult(tgi_sync_error=str(exc))
+        except Exception as exc:
+            return TgiSyncResult(
+                tgi_sync_error=f"No se pudo consultar el TGI en el SIAT: {exc}"
+            )
 
         own = parse_tgi_detail(target.tgi_detail)
         locked_catchup = None
@@ -1158,6 +1143,9 @@ class RentalContractService:
         # El TGI de cada mes vive en el período. El del contrato es solo un valor
         # inicial y no se copia a los meses ya creados.
         payload.pop("tgi_amount", None)
+        payload.pop("epe_amount", None)
+        payload.pop("api_amount", None)
+        payload.pop("fire_insurance_amount", None)
         for field, value in payload.items():
             if field == "tgi_mode":
                 value = str(value or "").strip().lower() or None
@@ -1173,8 +1161,7 @@ class RentalContractService:
         else:
             self.db.commit()
         self.db.refresh(contract)
-        response = ContractResponse.from_orm(contract)
-        return self._attach_tgi_sync(response, self._try_sync_tgi(contract))
+        return ContractResponse.from_orm(contract)
 
     def update_period_rent(
         self,

@@ -151,7 +151,14 @@ const ContractsTable = () => {
       }
       await loadPeriods();
     } catch (err) {
-      setError(err.message || "No se pudo consultar el TGI en el SIAT.");
+      const msg = String(err.message || "");
+      if (/502|timed out|timeout/i.test(msg)) {
+        setError(
+          "El SIAT de Rosario no respondió a tiempo. No se cambió ningún mes. Probá de nuevo con Actualizar TGI."
+        );
+      } else {
+        setError(msg || "No se pudo consultar el TGI en el SIAT.");
+      }
     } finally {
       setSyncingTgiId(null);
     }
