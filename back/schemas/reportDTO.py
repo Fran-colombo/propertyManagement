@@ -3,11 +3,19 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 
-class PropertyIncomeItem(BaseModel):
-    property_id: int
+class UnitFields(BaseModel):
+    """A report row belongs to a property ("p-<id>") or a garage ("g-<id>")."""
+    unit_key: str
+    unit_type: str = "property"
+    property_id: Optional[int] = None
+    garage_id: Optional[int] = None
+    unit_label: str = ""
     direction: str
     floor: Optional[str] = None
     apartment: Optional[str] = None
+
+
+class PropertyIncomeItem(UnitFields):
     billed_pesos: float = 0
     billed_dolares: float = 0
     collected_pesos: float = 0
@@ -18,11 +26,7 @@ class PropertyIncomeItem(BaseModel):
     sale_collected_dolares: float = 0
 
 
-class SaleLine(BaseModel):
-    property_id: int
-    direction: str
-    floor: Optional[str] = None
-    apartment: Optional[str] = None
+class SaleLine(UnitFields):
     sale_id: int
     buyer_name: Optional[str] = None
     label: str
@@ -34,11 +38,7 @@ class SaleLine(BaseModel):
     status: str = "PENDIENTE"
 
 
-class BilledLine(BaseModel):
-    property_id: int
-    direction: str
-    floor: Optional[str] = None
-    apartment: Optional[str] = None
+class BilledLine(UnitFields):
     tenant_name: Optional[str] = None
     period_start: date
     period_end: date

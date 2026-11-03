@@ -39,6 +39,10 @@ function shiftMonth(value, delta) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function saleGarageLabel(sale) {
+  return sale?.garage_number ? `Garage N° ${sale.garage_number}` : undefined;
+}
+
 function isDollars(currency) {
   return String(currency || "PESOS").toUpperCase() === "DOLARES";
 }
@@ -527,7 +531,7 @@ export default function Sales() {
                   <Search />
                 </InputGroup.Text>
                 <Form.Control
-                  placeholder="Buscar por comprador o propiedad..."
+                  placeholder="Buscar por comprador, propiedad o cochera..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -626,7 +630,12 @@ export default function Sales() {
                   return (
                   <tr key={sale.id}>
                     <td>{formatDueDay(sale.sale_date)}</td>
-                    <td>{sale.property_direction}</td>
+                    <td>
+                      {sale.garage_id && (
+                        <Badge bg="secondary" className="me-1">Cochera</Badge>
+                      )}
+                      {sale.property_direction}
+                    </td>
                     <td>{sale.buyer_name || "—"}</td>
                     <td>{isDollars(sale.currency) ? "Dólares" : "Pesos"}</td>
                     <td>{money(sale.total_amount, sale.currency)}</td>
@@ -639,17 +648,19 @@ export default function Sales() {
                       ) : (
                         <Badge bg="dark">Fuera de cartera</Badge>
                       )}
-                      <div className="mt-1">
-                        <button
-                          type="button"
-                          className="btn p-0 border-0 bg-transparent text-secondary"
-                          style={{ fontSize: "0.72rem", lineHeight: 1.2 }}
-                          onClick={() => openAddressEdit(sale)}
-                        >
-                          <Pencil size={11} className="me-1" />
-                          Corregir dirección
-                        </button>
-                      </div>
+                      {!sale.garage_id && (
+                        <div className="mt-1">
+                          <button
+                            type="button"
+                            className="btn p-0 border-0 bg-transparent text-secondary"
+                            style={{ fontSize: "0.72rem", lineHeight: 1.2 }}
+                            onClick={() => openAddressEdit(sale)}
+                          >
+                            <Pencil size={11} className="me-1" />
+                            Corregir dirección
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td>
                       {nextInst ? (
@@ -910,6 +921,7 @@ export default function Sales() {
                                       floor: cuotasSale.property_floor,
                                       apartment: cuotasSale.property_apartment,
                                       direction: cuotasSale.property_address || cuotasSale.property_direction,
+                                      garageLabel: saleGarageLabel(cuotasSale),
                                       periodDate: dates.periodDate,
                                       issuedAt: dates.issuedAt,
                                     });
@@ -1151,6 +1163,7 @@ export default function Sales() {
                     floor: sale.property_floor,
                     apartment: sale.property_apartment,
                     direction: sale.property_address || sale.property_direction,
+                    garageLabel: saleGarageLabel(sale),
                     periodDate: dates.periodDate,
                     issuedAt: dates.issuedAt,
                   });

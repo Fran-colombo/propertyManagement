@@ -43,6 +43,7 @@ class Garage(Base):
     owner_id = Column(Integer, ForeignKey("owners.id"), nullable=False)
     property_id = Column(Integer, ForeignKey("properties.id"), nullable=True)
     status = Column(Integer, default=1)
+    management_status = Column(String, default="ACTIVE")
     owner = relationship("Owner", back_populates="garages")
     property = relationship("Property", back_populates="garages")
     rental_contracts = relationship("RentalContract", back_populates="garage")
@@ -53,3 +54,4 @@ class Garage(Base):
         overlaps="rental_contracts,garage",
         primaryjoin="and_(Garage.id==foreign(RentalContract.garage_id), RentalContract.status==1)",
     )
+    sales = relationship("PropertySale", back_populates="garage")

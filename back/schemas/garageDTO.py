@@ -1,3 +1,4 @@
+from datetime import date
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
@@ -25,3 +26,9 @@ class GarageRead(BaseModel):
     property_direction: Optional[str] = None
     rental_contract_id: Optional[int] = None
     tenant_name: Optional[str] = None
+    management_status: str = "ACTIVE"
+    label: Optional[str] = None
+    contract_end_date: Optional[date] = None
+    contract_document_path: Optional[str] = None
+    # Set when the garage is rented as part of a property lease
+    contract_property_id: Optional[int] = None

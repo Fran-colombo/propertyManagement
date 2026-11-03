@@ -145,27 +145,39 @@ def get_current_pending_periods(db: Session = Depends(get_db)):
 
 
 
+def _status_name(value) -> str:
+    return value.value if hasattr(value, "value") else str(value or "")
+
+
 @router.put("/{period_id}/taxes", response_model=ContractPeriodResponse)
 def update_period_taxes(period_id: int, taxes: PeriodTaxesUpdate, db: Session = Depends(get_db)):
     period = db.query(ContractPeriod).filter(ContractPeriod.id == period_id).first()
     if not period:
         raise HTTPException(status_code=404, detail="Período no encontrado")
-    if period.payment_status == "PAGADO":
-        raise HTTPException(status_code=500, detail="El contrato ya está pagado, no podes modificar los impuestos ahora")
+    if _status_name(period.payment_status) == PaymentStatusEnum.PAGADO.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Este mes ya está pagado, no se pueden modificar los impuestos",
+        )
     if taxes.epe is not None:
-        period.epe_amount = taxes.epe if taxes.epe != 0 else None
+        period.epe_amount = taxes.epe or 0
     if taxes.tgi is not None:
-        period.tgi_amount = taxes.tgi if taxes.tgi != 0 else None
+        period.tgi_amount = taxes.tgi or 0
         period.tgi_detail = json.dumps({"manual": True})
     if taxes.api is not None:
-        period.api_amount = taxes.api if taxes.api != 0 else None
+        period.api_amount = taxes.api or 0
     if taxes.fire_insurance is not None:
-        period.fire_proof_amount = taxes.fire_insurance if taxes.fire_insurance != 0 else None
+        period.fire_proof_amount = taxes.fire_insurance or 0
 
     rent_base = period.indexed_amount if period.indexed_amount is not None else period.base_rent
     period.total_amount = period_total(period, rent_base)
+    paid = round(period.amount_paid or 0, 2)
+    total = round(period.total_amount or 0, 2)
+    if paid + 0.009 >= total and total > 0:
+        period.payment_status = PaymentStatusEnum.PAGADO
+    elif paid > 0.009:
+        period.payment_status = PaymentStatusEnum.PARCIAL
 
-    
     db.commit()
     db.refresh(period)
     return ContractPeriodResponse.from_orm(period)

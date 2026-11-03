@@ -3,7 +3,23 @@ import { Modal, Button, Form, Alert, Spinner } from "react-bootstrap";
 import { cancelContractDetailed } from "../api/contract";
 import FeedbackModal from "./FeedbackModal";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const MONTHS = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+const EARLY_LEAVE_DAYS = 10;
+
+function leaveMonthInfo(iso) {
+  const [year, month, day] = String(iso || "").split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return { name: MONTHS[month - 1], day, early: day <= EARLY_LEAVE_DAYS };
+}
 
 const emptyForm = () => ({
   cancelled_by: "INQUILINO",
@@ -12,6 +28,7 @@ const emptyForm = () => ({
   settlement_amount: "0",
   settlement_direction: "SIN_MONTO",
   waive_remaining_rent: false,
+  waive_current_month: false,
 });
 
 export default function CancelContractModal({
@@ -36,6 +53,8 @@ export default function CancelContractModal({
       setFeedback(null);
     }
   }, [show]);
+
+  const leaveMonth = leaveMonthInfo(form.effective_date);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -138,6 +157,32 @@ export default function CancelContractModal({
             </Form.Text>
           </Form.Group>
 
+          {leaveMonth && (
+            <Form.Group
+              className={
+                leaveMonth.early
+                  ? "mb-3 p-2 border border-warning rounded bg-warning-subtle"
+                  : "mb-3"
+              }
+            >
+              <Form.Check
+                type="checkbox"
+                id="waive_current_month"
+                name="waive_current_month"
+                checked={form.waive_current_month}
+                onChange={handleChange}
+                label={`No cobrar el mes de la baja (${leaveMonth.name})`}
+              />
+              <Form.Text className="text-muted d-block">
+                {leaveMonth.early
+                  ? `La baja es el día ${leaveMonth.day}: el inquilino no llegó a usar el mes; lo pagado como acuerdo lo cubre. `
+                  : ""}
+                Si está marcado, el alquiler de {leaveMonth.name} queda como
+                contrato finalizado y deja de figurar por vencer.
+              </Form.Text>
+            </Form.Group>
+          )}
+
           <Form.Group className="mb-3">
             <Form.Check
               type="checkbox"
@@ -149,7 +194,8 @@ export default function CancelContractModal({
             />
             <Form.Text className="text-muted d-block">
               Si está marcado, se anulan los alquileres desde el mes que viene
-              hasta la fecha de baja (el mes actual sigue cobrándose). Si no,
+              hasta la fecha de baja (el mes actual sigue cobrándose, salvo que
+              marques no cobrar el mes de la baja). Si no,
               paga normalmente hasta esa fecha.
             </Form.Text>
           </Form.Group>

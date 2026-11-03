@@ -355,9 +355,11 @@ class RentalContractService:
             elif variable_tgi:
                 # El monto del SIAT se escribe al consultar, no se copia un fijo.
                 pass
-            else:
+            elif not unpaid_only:
+                # Valor inicial al crear el contrato. Después cada mes se edita solo.
                 period.tgi_amount = contract.tgi_amount or 0
                 period.tgi_detail = None
+            # Si el contrato se edita después, no pisar el TGI de cada mes.
             period.api_amount = (contract.api_amount or 0) if contract.pays_api else 0
             period.fire_proof_amount = (
                 (contract.fire_insurance_amount or 0) if contract.fire_insurance else 0
@@ -1323,6 +1325,7 @@ class RentalContractService:
         settlement_amount: float = 0.0,
         settlement_direction: str = "SIN_MONTO",
         waive_remaining_rent: bool = False,
+        waive_current_month: bool = False,
         receipt_path: str | None = None,
         receipt_original_name: str | None = None,
         commit: bool = True,
@@ -1397,10 +1400,18 @@ class RentalContractService:
                     and period.start_date >= next_month_start
                     and period.start_date <= effective_date
                 )
-                if after_leave or waived_stay:
+                leave_month = (
+                    waive_current_month
+                    and period.start_date <= effective_date <= period.end_date
+                )
+                if after_leave or waived_stay or leave_month:
                     period.payment_status = PaymentStatusEnum.CONTRATO_TERMINADO
                     period.payment_reference = ref
-                    period.termination_note = note
+                    period.termination_note = (
+                        f"{note.rstrip('.')}. Mes de la baja sin cobrar (cubierto por el acuerdo de baja)."
+                        if leave_month and not after_leave
+                        else note
+                    )
                     period.total_amount = period.amount_paid or 0
                     annulled.append(period)
 
@@ -1419,6 +1430,7 @@ class RentalContractService:
                 settlement_direction=direction,
                 effective_date=effective_date,
                 waive_remaining_rent=waive_remaining_rent,
+                waive_current_month=waive_current_month,
                 receipt_path=receipt_path,
                 receipt_original_name=receipt_original_name,
             )
@@ -1482,6 +1494,7 @@ class RentalContractService:
                 "effective_date": effective_date.isoformat(),
                 "still_occupied": contract.status == 1,
                 "waive_remaining_rent": waive_remaining_rent,
+                "waive_current_month": waive_current_month,
                 "annulled_periods": len(annulled),
                 "termination_id": termination.id,
                 "receipt_path": receipt_path,

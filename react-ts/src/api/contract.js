@@ -78,6 +78,10 @@ export const cancelContractDetailed = async (contractId, data) => {
     "waive_remaining_rent",
     data.waive_remaining_rent ? "true" : "false"
   );
+  form.append(
+    "waive_current_month",
+    data.waive_current_month ? "true" : "false"
+  );
   if (data.receipt) {
     form.append("receipt", data.receipt);
   }
@@ -102,6 +106,7 @@ export const getContractHistory = async ({
   page = 1,
   pageSize = 20,
   propertyId,
+  garageId,
   month,
   tenant,
 } = {}) => {
@@ -109,6 +114,7 @@ export const getContractHistory = async ({
   params.set("page", String(page));
   params.set("page_size", String(pageSize));
   if (propertyId) params.set("property_id", String(propertyId));
+  if (garageId) params.set("garage_id", String(garageId));
   if (month) params.set("month", month);
   if (tenant) params.set("tenant", tenant);
   return await apiFetch(`/contracts-history/?${params.toString()}`);

@@ -27,6 +27,7 @@ class AllContractResponse(BaseModel):
     currency: Optional[str] = None
     total_amount: Optional[float] = None
     property_id: Optional[int] = None
+    garage_id: Optional[int] = None
     tenant_id: Optional[int] = None
     tenant_name: Optional[str] = None
     start_date: date

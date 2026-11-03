@@ -31,6 +31,8 @@ class ContractTermination(Base):
     effective_date = Column(Date, nullable=False)
     # If true: unpaid periods from next calendar month until effective_date are waived
     waive_remaining_rent = Column(Boolean, default=False)
+    # If true: the unpaid period containing effective_date is waived too
+    waive_current_month = Column(Boolean, default=False)
     receipt_path = Column(String, nullable=True)
     receipt_original_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

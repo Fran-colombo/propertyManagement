@@ -171,6 +171,7 @@ async def cancel_contract(
     settlement_amount: float = Form(0),
     settlement_direction: str = Form("SIN_MONTO"),
     waive_remaining_rent: str = Form("false"),
+    waive_current_month: str = Form("false"),
     receipt: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
 ):
@@ -194,7 +195,8 @@ async def cancel_contract(
         receipt_path = f"/uploads/terminations/{filename}"
         receipt_name = receipt.filename
 
-    waive = str(waive_remaining_rent).strip().lower() in ("1", "true", "yes", "on")
+    def _flag(value) -> bool:
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
 
     result = service.cancel_contract(
         contract_id,
@@ -203,7 +205,8 @@ async def cancel_contract(
         effective_date=effective_date,
         settlement_amount=settlement_amount,
         settlement_direction=settlement_direction,
-        waive_remaining_rent=waive,
+        waive_remaining_rent=_flag(waive_remaining_rent),
+        waive_current_month=_flag(waive_current_month),
         receipt_path=receipt_path,
         receipt_original_name=receipt_name,
     )

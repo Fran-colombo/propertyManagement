@@ -13,6 +13,7 @@ def get_all_contracts(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     property_id: Optional[int] = Query(None),
+    garage_id: Optional[int] = Query(None),
     month: Optional[str] = Query(None, description="YYYY-MM, filtra por fecha de inicio"),
     tenant: Optional[str] = Query(None),
     db: Session = Depends(get_db),
@@ -29,6 +30,7 @@ def get_all_contracts(
         page=page,
         page_size=page_size,
         property_id=property_id,
+        garage_id=garage_id,
         month=month or None,
         tenant=tenant or None,
     )

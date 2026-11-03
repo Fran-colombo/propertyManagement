@@ -13,6 +13,16 @@ def property_display_label(prop) -> str:
     return " · ".join(parts) if parts else "Sin dirección"
 
 
+def garage_display_label(garage) -> str:
+    if garage is None:
+        return "Sin dirección"
+    label = f"Garage N° {garage.number}"
+    associated = property_display_label(garage.property) if getattr(garage, "property", None) else None
+    if associated and associated != "Sin dirección":
+        label += f" ({associated})"
+    return label
+
+
 def contract_location_label(contract) -> str:
     if contract is None:
         return "Sin dirección"
@@ -20,12 +30,16 @@ def contract_location_label(contract) -> str:
         return property_display_label(contract.property)
     garage = getattr(contract, "garage", None)
     if garage:
-        label = f"Garage N° {garage.number}"
-        associated = property_display_label(garage.property) if getattr(garage, "property", None) else None
-        if associated and associated != "Sin dirección":
-            label += f" ({associated})"
-        return label
+        return garage_display_label(garage)
     return "Sin dirección"
+
+
+def sale_target_label(sale) -> str:
+    if sale is None:
+        return "Sin dirección"
+    if getattr(sale, "garage_id", None) and getattr(sale, "garage", None):
+        return garage_display_label(sale.garage)
+    return property_display_label(getattr(sale, "property", None))
 
 
 def contract_owner(contract):

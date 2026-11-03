@@ -386,9 +386,14 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                         value={form.tgi_amount}
                         onChange={handleChange}
                         onWheel={(e) => e.target.blur()}
-                        placeholder="Monto mensual"
+                        placeholder="Monto inicial"
                         style={{ maxWidth: 180 }}
                       />
+                    )}
+                    {form.tgi_mode === "manual" && (
+                      <Form.Text className="text-muted d-block mt-1">
+                        Valor inicial. Cada mes se cambia por separado en Impuestos, sin afectar a los demás.
+                      </Form.Text>
                     )}
                     {form.tgi_mode === "siat" &&
                       (form.property_tgi_account && form.property_tgi_code ? (

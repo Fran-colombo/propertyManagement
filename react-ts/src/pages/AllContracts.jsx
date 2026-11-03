@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getContractHistory } from "../api/contract";
 import { getPeriodsByContract } from "../api/contract_period";
 import { getProperties } from "../api/property";
+import { getGarages } from "../api/garage";
 import { uploadSaleDocument } from "../api/sale";
 import { formatMoney } from "../utils/exportTable";
 import { Table, Button, Modal, Badge, Alert, Pagination, Form, Row, Col } from "react-bootstrap";
@@ -63,6 +64,7 @@ const AllContracts = () => {
   const [startDateFilter, setStartDateFilter] = useState("");
   const [propertyId, setPropertyId] = useState("");
   const [properties, setProperties] = useState([]);
+  const [garages, setGarages] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(0);
@@ -112,10 +114,12 @@ const AllContracts = () => {
     try {
       setLoading(true);
       setError("");
+      const [unitType, unitId] = (propertyId || "").split("-");
       const data = await getContractHistory({
         page,
         pageSize: PAGE_SIZE,
-        propertyId: propertyId || undefined,
+        propertyId: unitType === "p" ? unitId : undefined,
+        garageId: unitType === "g" ? unitId : undefined,
         month: startDateFilter || undefined,
         tenant: debouncedSearch || undefined,
       });
@@ -162,6 +166,9 @@ const AllContracts = () => {
     getProperties({ includeSold: true })
       .then((list) => setProperties(list || []))
       .catch(() => setProperties([]));
+    getGarages({ includeSold: true })
+      .then((list) => setGarages(list || []))
+      .catch(() => setGarages([]));
   }, []);
 
   useEffect(() => {
@@ -185,7 +192,7 @@ const AllContracts = () => {
     <div>
       <h2 className="h4">Historial de contratos</h2>
       <p className="text-muted small">
-        Se listan todos, de alquiler y de venta, del más reciente al más viejo. El mes y la propiedad son filtros opcionales.
+        Se listan todos, de alquiler y de venta, del más reciente al más viejo. El mes y la propiedad o cochera son filtros opcionales.
       </p>
       <input
         ref={saleFileInput}
@@ -208,13 +215,25 @@ const AllContracts = () => {
             value={propertyId}
             onChange={(e) => setPropertyId(e.target.value)}
           >
-            <option value="">Todas las propiedades</option>
-            {properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {propertyLabel(p)}
-                {p.management_status === "SOLD_OUT" ? " (vendida)" : ""}
-              </option>
-            ))}
+            <option value="">Todas las propiedades y cocheras</option>
+            <optgroup label="Propiedades">
+              {properties.map((p) => (
+                <option key={`p-${p.id}`} value={`p-${p.id}`}>
+                  {propertyLabel(p)}
+                  {p.management_status === "SOLD_OUT" ? " (vendida)" : ""}
+                </option>
+              ))}
+            </optgroup>
+            {garages.length > 0 && (
+              <optgroup label="Cocheras">
+                {garages.map((g) => (
+                  <option key={`g-${g.id}`} value={`g-${g.id}`}>
+                    {g.label || `Garage N° ${g.number}`}
+                    {g.management_status === "SOLD_OUT" ? " (vendida)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </Form.Select>
         </Col>
         <Col xs={12} md={3}>

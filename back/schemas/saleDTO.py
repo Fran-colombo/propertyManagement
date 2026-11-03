@@ -55,7 +55,10 @@ class SaleInstallmentResponse(BaseModel):
 
 class PropertySaleResponse(BaseModel):
     id: int
-    property_id: int
+    property_id: Optional[int] = None
+    garage_id: Optional[int] = None
+    garage_number: Optional[str] = None
+    target_kind: str = "propiedad"
     property_direction: str
     property_address: Optional[str] = None
     property_floor: Optional[str] = None

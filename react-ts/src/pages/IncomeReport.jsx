@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import { getProperties } from "../api/property";
+import { getGarages } from "../api/garage";
 import { getPropertyIncome } from "../api/report";
 import SearchableSelect from "../components/SearchableSelect";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../utils/exportTable";
 
 function propertyLabel(p) {
+  if (p.unit_label) return p.unit_label;
   const parts = [p.direction];
   if (p.floor) parts.push(`Piso ${p.floor}`);
   if (p.apartment) parts.push(`Depto ${p.apartment}`);
@@ -34,12 +36,13 @@ function csvDate(value) {
 }
 
 function noBilling(line) {
-  return line.kind === "vacant" || line.kind === "sold";
+  return line.kind === "vacant" || line.kind === "sold" || line.kind === "waived";
 }
 
 function lineStatus(line) {
   if (line.kind === "vacant") return "No factura: no está ocupado";
   if (line.kind === "sold") return line.note || "Vendida";
+  if (line.kind === "waived") return "Sin cobrar por baja";
   if (line.kind === "settlement") return line.note || "Acuerdo de baja";
   return line.payment_status || "—";
 }
@@ -77,7 +80,7 @@ function saleSections(report) {
   return [
     {
       heading: "Ventas",
-      headers: ["Propiedad", "Facturado $", "Facturado USD", "Cobrado $", "Cobrado USD"],
+      headers: ["Propiedad / cochera", "Facturado $", "Facturado USD", "Cobrado $", "Cobrado USD"],
       rows: saleItems(report).map((item) => [
         propertyLabel(item),
         money(item.sale_billed_pesos, "PESOS"),
@@ -96,7 +99,7 @@ function saleSections(report) {
     },
     {
       heading: "Detalle de cuotas de venta",
-      headers: ["Propiedad", "Comprador", "Cuota", "Vencimiento", "Monto", "Pagado", "Fecha de pago", "Estado"],
+      headers: ["Propiedad / cochera", "Comprador", "Cuota", "Vencimiento", "Monto", "Pagado", "Fecha de pago", "Estado"],
       rows: (report.sale_lines || []).map((line) => [
         propertyLabel(line),
         line.buyer_name || "—",
@@ -121,7 +124,7 @@ function exportReportTable(report) {
     sections: [
       {
         heading: "Resumen",
-        headers: ["Propiedad", "Facturado $", "Facturado USD", "Cobrado $", "Cobrado USD"],
+        headers: ["Propiedad / cochera", "Facturado $", "Facturado USD", "Cobrado $", "Cobrado USD"],
         rows: (report.items || []).map((item) => [
           propertyLabel(item),
           money(item.billed_pesos, "PESOS"),
@@ -141,7 +144,7 @@ function exportReportTable(report) {
       {
         heading: "Detalle por período",
         headers: [
-          "Propiedad",
+          "Propiedad / cochera",
           "Inquilino",
           "Desde",
           "Hasta",
@@ -154,7 +157,7 @@ function exportReportTable(report) {
           const vacant = noBilling(line);
           return {
             className: vacant ? "vacant" : undefined,
-            cells: [
+              cells: [
               propertyLabel(line),
               line.tenant_name || (vacant ? "—" : "Sin inquilino"),
               csvDate(line.period_start),
@@ -162,7 +165,7 @@ function exportReportTable(report) {
               lineStatus(line),
               vacant ? "—" : money(line.amount, line.currency),
               vacant ? "—" : money(line.amount_paid, line.currency),
-              vacant ? lineStatus(line) : line.note || "—",
+              (vacant && line.kind !== "waived" ? lineStatus(line) : line.note) || "—",
             ],
           };
         }),
@@ -175,6 +178,7 @@ function exportReportTable(report) {
 
 export default function IncomeReport() {
   const [properties, setProperties] = useState([]);
+  const [garages, setGarages] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [startDate, setStartDate] = useState(yearStartIso);
   const [endDate, setEndDate] = useState(todayIso);
@@ -184,31 +188,43 @@ export default function IncomeReport() {
   const [report, setReport] = useState(null);
 
   useEffect(() => {
-    getProperties({ includeSold: true })
-      .then((list) => setProperties(list || []))
-      .catch(() => {
-        setProperties([]);
-        setError("No se pudieron cargar las propiedades.");
+    Promise.all([
+      getProperties({ includeSold: true }).catch(() => null),
+      getGarages({ includeSold: true }).catch(() => null),
+    ])
+      .then(([propList, garageList]) => {
+        setProperties(propList || []);
+        setGarages(garageList || []);
+        if (!propList) setError("No se pudieron cargar las propiedades.");
       })
       .finally(() => setLoadingProps(false));
   }, []);
 
   const options = useMemo(
-    () =>
-      properties.map((p) => ({
-        value: p.id,
+    () => [
+      ...properties.map((p) => ({
+        value: `p-${p.id}`,
         label:
           p.management_status === "SOLD_OUT"
             ? `${propertyLabel(p)} (vendida)`
             : propertyLabel(p),
         search: `${p.direction} ${p.floor || ""} ${p.apartment || ""} ${p.owner?.name || ""}`,
       })),
-    [properties]
+      ...garages.map((g) => {
+        const label = g.label || `Garage N° ${g.number}`;
+        return {
+          value: `g-${g.id}`,
+          label: g.management_status === "SOLD_OUT" ? `${label} (vendida)` : label,
+          search: `cochera garage ${g.number} ${g.property_direction || ""} ${g.owner_name || ""}`,
+        };
+      }),
+    ],
+    [properties, garages]
   );
 
   const loadReport = async () => {
     if (!selectedIds.length) {
-      setError("Seleccioná al menos una propiedad.");
+      setError("Seleccioná al menos una propiedad o cochera.");
       setReport(null);
       return;
     }
@@ -225,8 +241,13 @@ export default function IncomeReport() {
     try {
       setLoading(true);
       setError("");
+      const idsOf = (prefix) =>
+        selectedIds
+          .filter((key) => key.startsWith(`${prefix}-`))
+          .map((key) => Number(key.slice(2)));
       const data = await getPropertyIncome({
-        propertyIds: selectedIds,
+        propertyIds: idsOf("p"),
+        garageIds: idsOf("g"),
         startDate,
         endDate,
       });
@@ -241,12 +262,15 @@ export default function IncomeReport() {
 
   return (
     <div>
-      <h2 className="h4">Ingresos por propiedades</h2>
+      <h2 className="h4">Ingresos por propiedades y cocheras</h2>
       <p className="text-muted small">
         Facturado son los alquileres de períodos ocupados que se solapan con el rango,
         más el acuerdo de baja si el inquilino paga al dueño. Cobrado es lo pagado
         de esos mismos períodos (incluye cargas iniciales) y el acuerdo de baja.
-        Los meses sin ocupación aparecen como «No factura: no está ocupado».
+        Los meses sin ocupación aparecen como «No factura: no está ocupado», y el
+        mes de una baja anticipada que no se cobró, como «Sin cobrar por baja».
+        Las cocheras cuentan sus alquileres propios; si van dentro del contrato
+        de una propiedad, ese alquiler se suma a la propiedad.
         Las ventas van aparte: facturado son las cuotas que vencen en el rango y
         cobrado lo pagado de esas cuotas.
       </p>
@@ -259,7 +283,7 @@ export default function IncomeReport() {
 
       <Row className="g-3 mb-3">
         <Col xs={12} lg={6}>
-          <Form.Label>Propiedades</Form.Label>
+          <Form.Label>Propiedades y cocheras</Form.Label>
           {loadingProps ? (
             <Spinner animation="border" size="sm" />
           ) : (
@@ -267,19 +291,35 @@ export default function IncomeReport() {
               multiple
               options={options}
               value={selectedIds}
-              onChange={(vals) => setSelectedIds((vals || []).map(Number))}
-              placeholder="Buscar y agregar propiedades..."
-              emptyText="No hay propiedades que coincidan."
+              onChange={(vals) => setSelectedIds((vals || []).map(String))}
+              placeholder="Buscar y agregar propiedades o cocheras..."
+              emptyText="No hay propiedades ni cocheras que coincidan."
             />
           )}
           <div className="d-flex flex-wrap gap-2 mt-2">
             <Button
               size="sm"
               variant="outline-secondary"
-              onClick={() => setSelectedIds(properties.map((p) => p.id))}
-              disabled={!properties.length}
+              onClick={() => setSelectedIds(options.map((o) => o.value))}
+              disabled={!options.length}
             >
               Seleccionar todas
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setSelectedIds(properties.map((p) => `p-${p.id}`))}
+              disabled={!properties.length}
+            >
+              Solo propiedades
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setSelectedIds(garages.map((g) => `g-${g.id}`))}
+              disabled={!garages.length}
+            >
+              Solo cocheras
             </Button>
             <Button
               size="sm"
@@ -335,7 +375,7 @@ export default function IncomeReport() {
           <Table striped bordered hover>
             <thead>
               <tr>
-                <th>Propiedad</th>
+                <th>Propiedad / cochera</th>
                 <th>Facturado $</th>
                 <th>Facturado USD</th>
                 <th>Cobrado $</th>
@@ -344,7 +384,7 @@ export default function IncomeReport() {
             </thead>
             <tbody>
               {report.items.map((item) => (
-                <tr key={item.property_id}>
+                <tr key={item.unit_key}>
                   <td>{propertyLabel(item)}</td>
                   <td>{money(item.billed_pesos, "PESOS")}</td>
                   <td>{money(item.billed_dolares, "DOLARES")}</td>
@@ -369,7 +409,7 @@ export default function IncomeReport() {
           <Table striped bordered hover>
             <thead>
               <tr>
-                <th>Propiedad</th>
+                <th>Propiedad / cochera</th>
                 <th>Inquilino</th>
                 <th>Desde</th>
                 <th>Hasta</th>
@@ -383,7 +423,7 @@ export default function IncomeReport() {
               {(report.billed_lines || []).map((line, idx) => {
                 const vacant = noBilling(line);
                 return (
-                  <tr key={`${line.property_id}-${line.kind}-${line.period_start}-${idx}`}>
+                  <tr key={`${line.unit_key}-${line.kind}-${line.period_start}-${idx}`}>
                     <td>{propertyLabel(line)}</td>
                     <td>{line.tenant_name || (vacant ? "—" : "Sin inquilino")}</td>
                     <td>{csvDate(line.period_start)}</td>
@@ -399,7 +439,7 @@ export default function IncomeReport() {
                     <td>{vacant ? "—" : money(line.amount_paid, line.currency)}</td>
                     <td>
                       <small className="text-muted">
-                        {vacant ? lineStatus(line) : line.note || "—"}
+                        {(vacant && line.kind !== "waived" ? lineStatus(line) : line.note) || "—"}
                       </small>
                     </td>
                   </tr>
@@ -415,7 +455,7 @@ export default function IncomeReport() {
               <Table striped bordered hover>
                 <thead>
                   <tr>
-                    <th>Propiedad</th>
+                    <th>Propiedad / cochera</th>
                     <th>Facturado $</th>
                     <th>Facturado USD</th>
                     <th>Cobrado $</th>
@@ -424,7 +464,7 @@ export default function IncomeReport() {
                 </thead>
                 <tbody>
                   {saleItems(report).map((item) => (
-                    <tr key={item.property_id}>
+                    <tr key={item.unit_key}>
                       <td>{propertyLabel(item)}</td>
                       <td>{money(item.sale_billed_pesos, "PESOS")}</td>
                       <td>{money(item.sale_billed_dolares, "DOLARES")}</td>
@@ -449,7 +489,7 @@ export default function IncomeReport() {
               <Table striped bordered hover>
                 <thead>
                   <tr>
-                    <th>Propiedad</th>
+                    <th>Propiedad / cochera</th>
                     <th>Comprador</th>
                     <th>Cuota</th>
                     <th>Vencimiento</th>

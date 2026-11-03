@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Modal, Form, Button, Row, Col, Alert } from "react-bootstrap";
 import FeedbackModal from "./FeedbackModal";
+import { formatISODate } from "../utils/paymentInfo";
 
 const TGI_MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -106,13 +107,19 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
     <>
     <Modal show={show} onHide={onHide} size="lg">
       <Modal.Header closeButton>
-        <Modal.Title>Editar Impuestos</Modal.Title>
+          <Modal.Title>
+            Editar impuestos
+            {period?.start_date && period?.end_date
+              ? ` · ${formatISODate(period.start_date)} – ${formatISODate(period.end_date)}`
+              : ""}
+          </Modal.Title>
       </Modal.Header>
       <Form onSubmit={handleSubmit}>
         <Modal.Body>
           <p className="text-muted small">
-            El monto de este mes se puede cambiar acá. El total es alquiler
-            indexado + servicios (como el seguro incendio de la planilla).
+            Solo cambia este mes. El TGI (y el resto de impuestos) de los otros
+            períodos queda igual, y el saldo a pagar de esos meses no se toca.
+            El total de este mes es alquiler indexado + servicios.
           </p>
           <Row>
             {active.epe &&
@@ -135,7 +142,7 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
             { active.tgi &&
             <Col md={6}>
               <Form.Group className="mb-3">
-                <Form.Label>TGI</Form.Label>
+                <Form.Label>TGI de este mes</Form.Label>
                 {tgiBreakdownLines(period?.tgi_detail).length > 0 && (
                   <div className="small text-muted mb-1">
                     {tgiBreakdownLines(period.tgi_detail).map((line) => (

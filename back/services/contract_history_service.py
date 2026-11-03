@@ -7,7 +7,7 @@ from models.property_sale import PropertySale
 from repositories.contract_history_repository import AllContractRepository
 from schemas.contract_historyDTO import AllContractResponse, PaginatedContractHistoryResponse, TenantMiniDTO
 from services.transaction_service import normalize_currency
-from utils.contract_display import contract_owner
+from utils.contract_display import contract_owner, sale_target_label
 
 
 class AllContractService:
@@ -28,10 +28,16 @@ class AllContractService:
         property_id: int | None = None,
         month: str | None = None,
         tenant: str | None = None,
+        garage_id: int | None = None,
     ) -> PaginatedContractHistoryResponse:
         page = max(1, page)
         page_size = min(max(1, page_size), 100)
-        filters = {"property_id": property_id, "month": month, "tenant": tenant}
+        filters = {
+            "property_id": property_id,
+            "month": month,
+            "tenant": tenant,
+            "garage_id": garage_id,
+        }
         rows = [("alquiler", row) for row in self.repo.get_filtered(**filters)]
         rows += [("venta", sale) for sale in self.repo.get_sales(**filters)]
         rows.sort(
@@ -59,7 +65,8 @@ class AllContractService:
     def _sale_to_response(self, sale: PropertySale) -> AllContractResponse:
         buyer_name = sale.buyer_name or (sale.buyer.name if sale.buyer else None)
         due_dates = [inst.due_date for inst in sale.installments if inst.due_date]
-        prop = sale.property
+        garage = sale.garage if sale.garage_id else None
+        prop = garage.property if garage else sale.property
         return AllContractResponse(
             id=sale.id,
             kind="venta",
@@ -67,20 +74,13 @@ class AllContractService:
             sale_status=sale.status,
             currency=normalize_currency(sale.currency),
             total_amount=sale.total_amount,
-            property_id=sale.property_id,
+            property_id=sale.property_id or (garage.property_id if garage else None),
+            garage_id=sale.garage_id,
             tenant_name=buyer_name,
             start_date=sale.sale_date,
             end_date=max(due_dates) if due_dates else None,
             document_path=getattr(sale, "document_path", None),
-            property_address=(
-                " · ".join(
-                    [prop.direction or "Sin dirección"]
-                    + ([f"Piso {prop.floor}"] if prop.floor else [])
-                    + ([f"Depto {prop.apartment}"] if prop.apartment else [])
-                )
-                if prop
-                else None
-            ),
+            property_address=sale_target_label(sale),
             owner_name=sale.seller.name if sale.seller else None,
             property=prop,
             tenant=TenantMiniDTO(id=sale.buyer_owner_id or 0, name=buyer_name) if buyer_name else None,

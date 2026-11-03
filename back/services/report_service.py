@@ -1,14 +1,14 @@
 from collections import defaultdict
 from datetime import date
 from fastapi import HTTPException
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from models.contract import RentalContract
 from models.contract_history import ContractHistory
 from models.contract_period import ContractPeriod
 from models.contract_termination import ContractTermination, SettlementDirectionEnum
-from models.property import Property
+from models.property import Garage, Property
 from models.property_sale import PropertySale
 from schemas.enums.enums import PaymentStatusEnum
 from schemas.reportDTO import (
@@ -20,7 +20,7 @@ from schemas.reportDTO import (
 )
 from services.property_sale_service import _normalize_kind, _sale_payment_status
 from services.transaction_service import normalize_currency
-from utils.contract_display import iter_months
+from utils.contract_display import garage_display_label, iter_months, property_display_label
 
 
 def _status_value(value) -> str:
@@ -39,6 +39,43 @@ def _is_garage_only_history(address) -> bool:
     return str(address or "").startswith("Garage N°")
 
 
+class _Unit:
+    def __init__(self, unit_type: str, obj):
+        self.type = unit_type
+        self.obj = obj
+        self.id = obj.id
+        self.key = f"{'p' if unit_type == 'property' else 'g'}-{obj.id}"
+
+    @property
+    def management_status(self) -> str:
+        return (self.obj.management_status or "").upper()
+
+    def fields(self) -> dict:
+        if self.type == "property":
+            prop = self.obj
+            return {
+                "unit_key": self.key,
+                "unit_type": "property",
+                "property_id": prop.id,
+                "garage_id": None,
+                "unit_label": property_display_label(prop),
+                "direction": prop.direction or "Sin dirección",
+                "floor": prop.floor,
+                "apartment": prop.apartment,
+            }
+        label = garage_display_label(self.obj)
+        return {
+            "unit_key": self.key,
+            "unit_type": "garage",
+            "property_id": None,
+            "garage_id": self.obj.id,
+            "unit_label": label,
+            "direction": label,
+            "floor": None,
+            "apartment": None,
+        }
+
+
 class ReportService:
     def __init__(self, db: Session):
         self.db = db
@@ -51,6 +88,8 @@ class ReportService:
         Garage-only leases are excluded so their rent does not appear as
         occupancy of the building unit.
         """
+        if not property_ids:
+            return {}
         rows = (
             self.db.query(
                 ContractHistory.rental_contract_id,
@@ -71,26 +110,62 @@ class ReportService:
             mapping[int(contract_id)] = int(property_id)
         return mapping
 
-    def _contract_property_scope(self, ids: list[int]):
-        history_map = self._history_property_ids(ids)
-        filters = [RentalContract.property_id.in_(ids)]
+    def _property_lease_ids(self, contract_ids) -> set[int]:
+        """Contracts whose history says they were a property lease, not garage-only."""
+        rows = (
+            self.db.query(ContractHistory.rental_contract_id, ContractHistory.property_address)
+            .filter(ContractHistory.rental_contract_id.in_(contract_ids))
+            .all()
+        )
+        return {
+            int(contract_id)
+            for contract_id, address in rows
+            if contract_id and not _is_garage_only_history(address)
+        }
+
+    def _contract_scope(self, property_ids: list[int], garage_ids: list[int]):
+        history_map = self._history_property_ids(property_ids)
+        filters = []
+        if property_ids:
+            filters.append(RentalContract.property_id.in_(property_ids))
         if history_map:
             filters.append(RentalContract.id.in_(list(history_map.keys())))
+        if garage_ids:
+            filters.append(
+                and_(
+                    RentalContract.garage_id.in_(garage_ids),
+                    RentalContract.property_id.is_(None),
+                )
+            )
         return history_map, or_(*filters)
 
-    def _line_property_id(self, contract, found: dict, history_map: dict[int, int]):
+    def _line_unit(self, contract, units: dict, history_map: dict[int, int], property_leases: set[int]):
         if not contract:
             return None
-        if contract.property_id in found:
-            return contract.property_id
-        return history_map.get(contract.id)
+        if contract.property_id and f"p-{contract.property_id}" in units:
+            return units[f"p-{contract.property_id}"]
+        mapped = history_map.get(contract.id)
+        if mapped and f"p-{mapped}" in units:
+            return units[f"p-{mapped}"]
+        if (
+            contract.property_id is None
+            and contract.garage_id
+            and contract.id not in property_leases
+        ):
+            return units.get(f"g-{contract.garage_id}")
+        return None
 
-    def _sale_income(self, found: dict, start_date: date, end_date: date):
+    def _sale_income(self, units: dict, property_ids, garage_ids, start_date: date, end_date: date):
         """Installments due inside the range, billed/collected like rent periods."""
+        filters = []
+        if property_ids:
+            filters.append(PropertySale.property_id.in_(property_ids))
+        if garage_ids:
+            filters.append(PropertySale.garage_id.in_(garage_ids))
         sales = (
             self.db.query(PropertySale)
             .options(joinedload(PropertySale.installments), joinedload(PropertySale.buyer))
-            .filter(PropertySale.property_id.in_(list(found.keys())))
+            .filter(or_(*filters))
             .all()
         )
         billed = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
@@ -98,10 +173,12 @@ class ReportService:
         lines = []
         sold_on = {}
         for sale in sales:
-            pid = sale.property_id
-            prop = found[pid]
-            if (prop.management_status or "") == "SOLD_OUT":
-                sold_on[pid] = sale.sale_date
+            key = f"g-{sale.garage_id}" if sale.garage_id else f"p-{sale.property_id}"
+            unit = units.get(key)
+            if unit is None:
+                continue
+            if unit.management_status == "SOLD_OUT":
+                sold_on[key] = sale.sale_date
             currency_key = normalize_currency(sale.currency)
             buyer = sale.buyer_name or (sale.buyer.name if sale.buyer else None)
             installments = sorted(
@@ -117,14 +194,11 @@ class ReportService:
                     label = "Adelanto"
                 else:
                     label = f"Cuota {cuotas.index(inst) + 1}/{len(cuotas)}"
-                billed[pid][currency_key] += amount
-                collected[pid][currency_key] += paid
+                billed[key][currency_key] += amount
+                collected[key][currency_key] += paid
                 lines.append(
                     SaleLine(
-                        property_id=pid,
-                        direction=prop.direction,
-                        floor=prop.floor,
-                        apartment=prop.apartment,
+                        **unit.fields(),
                         sale_id=sale.id,
                         buyer_name=buyer,
                         label=label,
@@ -136,44 +210,72 @@ class ReportService:
                         status=_sale_payment_status(amount, paid),
                     )
                 )
-        lines.sort(key=lambda line: (line.property_id, line.due_date))
+        order = {key: idx for idx, key in enumerate(units)}
+        lines.sort(key=lambda line: (order.get(line.unit_key, 0), line.due_date))
         return billed, collected, lines, sold_on
+
+    def _load_units(self, property_ids: list[int], garage_ids: list[int]) -> dict:
+        units = {}
+        if property_ids:
+            properties = (
+                self.db.query(Property)
+                .filter(Property.id.in_(property_ids), Property.status == 1)
+                .all()
+            )
+            found = {p.id: p for p in properties}
+            missing = [pid for pid in property_ids if pid not in found]
+            if missing:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No se encontraron las propiedades: {', '.join(map(str, missing))}",
+                )
+            for pid in property_ids:
+                unit = _Unit("property", found[pid])
+                units[unit.key] = unit
+        if garage_ids:
+            garages = (
+                self.db.query(Garage)
+                .options(joinedload(Garage.property))
+                .filter(Garage.id.in_(garage_ids), Garage.status == 1)
+                .all()
+            )
+            found = {g.id: g for g in garages}
+            missing = [gid for gid in garage_ids if gid not in found]
+            if missing:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No se encontraron las cocheras: {', '.join(map(str, missing))}",
+                )
+            for gid in garage_ids:
+                unit = _Unit("garage", found[gid])
+                units[unit.key] = unit
+        return units
 
     def property_income(
         self,
         property_ids: list[int],
         start_date: date,
         end_date: date,
+        garage_ids: list[int] | None = None,
     ) -> PropertyIncomeReport:
         if start_date > end_date:
             raise HTTPException(
                 status_code=400,
                 detail="La fecha desde no puede ser posterior a la fecha hasta.",
             )
-        ids = sorted({int(pid) for pid in property_ids if pid})
-        if not ids:
+        pids = sorted({int(pid) for pid in property_ids or [] if pid})
+        gids = sorted({int(gid) for gid in garage_ids or [] if gid})
+        if not pids and not gids:
             raise HTTPException(
                 status_code=400,
-                detail="Seleccioná al menos una propiedad.",
+                detail="Seleccioná al menos una propiedad o cochera.",
             )
 
-        properties = (
-            self.db.query(Property)
-            .filter(Property.id.in_(ids), Property.status == 1)
-            .all()
-        )
-        found = {p.id: p for p in properties}
-        missing = [pid for pid in ids if pid not in found]
-        if missing:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No se encontraron las propiedades: {', '.join(map(str, missing))}",
-            )
-
+        units = self._load_units(pids, gids)
         billed = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
         collected = defaultdict(lambda: {"PESOS": 0.0, "DOLARES": 0.0})
         period_lines = defaultdict(list)
-        history_map, contract_scope = self._contract_property_scope(ids)
+        history_map, contract_scope = self._contract_scope(pids, gids)
 
         billed_rows = (
             self.db.query(ContractPeriod)
@@ -187,27 +289,32 @@ class ReportService:
             .order_by(RentalContract.property_id, ContractPeriod.start_date)
             .all()
         )
+        property_leases = (
+            self._property_lease_ids({p.contract_id for p in billed_rows}) if gids else set()
+        )
         for period in billed_rows:
+            contract = period.contract
+            waived = False
             if _status_value(period.payment_status) == PaymentStatusEnum.CONTRATO_TERMINADO.value:
                 if float(period.amount_paid or 0) <= 0:
-                    continue
-            contract = period.contract
-            property_id = self._line_property_id(contract, found, history_map)
-            if property_id not in found:
+                    # Annulled while the tenant still occupied it (early leave):
+                    # shown as "sin cobrar" so the month does not look vacant.
+                    left_on = getattr(contract, "end_date", None)
+                    if not left_on or period.start_date > left_on:
+                        continue
+                    waived = True
+            unit = self._line_unit(contract, units, history_map, property_leases)
+            if unit is None:
                 continue
-            prop = found[property_id]
             currency_key = normalize_currency(getattr(contract, "currency", None))
-            amount = float(period.total_amount or 0)
-            paid = float(period.amount_paid or 0)
+            amount = 0.0 if waived else float(period.total_amount or 0)
+            paid = 0.0 if waived else float(period.amount_paid or 0)
             tenant = getattr(contract, "tenant", None)
-            billed[property_id][currency_key] += amount
-            collected[property_id][currency_key] += paid
-            period_lines[property_id].append(
+            billed[unit.key][currency_key] += amount
+            collected[unit.key][currency_key] += paid
+            period_lines[unit.key].append(
                 BilledLine(
-                    property_id=property_id,
-                    direction=prop.direction,
-                    floor=prop.floor,
-                    apartment=prop.apartment,
+                    **unit.fields(),
                     tenant_name=tenant.name if tenant else None,
                     period_start=period.start_date,
                     period_end=period.end_date,
@@ -215,8 +322,12 @@ class ReportService:
                     amount=amount,
                     amount_paid=paid,
                     payment_status=_status_value(period.payment_status),
-                    kind="period",
-                    note=period.proration_note or period.termination_note,
+                    kind="waived" if waived else "period",
+                    note=(
+                        "Sin cobrar por baja anticipada"
+                        if waived
+                        else period.proration_note or period.termination_note
+                    ),
                 )
             )
 
@@ -232,13 +343,16 @@ class ReportService:
             .filter(ContractTermination.settlement_amount > 0)
             .all()
         )
+        if gids:
+            property_leases |= self._property_lease_ids(
+                {term.rental_contract_id for term in settlements}
+            )
         settlement_lines = defaultdict(list)
         for term in settlements:
             contract = term.contract
-            property_id = self._line_property_id(contract, found, history_map)
-            if property_id not in found:
+            unit = self._line_unit(contract, units, history_map, property_leases)
+            if unit is None:
                 continue
-            prop = found[property_id]
             currency_key = normalize_currency(getattr(contract, "currency", None))
             amount = float(term.settlement_amount or 0)
             direction = _direction_value(term.settlement_direction)
@@ -251,14 +365,11 @@ class ReportService:
                 billed_amount = amount
                 collected_amount = amount
                 note = "Acuerdo de baja (Inquilino → Propietario)"
-            billed[property_id][currency_key] += billed_amount
-            collected[property_id][currency_key] += collected_amount
-            settlement_lines[property_id].append(
+            billed[unit.key][currency_key] += billed_amount
+            collected[unit.key][currency_key] += collected_amount
+            settlement_lines[unit.key].append(
                 BilledLine(
-                    property_id=property_id,
-                    direction=prop.direction,
-                    floor=prop.floor,
-                    apartment=prop.apartment,
+                    **unit.fields(),
                     tenant_name=tenant.name if tenant else None,
                     period_start=term.effective_date,
                     period_end=term.effective_date,
@@ -272,14 +383,14 @@ class ReportService:
             )
 
         sale_billed, sale_collected, sale_lines, sold_on = self._sale_income(
-            found, start_date, end_date
+            units, pids, gids, start_date, end_date
         )
 
         billed_lines = []
-        for pid in ids:
-            prop = found[pid]
-            existing = period_lines[pid]
-            sale_date = sold_on.get(pid)
+        for key, unit in units.items():
+            existing = period_lines[key]
+            sale_date = sold_on.get(key)
+            unit_lines = []
             for month_from, month_to in iter_months(start_date, end_date):
                 covers = [
                     line
@@ -287,7 +398,7 @@ class ReportService:
                     if line.period_start <= month_to and line.period_end >= month_from
                 ]
                 if covers:
-                    billed_lines.extend(
+                    unit_lines.extend(
                         line
                         for line in covers
                         if not any(
@@ -295,18 +406,14 @@ class ReportService:
                             and prev.period_end == line.period_end
                             and prev.kind == line.kind
                             and prev.tenant_name == line.tenant_name
-                            for prev in billed_lines
-                            if prev.property_id == pid
+                            for prev in unit_lines
                         )
                     )
                 else:
                     sold = sale_date is not None and month_to >= sale_date
-                    billed_lines.append(
+                    unit_lines.append(
                         BilledLine(
-                            property_id=pid,
-                            direction=prop.direction,
-                            floor=prop.floor,
-                            apartment=prop.apartment,
+                            **unit.fields(),
                             tenant_name=None,
                             period_start=month_from,
                             period_end=month_to,
@@ -322,29 +429,22 @@ class ReportService:
                             ),
                         )
                     )
-            billed_lines.extend(settlement_lines[pid])
+            billed_lines.extend(unit_lines)
+            billed_lines.extend(settlement_lines[key])
 
         items = []
         totals = PropertyIncomeTotals()
-        for pid in ids:
-            prop = found[pid]
-            billed_pesos = billed[pid]["PESOS"]
-            billed_dolares = billed[pid]["DOLARES"]
-            collected_pesos = collected[pid]["PESOS"]
-            collected_dolares = collected[pid]["DOLARES"]
+        for key, unit in units.items():
             item = PropertyIncomeItem(
-                property_id=pid,
-                direction=prop.direction,
-                floor=prop.floor,
-                apartment=prop.apartment,
-                billed_pesos=billed_pesos,
-                billed_dolares=billed_dolares,
-                collected_pesos=collected_pesos,
-                collected_dolares=collected_dolares,
-                sale_billed_pesos=sale_billed[pid]["PESOS"],
-                sale_billed_dolares=sale_billed[pid]["DOLARES"],
-                sale_collected_pesos=sale_collected[pid]["PESOS"],
-                sale_collected_dolares=sale_collected[pid]["DOLARES"],
+                **unit.fields(),
+                billed_pesos=billed[key]["PESOS"],
+                billed_dolares=billed[key]["DOLARES"],
+                collected_pesos=collected[key]["PESOS"],
+                collected_dolares=collected[key]["DOLARES"],
+                sale_billed_pesos=sale_billed[key]["PESOS"],
+                sale_billed_dolares=sale_billed[key]["DOLARES"],
+                sale_collected_pesos=sale_collected[key]["PESOS"],
+                sale_collected_dolares=sale_collected[key]["DOLARES"],
             )
             items.append(item)
             for field in PropertyIncomeTotals.model_fields:

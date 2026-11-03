@@ -4,11 +4,11 @@ from typing import Optional
 
 from dateutil.relativedelta import relativedelta
 from fastapi import HTTPException, status
-from sqlalchemy import and_, extract, func, or_
+from sqlalchemy import and_, extract, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
 
 from models.person import Owner
-from models.property import Property
+from models.property import Garage, Property
 from models.property_sale import PropertySale, PropertySalePayment
 from models.transaction_history import TransactionHistory
 from schemas.saleDTO import (
@@ -19,6 +19,7 @@ from schemas.saleDTO import (
     SellPropertyDTO,
 )
 from services.transaction_service import normalize_currency, normalize_received_by
+from utils.contract_display import garage_display_label, property_display_label
 
 
 def _round2(value) -> float:
@@ -61,19 +62,28 @@ class PropertySaleService:
             parts.append(f"Depto {prop.apartment}")
         return " · ".join(parts)
 
+    def _sale_label(self, sale: PropertySale) -> str:
+        if sale.garage_id and sale.garage:
+            return garage_display_label(sale.garage)
+        return self._property_label(sale.property) if sale.property else "Sin dirección"
+
     def _to_response(self, sale: PropertySale) -> PropertySaleResponse:
         paid = _round2(sum(inst.amount_paid or 0 for inst in sale.installments))
         total = _round2(sale.total_amount)
-        prop = sale.property
+        garage = sale.garage if sale.garage_id else None
+        prop = garage.property if garage else sale.property
         seller = sale.seller
         buyer = sale.buyer
         return PropertySaleResponse(
             id=sale.id,
             property_id=sale.property_id,
-            property_direction=self._property_label(prop) if prop else "Sin dirección",
+            garage_id=sale.garage_id,
+            garage_number=garage.number if garage else None,
+            target_kind="cochera" if garage else "propiedad",
+            property_direction=self._sale_label(sale),
             property_address=prop.direction if prop else None,
-            property_floor=prop.floor if prop else None,
-            property_apartment=prop.apartment if prop else None,
+            property_floor=None if garage or not prop else prop.floor,
+            property_apartment=None if garage or not prop else prop.apartment,
             seller_owner_id=sale.seller_owner_id,
             seller_name=seller.name if seller else None,
             buyer_owner_id=sale.buyer_owner_id,
@@ -109,6 +119,7 @@ class PropertySaleService:
             self.db.query(PropertySale)
             .options(
                 joinedload(PropertySale.property),
+                joinedload(PropertySale.garage).joinedload(Garage.property),
                 joinedload(PropertySale.seller),
                 joinedload(PropertySale.buyer),
                 joinedload(PropertySale.installments),
@@ -166,8 +177,8 @@ class PropertySaleService:
         received_by: str,
         notes: Optional[str],
     ) -> None:
-        prop = sale.property
         seller = sale.seller
+        what = "cochera" if sale.garage_id else "propiedad"
         buyer_name = sale.buyer_name or (sale.buyer.name if sale.buyer else "Comprador")
         receiver = normalize_received_by(received_by)
         remitted = receiver != "INTERMEDIARIO"
@@ -180,16 +191,16 @@ class PropertySaleService:
                 method="venta",
                 notes=notes
                 or (
-                    "Venta de propiedad. Adelanto pactado."
+                    f"Venta de {what}. Adelanto pactado."
                     if _normalize_kind(getattr(inst, "kind", None)) == "adelanto"
-                    else f"Venta de propiedad. Cuota vto {inst.due_date.isoformat()}."
+                    else f"Venta de {what}. Cuota vto {inst.due_date.isoformat()}."
                 ),
                 contract_id=None,
                 owner_id=seller.id if seller else None,
                 owner_name=seller.name if seller else "Dueño vendedor",
                 tenant_id=sale.buyer_owner_id,
                 tenant_name=buyer_name,
-                property_direction=self._property_label(prop) if prop else "Sin dirección",
+                property_direction=self._sale_label(sale),
                 period_id=None,
                 period_start_date=sale.sale_date,
                 period_end_date=inst.due_date,
@@ -231,6 +242,106 @@ class PropertySaleService:
                 detail="Esta propiedad ya tiene una venta registrada",
             )
 
+        sale, buyer_owner = self._create_sale(data, property_id=prop.id, seller_owner_id=prop.owner_id)
+
+        if data.keep_managing:
+            prop.owner_id = buyer_owner.id
+            for garage in prop.garages or []:
+                garage.owner_id = buyer_owner.id
+            has_lease = bool(prop.rental_contract and prop.rental_contract.status == 1)
+            prop.management_status = "ACTIVE" if has_lease else "DELIVERED"
+        else:
+            self._cancel_for_sale(prop.rental_contract, data.sale_date, "Venta de propiedad")
+            prop.management_status = "SOLD_OUT"
+            for garage in prop.garages or []:
+                garage.status = 0
+
+        return self._commit_sale(sale)
+
+    def sell_garage(self, garage_id: int, data: SellPropertyDTO) -> PropertySaleResponse:
+        garage = (
+            self.db.query(Garage)
+            .options(
+                joinedload(Garage.owner),
+                joinedload(Garage.property),
+                joinedload(Garage.rental_contract),
+            )
+            .filter(Garage.id == garage_id, Garage.status == 1)
+            .first()
+        )
+        if not garage:
+            raise HTTPException(status_code=404, detail="Cochera no encontrada")
+        if (garage.management_status or "ACTIVE").upper() == "SOLD_OUT":
+            raise HTTPException(status_code=400, detail="Esta cochera ya salió de la cartera")
+        existing = (
+            self.db.query(PropertySale)
+            .filter(PropertySale.garage_id == garage_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=400, detail="Esta cochera ya tiene una venta registrada")
+
+        contract = garage.rental_contract
+        active_lease = bool(contract and contract.status == 1)
+        if active_lease and contract.property_id:
+            label = property_display_label(contract.property)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"La cochera está incluida en el contrato de {label}; "
+                    "editá ese contrato antes de venderla"
+                ),
+            )
+
+        sale, buyer_owner = self._create_sale(data, garage_id=garage.id, seller_owner_id=garage.owner_id)
+
+        if data.keep_managing:
+            garage.owner_id = buyer_owner.id
+            garage.management_status = "ACTIVE" if active_lease else "DELIVERED"
+        else:
+            self._cancel_for_sale(contract, data.sale_date, "Venta de cochera")
+            garage.management_status = "SOLD_OUT"
+
+        return self._commit_sale(sale)
+
+    def _cancel_for_sale(self, contract, sale_date: date, reason: str) -> None:
+        if not contract or contract.status != 1:
+            return
+        from services.rental_contract_service import RentalContractService
+
+        RentalContractService(self.db).cancel_contract(
+            contract.id,
+            cancelled_by="PROPIETARIO",
+            reason=reason,
+            effective_date=sale_date,
+            settlement_amount=0.0,
+            settlement_direction="SIN_MONTO",
+            waive_remaining_rent=True,
+            commit=False,
+        )
+
+    def _commit_sale(self, sale: PropertySale) -> PropertySaleResponse:
+        try:
+            self.db.commit()
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"No se pudo registrar la venta: {e}",
+            )
+        return self._to_response(self._load_sale(sale.id))
+
+    def _create_sale(
+        self,
+        data: SellPropertyDTO,
+        *,
+        seller_owner_id: Optional[int],
+        property_id: Optional[int] = None,
+        garage_id: Optional[int] = None,
+    ):
         if not data.installments:
             raise HTTPException(status_code=400, detail="Indicá al menos una cuota o el pago de contado")
 
@@ -270,8 +381,9 @@ class PropertySaleService:
                 )
 
         sale = PropertySale(
-            property_id=prop.id,
-            seller_owner_id=prop.owner_id,
+            property_id=property_id,
+            garage_id=garage_id,
+            seller_owner_id=seller_owner_id,
             buyer_owner_id=buyer_owner.id if buyer_owner else None,
             buyer_name=buyer_name,
             sale_date=data.sale_date,
@@ -311,44 +423,7 @@ class PropertySaleService:
         self.db.flush()
         self.db.refresh(sale)
         self._refresh_sale_status(sale)
-
-        if data.keep_managing:
-            prop.owner_id = buyer_owner.id
-            for garage in prop.garages or []:
-                garage.owner_id = buyer_owner.id
-            has_lease = bool(prop.rental_contract and prop.rental_contract.status == 1)
-            prop.management_status = "ACTIVE" if has_lease else "DELIVERED"
-        else:
-            contract = prop.rental_contract
-            if contract and contract.status == 1:
-                from services.rental_contract_service import RentalContractService
-
-                RentalContractService(self.db).cancel_contract(
-                    contract.id,
-                    cancelled_by="PROPIETARIO",
-                    reason="Venta de propiedad",
-                    effective_date=data.sale_date,
-                    settlement_amount=0.0,
-                    settlement_direction="SIN_MONTO",
-                    waive_remaining_rent=True,
-                    commit=False,
-                )
-            prop.management_status = "SOLD_OUT"
-            for garage in prop.garages or []:
-                garage.status = 0
-
-        try:
-            self.db.commit()
-        except HTTPException:
-            self.db.rollback()
-            raise
-        except Exception as e:
-            self.db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"No se pudo registrar la venta: {e}",
-            )
-        return self._to_response(self._load_sale(sale.id))
+        return sale, buyer_owner
 
     def _unpaid_installment_filter(self):
         return PropertySalePayment.amount_paid < PropertySalePayment.amount
@@ -391,10 +466,19 @@ class PropertySaleService:
                     func.lower(func.coalesce(Property.apartment, "")).like(term),
                 )
             )
+            matching_garages = self.db.query(Garage.id).filter(
+                or_(
+                    func.lower(func.coalesce(Garage.number, "")).like(term),
+                    Garage.property_id.in_(matching_properties),
+                    func.lower(literal("garage ") + func.coalesce(Garage.number, "")).like(term),
+                    func.lower(literal("cochera ") + func.coalesce(Garage.number, "")).like(term),
+                )
+            )
             query = query.filter(
                 or_(
                     func.lower(func.coalesce(PropertySale.buyer_name, "")).like(term),
                     PropertySale.property_id.in_(matching_properties),
+                    PropertySale.garage_id.in_(matching_garages),
                 )
             )
 
@@ -445,6 +529,7 @@ class PropertySaleService:
         items = (
             query.options(
                 joinedload(PropertySale.property),
+                joinedload(PropertySale.garage).joinedload(Garage.property),
                 joinedload(PropertySale.seller),
                 joinedload(PropertySale.buyer),
                 joinedload(PropertySale.installments),

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Form, Modal, Row, Col, Spinner } from "react-bootstrap";
 import { getOwners, createOwner } from "../api/person";
 import { sellProperty } from "../api/sale";
+import { sellGarage } from "../api/garage";
 
 function todayISO() {
   const t = new Date();
@@ -20,7 +21,11 @@ function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
 
-export default function SellPropertyModal({ show, onHide, property, onSold }) {
+export default function SellPropertyModal({ show, onHide, property, garage, onSold }) {
+  const targetLabel = garage
+    ? garage.label || `Garage N° ${garage.number}`
+    : property?.direction;
+  const currentOwner = garage ? garage.owner_name : property?.owner?.name;
   const [owners, setOwners] = useState([]);
   const [keepManaging, setKeepManaging] = useState(true);
   const [buyerOwnerId, setBuyerOwnerId] = useState("");
@@ -68,7 +73,7 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
     getOwners()
       .then((list) => setOwners(list || []))
       .catch(() => setOwners([]));
-  }, [show, property?.id]);
+  }, [show, property?.id, garage?.id]);
 
   const installmentSum = useMemo(
     () => round2(installments.reduce((acc, row) => acc + (Number(row.amount) || 0), 0)),
@@ -141,7 +146,7 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!property?.id) return;
+    if (!property?.id && !garage?.id) return;
     if (!total || total <= 0) {
       setError("Indicá el monto de la venta.");
       return;
@@ -163,7 +168,10 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
     setSaving(true);
     setError("");
     try {
-      const created = await sellProperty(property.id, {
+      const sell = garage
+        ? (payload) => sellGarage(garage.id, payload)
+        : (payload) => sellProperty(property.id, payload);
+      const created = await sell({
         keep_managing: keepManaging,
         buyer_owner_id: keepManaging ? Number(buyerOwnerId) : null,
         buyer_name: keepManaging ? undefined : buyerName.trim(),
@@ -226,13 +234,13 @@ export default function SellPropertyModal({ show, onHide, property, onSold }) {
     <Modal show={show} onHide={onHide} size="lg" backdrop="static">
       <Form onSubmit={handleSubmit}>
         <Modal.Header closeButton>
-          <Modal.Title>Vender propiedad</Modal.Title>
+          <Modal.Title>{garage ? "Vender cochera" : "Vender propiedad"}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {error && <Alert variant="danger">{error}</Alert>}
           <p className="text-muted">
-            {property?.direction}
-            {property?.owner?.name ? ` · Dueño actual: ${property.owner.name}` : ""}
+            {targetLabel}
+            {currentOwner ? ` · Dueño actual: ${currentOwner}` : ""}
           </p>
           <Form.Check
             type="switch"

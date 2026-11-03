@@ -58,6 +58,7 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_columns()
+    _relax_property_sales_property_id()
     _patch_period_due_dates()
 
 
@@ -99,6 +100,7 @@ def _ensure_sqlite_columns():
         },
         "contract_terminations": {
             "waive_remaining_rent": "BOOLEAN DEFAULT 0",
+            "waive_current_month": "BOOLEAN DEFAULT 0",
         },
         "transaction_history": {
             "currency": "TEXT",
@@ -117,6 +119,10 @@ def _ensure_sqlite_columns():
         },
         "property_sales": {
             "document_path": "TEXT",
+            "garage_id": "INTEGER",
+        },
+        "garages": {
+            "management_status": "TEXT DEFAULT 'ACTIVE'",
         },
     }
 
@@ -292,6 +298,44 @@ def _ensure_sqlite_columns():
                     """
                 )
             )
+
+
+def _relax_property_sales_property_id():
+    """Garage sales need property_sales.property_id nullable; SQLite can only
+    drop NOT NULL by rebuilding the table. Backs up the DB file first."""
+    import shutil
+    from sqlalchemy import text, inspect
+    from sqlalchemy.schema import CreateTable
+    from models.property_sale import PropertySale
+
+    inspector = inspect(engine)
+    if "property_sales" not in inspector.get_table_names():
+        return
+    with engine.connect() as conn:
+        info = conn.execute(text("PRAGMA table_info(property_sales)")).mappings().all()
+    property_col = next((col for col in info if col["name"] == "property_id"), None)
+    if not property_col or not property_col["notnull"]:
+        return
+
+    backup = f"{DB_PATH}.bak-antes-ventas-cocheras"
+    if os.path.exists(DB_PATH) and not os.path.exists(backup):
+        shutil.copy2(DB_PATH, backup)
+
+    old_cols = [col["name"] for col in info]
+    new_cols = [col.name for col in PropertySale.__table__.columns]
+    shared = ", ".join(col for col in new_cols if col in old_cols)
+    create_sql = str(CreateTable(PropertySale.__table__).compile(engine)).replace(
+        "CREATE TABLE property_sales ", "CREATE TABLE property_sales_new ", 1
+    )
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS property_sales_new"))
+        conn.execute(text(create_sql))
+        conn.execute(
+            text(f"INSERT INTO property_sales_new ({shared}) SELECT {shared} FROM property_sales")
+        )
+        conn.execute(text("DROP TABLE property_sales"))
+        conn.execute(text("ALTER TABLE property_sales_new RENAME TO property_sales"))
+    print(f"[db] property_sales rebuilt (backup: {backup})", flush=True)
 
 
 def _patch_period_due_dates():

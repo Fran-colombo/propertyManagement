@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import extract, or_
+from models.contract import RentalContract
 from models.contract_history import ContractHistory
-from models.property import Property
+from models.property import Garage, Property
 from models.property_sale import PropertySale
 from models.person import Owner, Tenant
 
@@ -16,9 +17,14 @@ class AllContractRepository:
             joinedload(ContractHistory.tenant),
         )
 
-    def _apply_filters(self, query, property_id=None, month=None, tenant=None):
+    def _apply_filters(self, query, property_id=None, month=None, tenant=None, garage_id=None):
         if property_id:
             query = query.filter(ContractHistory.property_id == property_id)
+        if garage_id:
+            garage_contracts = self.db.query(RentalContract.id).filter(
+                RentalContract.garage_id == garage_id
+            )
+            query = query.filter(ContractHistory.rental_contract_id.in_(garage_contracts))
         if month:
             year_s, month_s = month.split("-", 1)
             query = query.filter(
@@ -52,27 +58,37 @@ class AllContractRepository:
             .all()
         )
 
-    def get_filtered(self, *, property_id=None, month=None, tenant=None):
+    def get_filtered(self, *, property_id=None, month=None, tenant=None, garage_id=None):
         return (
             self._apply_filters(
                 self.db.query(ContractHistory).options(*self._options()),
                 property_id=property_id,
                 month=month,
                 tenant=tenant,
+                garage_id=garage_id,
             )
             .order_by(ContractHistory.id.desc())
             .all()
         )
 
-    def get_sales(self, *, property_id=None, month=None, tenant=None):
+    def get_sales(self, *, property_id=None, month=None, tenant=None, garage_id=None):
         query = self.db.query(PropertySale).options(
             joinedload(PropertySale.property),
+            joinedload(PropertySale.garage).joinedload(Garage.property),
             joinedload(PropertySale.seller),
             joinedload(PropertySale.buyer),
             joinedload(PropertySale.installments),
         )
         if property_id:
-            query = query.filter(PropertySale.property_id == property_id)
+            property_garages = self.db.query(Garage.id).filter(Garage.property_id == property_id)
+            query = query.filter(
+                or_(
+                    PropertySale.property_id == property_id,
+                    PropertySale.garage_id.in_(property_garages),
+                )
+            )
+        if garage_id:
+            query = query.filter(PropertySale.garage_id == garage_id)
         if month:
             year_s, month_s = month.split("-", 1)
             query = query.filter(

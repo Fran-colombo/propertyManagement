@@ -4,6 +4,7 @@ from models.property import Garage, Property
 from models.person import Owner
 from models.contract import RentalContract
 from schemas.garageDTO import GarageCreate, GarageRead, GarageUpdate
+from utils.contract_display import garage_display_label
 
 
 class GarageRepository:
@@ -19,8 +20,8 @@ class GarageRepository:
         return db_garage
 
     @staticmethod
-    def get_all_garages(db: Session):
-        return (
+    def get_all_garages(db: Session, include_sold: bool = False):
+        query = (
             db.query(Garage)
             .outerjoin(Property, Garage.property_id == Property.id)
             .options(
@@ -36,8 +37,17 @@ class GarageRepository:
                     Property.management_status != "SOLD_OUT",
                 )
             )
-            .all()
         )
+        if not include_sold:
+            query = query.filter(
+                or_(Garage.management_status.is_(None), Garage.management_status != "SOLD_OUT")
+            )
+        return query.all()
+
+    @staticmethod
+    def soft_delete(db: Session, garage: Garage):
+        garage.status = 0
+        db.commit()
 
     @staticmethod
     def get_garage_by_id(db: Session, garage_id: int):
@@ -95,4 +105,9 @@ def to_garage_read(garage: Garage) -> GarageRead:
         property_direction=garage.property.direction if garage.property else None,
         rental_contract_id=active.id if active else None,
         tenant_name=tenant_name,
+        management_status=(garage.management_status or "ACTIVE").upper(),
+        label=garage_display_label(garage),
+        contract_end_date=active.end_date if active else None,
+        contract_document_path=getattr(active, "document_path", None) if active else None,
+        contract_property_id=active.property_id if active else None,
     )

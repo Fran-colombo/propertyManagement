@@ -3,6 +3,7 @@ import { Card, Spinner, Row, Col, Badge, Button, ButtonGroup, Dropdown, Modal, T
 import { Grid, ListUl } from "react-bootstrap-icons";
 import { apiFetch } from "../api/clients";
 import { deleteProperty } from "../api/property";
+import { deleteGarage } from "../api/garage";
 import { getPeriodsByContract } from "../api/contract_period";
 import CreatePropertyModal from "../components/CreatePropertyModal";
 import CreateGarageModal from "../components/CreateGarageModal";
@@ -61,6 +62,22 @@ function ViewModeToggle({ value, onChange }) {
 
 function formatDate(value) {
   return formatISODate(value) || "—";
+}
+
+function garageLabel(garage) {
+  return garage?.label || `Garage N° ${garage?.number}`;
+}
+
+/** Garage-only lease; a garage rented inside a property lease is managed from the property. */
+function ownGarageContract(garage) {
+  if (!garage?.rental_contract_id || garage.contract_property_id) return null;
+  return { id: garage.rental_contract_id };
+}
+
+function GarageStatusBadge({ garage, long = false }) {
+  if (garage.rental_contract_id) return <Badge bg="secondary">Alquilado</Badge>;
+  if (garage.management_status === "DELIVERED") return <Badge bg="info">Entregada</Badge>;
+  return <Badge bg="info">{long ? "Disponible para alquilar" : "Disponible"}</Badge>;
 }
 
 function matchesOccupancy(isRented, filter) {
@@ -168,6 +185,8 @@ const PropertiesAndGarages = () => {
   const [feedback, setFeedback] = useState(null);
   const [pendingDeleteProp, setPendingDeleteProp] = useState(null);
   const [propertyToSell, setPropertyToSell] = useState(null);
+  const [garageToSell, setGarageToSell] = useState(null);
+  const [pendingDeleteGarage, setPendingDeleteGarage] = useState(null);
 
 
   const findCurrentPeriod = (periods) => {
@@ -323,6 +342,26 @@ const PropertiesAndGarages = () => {
     setPendingDeleteProp(null);
   }
 };
+
+  const handleDeleteGarage = async (garageId) => {
+    try {
+      const response = await deleteGarage(garageId);
+      loadData();
+      setFeedback({
+        variant: "success",
+        title: "Cochera eliminada",
+        message: response?.message || "Cochera eliminada correctamente",
+      });
+    } catch (err) {
+      setFeedback({
+        variant: "danger",
+        title: "Error",
+        message: err.message || "Error al eliminar la cochera",
+      });
+    } finally {
+      setPendingDeleteGarage(null);
+    }
+  };
 
   const openPropertyPayments = (prop) => {
     setSelectedPayment({
@@ -572,12 +611,19 @@ const PropertiesAndGarages = () => {
             Inquilino: <strong>{garage.tenant_name || "Sin inquilino"}</strong>
           </p>
         ) : null}
-        <Badge
-          bg={garage.rental_contract_id ? "secondary" : "info"}
-          className="mt-auto align-self-start mb-2"
-        >
-          {garage.rental_contract_id ? "Alquilado" : "Disponible para alquilar"}
-        </Badge>
+        {garage.rental_contract_id && (
+          <p className="mb-2">
+            Contrato hasta: <strong>{formatDate(garage.contract_end_date)}</strong>
+            {garage.contract_property_id && (
+              <small className="text-muted d-block">
+                Incluida en el contrato de la propiedad
+              </small>
+            )}
+          </p>
+        )}
+        <div className="mt-auto align-self-start mb-2">
+          <GarageStatusBadge garage={garage} long />
+        </div>
         <div className="d-flex flex-wrap gap-2">
           {garage.rental_contract_id && (
             <Button
@@ -588,12 +634,62 @@ const PropertiesAndGarages = () => {
               Ver Detalles de Pagos
             </Button>
           )}
+          {garage.contract_document_path && (
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              as="a"
+              href={mediaUrl(garage.contract_document_path)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Ver contrato
+            </Button>
+          )}
+          {ownGarageContract(garage) && (
+            <>
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                onClick={() => {
+                  setContractToEdit(ownGarageContract(garage));
+                  setShowEditModal(true);
+                }}
+              >
+                Editar contrato
+              </Button>
+              <Button
+                variant="outline-danger"
+                size="sm"
+                onClick={() => {
+                  setContractToCancel(ownGarageContract(garage));
+                  setShowCancelModal(true);
+                }}
+              >
+                Finalizar contrato
+              </Button>
+            </>
+          )}
           <Button
             variant="outline-secondary"
             size="sm"
             onClick={() => setEditingGarage(garage)}
           >
             Editar
+          </Button>
+          <Button
+            variant="outline-success"
+            size="sm"
+            onClick={() => setGarageToSell(garage)}
+          >
+            Vender
+          </Button>
+          <Button
+            variant="outline-danger"
+            size="sm"
+            onClick={() => setPendingDeleteGarage(garage)}
+          >
+            Eliminar
           </Button>
         </div>
       </Card.Body>
@@ -756,9 +852,12 @@ const PropertiesAndGarages = () => {
               <td>{garage.property_direction || <span className="text-muted">—</span>}</td>
               <td>{garage.rental_contract_id ? garage.tenant_name || "Sin inquilino" : "—"}</td>
               <td>
-                <Badge bg={garage.rental_contract_id ? "secondary" : "info"}>
-                  {garage.rental_contract_id ? "Alquilado" : "Disponible"}
-                </Badge>
+                <GarageStatusBadge garage={garage} />
+                {garage.rental_contract_id && (
+                  <small className="text-muted d-block">
+                    Hasta {formatDate(garage.contract_end_date)}
+                  </small>
+                )}
               </td>
               <td className="text-nowrap">
                 <div className="d-flex gap-1">
@@ -771,13 +870,63 @@ const PropertiesAndGarages = () => {
                       Pagos
                     </Button>
                   )}
-                  <Button
-                    variant="outline-secondary"
-                    size="sm"
-                    onClick={() => setEditingGarage(garage)}
-                  >
-                    Editar
-                  </Button>
+                  <Dropdown align="end">
+                    <Dropdown.Toggle variant="outline-secondary" size="sm">
+                      Más
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu popperConfig={{ strategy: "fixed" }}>
+                      {garage.contract_document_path && (
+                        <Dropdown.Item
+                          href={mediaUrl(garage.contract_document_path)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Ver contrato
+                        </Dropdown.Item>
+                      )}
+                      {ownGarageContract(garage) && (
+                        <>
+                          <Dropdown.Item
+                            onClick={() => {
+                              setContractToEdit(ownGarageContract(garage));
+                              setShowEditModal(true);
+                            }}
+                          >
+                            Editar contrato
+                          </Dropdown.Item>
+                          <Dropdown.Item
+                            className="text-danger"
+                            onClick={() => {
+                              setContractToCancel(ownGarageContract(garage));
+                              setShowCancelModal(true);
+                            }}
+                          >
+                            Finalizar contrato
+                          </Dropdown.Item>
+                        </>
+                      )}
+                      {garage.contract_property_id && (
+                        <Dropdown.ItemText className="small text-muted">
+                          Incluida en el contrato de la propiedad
+                        </Dropdown.ItemText>
+                      )}
+                      {(garage.contract_document_path || garage.rental_contract_id) && (
+                        <Dropdown.Divider />
+                      )}
+                      <Dropdown.Item onClick={() => setEditingGarage(garage)}>
+                        Editar cochera
+                      </Dropdown.Item>
+                      <Dropdown.Item onClick={() => setGarageToSell(garage)}>
+                        Vender
+                      </Dropdown.Item>
+                      <Dropdown.Item
+                        className="text-danger"
+                        onClick={() => setPendingDeleteGarage(garage)}
+                      >
+                        Eliminar
+                      </Dropdown.Item>
+                    </Dropdown.Menu>
+                  </Dropdown>
                 </div>
               </td>
             </tr>
@@ -1114,10 +1263,13 @@ const PropertiesAndGarages = () => {
           setContractToCancel(null);
         }}
         contractId={contractToCancel?.id}
-        propertyLabel={
-          contractToCancel?.property?.direction ||
-          properties.find((p) => p.rental_contract?.id === contractToCancel?.id)?.direction
-        }
+        propertyLabel={(() => {
+          if (contractToCancel?.property?.direction) return contractToCancel.property.direction;
+          const prop = properties.find((p) => p.rental_contract?.id === contractToCancel?.id);
+          if (prop) return prop.direction;
+          const garage = garages.find((g) => g.rental_contract_id === contractToCancel?.id);
+          return garage ? garageLabel(garage) : undefined;
+        })()}
         onCancelled={loadData}
       />
       <EditContractModal
@@ -1130,9 +1282,13 @@ const PropertiesAndGarages = () => {
         onSaved={loadData}
       />
       <SellPropertyModal
-        show={!!propertyToSell}
-        onHide={() => setPropertyToSell(null)}
+        show={!!propertyToSell || !!garageToSell}
+        onHide={() => {
+          setPropertyToSell(null);
+          setGarageToSell(null);
+        }}
         property={propertyToSell}
+        garage={garageToSell}
         onSold={(result) => {
           const sale = result?.sale;
           const method = String(result?.method || "").toLowerCase();
@@ -1171,6 +1327,25 @@ const PropertiesAndGarages = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      <Modal show={!!pendingDeleteGarage} onHide={() => setPendingDeleteGarage(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirmar eliminación</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          ¿Eliminar la cochera <strong>{pendingDeleteGarage && garageLabel(pendingDeleteGarage)}</strong>?
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setPendingDeleteGarage(null)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => pendingDeleteGarage && handleDeleteGarage(pendingDeleteGarage.id)}
+          >
+            Eliminar
+          </Button>
+        </Modal.Footer>
+      </Modal>
       <FeedbackModal
         show={!!feedback}
         variant={feedback?.variant}
@@ -1204,6 +1379,7 @@ const PropertiesAndGarages = () => {
                     floor: sale.property_floor,
                     apartment: sale.property_apartment,
                     direction: sale.property_address || sale.property_direction,
+                    garageLabel: sale.garage_number ? `Garage N° ${sale.garage_number}` : undefined,
                     periodDate: dates.periodDate,
                     issuedAt: dates.issuedAt,
                   });

@@ -7,7 +7,8 @@ class PropertySale(Base):
     __tablename__ = "property_sales"
 
     id = Column(Integer, primary_key=True)
-    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=True)
+    garage_id = Column(Integer, ForeignKey("garages.id"), nullable=True)
     seller_owner_id = Column(Integer, ForeignKey("owners.id"), nullable=True)
     buyer_owner_id = Column(Integer, ForeignKey("owners.id"), nullable=True)
     buyer_name = Column(String)
@@ -20,6 +21,7 @@ class PropertySale(Base):
     document_path = Column(String, nullable=True)
 
     property = relationship("Property", back_populates="sales")
+    garage = relationship("Garage", back_populates="sales")
     seller = relationship("Owner", foreign_keys=[seller_owner_id])
     buyer = relationship("Owner", foreign_keys=[buyer_owner_id])
     installments = relationship(
