@@ -29,6 +29,11 @@ def list_rows(
     return admin_crud.list_rows(db, table, q=q, page=page, page_size=page_size)
 
 
+@router.get("/tables/{table}/choices")
+def list_choices(table: str, db: db_dependency, _admin: admin_dependency):
+    return admin_crud.fk_choices(db, table)
+
+
 @router.get("/tables/{table}/{row_id}")
 def get_row(table: str, row_id: str, db: db_dependency, _admin: admin_dependency):
     return admin_crud.get_row(db, table, row_id)

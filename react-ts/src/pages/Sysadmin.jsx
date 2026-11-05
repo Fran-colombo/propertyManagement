@@ -10,6 +10,7 @@ import {
 import {
   createAdminRow,
   deleteAdminRow,
+  listAdminChoices,
   listAdminRows,
   listAdminTables,
   updateAdminRow,
@@ -23,7 +24,7 @@ function pkValue(tableMeta, row) {
 function emptyForm(columns) {
   const data = {};
   (columns || []).forEach((col) => {
-    if (col.primary_key) return;
+    if (col.primary_key || col.hide_in_form) return;
     if (col.kind === "boolean") data[col.name] = false;
     else data[col.name] = "";
   });
@@ -33,6 +34,7 @@ function emptyForm(columns) {
 function rowToForm(columns, row) {
   const data = {};
   (columns || []).forEach((col) => {
+    if (col.hide_in_form) return;
     const value = row?.[col.name];
     if (col.hidden) {
       data[col.name] = "";
@@ -49,6 +51,7 @@ function formToPayload(columns, form, { creating }) {
   const payload = {};
   (columns || []).forEach((col) => {
     if (col.primary_key && !creating) return;
+    if (col.hide_in_form) return;
     if (col.hidden && !form[col.name]) return;
     let value = form[col.name];
     if (col.kind === "boolean") {
@@ -59,14 +62,40 @@ function formToPayload(columns, form, { creating }) {
       if (!creating && !col.primary_key) payload[col.name] = null;
       return;
     }
-    if (col.kind === "integer") payload[col.name] = Number(value);
+    if (col.kind === "integer" || col.fk) payload[col.name] = Number(value);
     else if (col.kind === "number") payload[col.name] = Number(value);
     else payload[col.name] = value;
   });
   return payload;
 }
 
-function FieldInput({ column, value, onChange }) {
+function cellText(column, row) {
+  if (column.fk) return row[`${column.name}__label`] || "";
+  const value = row[column.name];
+  if (value === true) return "sí";
+  if (value === false) return "no";
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function FieldInput({ column, value, onChange, choices }) {
+  if (column.fk) {
+    const options = choices?.[column.name] || [];
+    const selected = value === 0 || value ? String(value) : "";
+    return (
+      <Form.Select
+        value={selected}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">—</option>
+        {options.map((opt) => (
+          <option key={String(opt.id)} value={String(opt.id)}>
+            {opt.label || "Sin nombre"}
+          </option>
+        ))}
+      </Form.Select>
+    );
+  }
   if (column.kind === "boolean") {
     return (
       <Form.Check
@@ -74,7 +103,7 @@ function FieldInput({ column, value, onChange }) {
         id={`admin-${column.name}`}
         checked={Boolean(value)}
         onChange={(e) => onChange(e.target.checked)}
-        label={column.name}
+        label={column.label || column.name}
       />
     );
   }
@@ -140,7 +169,8 @@ export default function Sysadmin() {
     [catalog, tableName]
   );
   const columns = tableMeta?.columns || [];
-  const visibleColumns = columns.filter((c) => !c.hidden).slice(0, 8);
+  const formColumns = columns.filter((c) => !c.hide_in_form);
+  const visibleColumns = columns.filter((c) => !c.hidden && !c.hide_in_grid).slice(0, 7);
   const pageSize = 50;
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -174,8 +204,30 @@ export default function Sysadmin() {
     loadRows();
   }, [loadRows]);
 
-  const openCreate = () => setEditor({ mode: "create", form: emptyForm(columns) });
-  const openEdit = (row) => setEditor({ mode: "edit", id: pkValue(tableMeta, row), form: rowToForm(columns, row) });
+  const openCreate = async () => {
+    setError("");
+    try {
+      const choices = await listAdminChoices(tableName);
+      setEditor({ mode: "create", form: emptyForm(columns), choices: choices || {} });
+    } catch (err) {
+      setError(err.message || "No se pudo abrir el editor");
+    }
+  };
+
+  const openEdit = async (row) => {
+    setError("");
+    try {
+      const choices = await listAdminChoices(tableName);
+      setEditor({
+        mode: "edit",
+        id: pkValue(tableMeta, row),
+        form: rowToForm(columns, row),
+        choices: choices || {},
+      });
+    } catch (err) {
+      setError(err.message || "No se pudo abrir el editor");
+    }
+  };
 
   const saveEditor = async () => {
     if (!editor || !tableName) return;
@@ -248,7 +300,7 @@ export default function Sysadmin() {
           >
             {(catalog.tables || []).map((table) => (
               <option key={table.name} value={table.name}>
-                {table.label} ({table.name})
+                {table.label}
               </option>
             ))}
           </Form.Select>
@@ -262,7 +314,7 @@ export default function Sysadmin() {
           }}
         >
           <Form.Control
-            placeholder="Buscar"
+            placeholder="Buscar por nombre"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -282,8 +334,9 @@ export default function Sysadmin() {
           <Table striped bordered hover size="sm" className="small">
             <thead>
               <tr>
+                <th>Nombre</th>
                 {visibleColumns.map((col) => (
-                  <th key={col.name}>{col.name}</th>
+                  <th key={col.name}>{col.label || col.name}</th>
                 ))}
                 <th></th>
               </tr>
@@ -293,15 +346,10 @@ export default function Sysadmin() {
                 const id = pkValue(tableMeta, row);
                 return (
                   <tr key={String(id)}>
+                    <td className="text-break">{row._label || ""}</td>
                     {visibleColumns.map((col) => (
                       <td key={col.name} className="text-break">
-                        {row[col.name] === true
-                          ? "sí"
-                          : row[col.name] === false
-                            ? "no"
-                            : row[col.name] == null
-                              ? ""
-                              : String(row[col.name])}
+                        {cellText(col, row)}
                       </td>
                     ))}
                     <td className="text-nowrap">
@@ -317,7 +365,7 @@ export default function Sysadmin() {
               })}
               {!rows.length && (
                 <tr>
-                  <td colSpan={visibleColumns.length + 1} className="text-center text-muted">
+                  <td colSpan={visibleColumns.length + 2} className="text-center text-muted">
                     No hay filas.
                   </td>
                 </tr>
@@ -347,12 +395,13 @@ export default function Sysadmin() {
         </Modal.Header>
         <Modal.Body>
           {editor &&
-            columns.map((col) => (
+            formColumns.map((col) => (
               <Form.Group className="mb-2" key={col.name}>
-                {col.kind === "boolean" ? (
+                {col.kind === "boolean" && !col.fk ? (
                   <FieldInput
                     column={col}
                     value={editor.form[col.name]}
+                    choices={editor.choices}
                     onChange={(value) =>
                       setEditor((prev) => ({
                         ...prev,
@@ -363,13 +412,13 @@ export default function Sysadmin() {
                 ) : (
                   <>
                     <Form.Label className="small mb-1">
-                      {col.name}
-                      {col.primary_key ? " (id)" : ""}
+                      {col.label || col.name}
                       {col.nullable ? "" : " *"}
                     </Form.Label>
                     <FieldInput
                       column={col}
                       value={editor.form[col.name]}
+                      choices={editor.choices}
                       onChange={(value) =>
                         setEditor((prev) => ({
                           ...prev,
@@ -397,8 +446,7 @@ export default function Sysadmin() {
           <Modal.Title>Borrar fila</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          ¿Eliminar {tableMeta?.label} {pendingDelete ? pkValue(tableMeta, pendingDelete) : ""}? Esta acción no se puede
-          deshacer.
+          ¿Eliminar {pendingDelete?._label || tableMeta?.label}? Esta acción no se puede deshacer.
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setPendingDelete(null)} disabled={saving}>

@@ -12,6 +12,10 @@ export function listAdminRows(table, { q = "", page = 1, pageSize = 50 } = {}) {
   return apiFetch(`/admin/tables/${encodeURIComponent(table)}?${params.toString()}`);
 }
 
+export function listAdminChoices(table) {
+  return apiFetch(`/admin/tables/${encodeURIComponent(table)}/choices`);
+}
+
 export function getAdminRow(table, id) {
   return apiFetch(`/admin/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`);
 }
