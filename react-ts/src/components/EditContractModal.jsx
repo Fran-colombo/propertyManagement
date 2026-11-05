@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert, Spinner } from "react-bootstrap";
-import { getContract, updateContract, uploadContractDocument } from "../api/contract";
+import { getContract, syncContractTgi, updateContract, uploadContractDocument } from "../api/contract";
 import { getPeriodsByContract } from "../api/contract_period";
 import { getAllAgencies } from "../api/real_agency";
 import { mediaUrl } from "../utils/mediaUrl";
 import FeedbackModal from "./FeedbackModal";
 import HistoricalRentTiers from "./HistoricalRentTiers";
+import TgiDebtPlanChoice from "./TgiDebtPlanChoice";
 import {
   groupPeriodsIntoTiers,
   serializeTiers,
@@ -44,6 +45,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   const [agencies, setAgencies] = useState([]);
   const [rentTiers, setRentTiers] = useState([]);
   const [showRentTiers, setShowRentTiers] = useState(false);
+  const [debtPrompt, setDebtPrompt] = useState(null);
+  const [savedTgiMode, setSavedTgiMode] = useState("manual");
 
   useEffect(() => {
     if (!show || !contractId) return;
@@ -54,6 +57,8 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
     setFeedback(null);
     setRentTiers([]);
     setShowRentTiers(false);
+    setDebtPrompt(null);
+    setSavedTgiMode("manual");
     setLoading(true);
     Promise.all([
       getContract(contractId),
@@ -75,6 +80,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           ];
         }
         setRentTiers(tiers);
+        setSavedTgiMode(data.tgi_mode || "manual");
         setForm({
           real_agency_id: data.real_agency_id ?? "",
           pays_epe: !!data.pays_epe,
@@ -151,19 +157,34 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
       if (showRentTiers && serializedTiers.length >= 1) {
         payload.historical_rents = serializedTiers;
       }
-      await updateContract(contractId, payload);
+      const saved = await updateContract(contractId, payload);
       if (file) {
         await uploadContractDocument(contractId, file);
       }
+      if (saved?.needs_debt_plan) {
+        setDebtPrompt({
+          contractId,
+          overdue: saved.overdue_periods || [],
+        });
+        if (onSaved) onSaved();
+        return;
+      }
       if (onSaved) onSaved();
+      const tgiWarning = saved?.tgi_sync_error
+        ? ` No se pudo traer el TGI: ${saved.tgi_sync_error}`
+        : "";
+      const switchedToSiat =
+        form.pays_tgi && form.tgi_mode === "siat" && savedTgiMode !== "siat";
       setFeedback({
-        variant: "success",
+        variant: tgiWarning ? "warning" : "success",
         title: "Contrato actualizado",
-        message: form.mark_past_as_paid
+        message: (form.mark_past_as_paid
           ? "Los meses anteriores a hoy quedaron como ya cobrados y no se cuentan como transferencias nuevas. Si los habías cargado como pago, se corrigieron."
-          : showRentTiers && serializeTiers(rentTiers).length
-            ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos. EPE, TGI, API y seguro de cada mes se editan en Impuestos; el SIAT se consulta con Actualizar TGI."
-            : "Los cambios se guardaron. EPE, TGI, API y seguro de cada mes se editan en Impuestos. El SIAT no se consulta al guardar: usá Actualizar TGI.",
+          : switchedToSiat && !tgiWarning
+            ? "Los cambios se guardaron y se trajo el TGI de este mes desde el SIAT. Los meses futuros no se suman."
+            : showRentTiers && serializeTiers(rentTiers).length
+              ? "Los cambios se guardaron. Los tramos de alquiler se aplicaron a los períodos. EPE, TGI, API y seguro de cada mes se editan en Impuestos."
+              : "Los cambios se guardaron. EPE, TGI, API y seguro de cada mes se editan en Impuestos.") + tgiWarning,
       });
     } catch (err) {
       setFeedback({
@@ -185,6 +206,34 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
   };
 
   const documentHref = mediaUrl(form.document_path);
+
+  const applyDebtPlan = async (plan) => {
+    if (!debtPrompt?.contractId) return;
+    setSaving(true);
+    setError("");
+    try {
+      const result = await syncContractTgi(debtPrompt.contractId, plan);
+      setDebtPrompt(null);
+      if (onSaved) onSaved();
+      if (result?.tgi_sync_error) {
+        setFeedback({
+          variant: "warning",
+          title: "Contrato actualizado",
+          message: `Los cambios se guardaron. No se pudo traer el TGI: ${result.tgi_sync_error}`,
+        });
+        return;
+      }
+      setFeedback({
+        variant: "success",
+        title: "Contrato actualizado",
+        message: result?.note || "Los cambios se guardaron y el TGI de este mes quedó cargado.",
+      });
+    } catch (err) {
+      setError(err.message || "No se pudo aplicar el plan de TGI.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -289,7 +338,9 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                       (form.property_tgi_account && form.property_tgi_code ? (
                         <Form.Text className="text-muted d-block mt-2">
                           Se usa la cuenta {form.property_tgi_account} de la propiedad.
-                          Guardar no consulta el SIAT: en Contratos activos usá Actualizar TGI.
+                          {savedTgiMode === "siat"
+                            ? " Si este mes se cargó a mano, usá Actualizar TGI para traer solo el TGI de este mes (no los próximos)."
+                            : " Al guardar se trae el TGI de este mes. Los meses futuros no se suman."}
                         </Form.Text>
                       ) : (
                         <div className="mt-2">
@@ -318,10 +369,21 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
                               ? `La propiedad tiene la cuenta ${form.property_tgi_account}; falta el código. `
                               : ""}
                             Se guarda en la propiedad para los próximos contratos.
-                            Guardar no consulta el SIAT: usá Actualizar TGI.
+                            {savedTgiMode === "siat"
+                              ? " Si este mes se cargó a mano, usá Actualizar TGI."
+                              : " Al guardar se trae el TGI de este mes."}
                           </Form.Text>
                         </div>
                       ))}
+                    {debtPrompt && (
+                      <div className="mt-2">
+                        <TgiDebtPlanChoice
+                          overdue={debtPrompt.overdue}
+                          busy={saving}
+                          onChoose={applyDebtPlan}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -360,7 +422,7 @@ export default function EditContractModal({ show, onHide, contractId, onSaved })
           <Button variant="secondary" onClick={onHide} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" disabled={loading || saving || !loaded}>
+          <Button type="submit" variant="primary" disabled={loading || saving || !loaded || !!debtPrompt}>
             {saving ? "Guardando..." : "Guardar"}
           </Button>
         </Modal.Footer>

@@ -156,6 +156,8 @@ class PropertyService:
                     pays_api=bool(prop.rental_contract.pays_api),
                     fire_insurance=bool(prop.rental_contract.fire_insurance),
                     notes=prop.rental_contract.notes,
+                    status=prop.rental_contract.status,
+                    cancelled=prop.rental_contract.status == 0,
                 )
         
         return PropertyResponse(

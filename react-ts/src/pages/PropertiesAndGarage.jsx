@@ -74,6 +74,10 @@ function ownGarageContract(garage) {
   return { id: garage.rental_contract_id };
 }
 
+function isCancelledContract(contract) {
+  return !contract || contract.cancelled === true || contract.status === 0;
+}
+
 function GarageStatusBadge({ garage, long = false }) {
   if (garage.rental_contract_id) return <Badge bg="secondary">Alquilado</Badge>;
   if (garage.management_status === "DELIVERED") return <Badge bg="info">Entregada</Badge>;
@@ -549,6 +553,7 @@ const PropertiesAndGarages = () => {
               >
                 Editar contrato
               </Button>
+              {!isCancelledContract(prop.rental_contract) && (
               <Button
                 variant="outline-danger"
                 size="sm"
@@ -559,6 +564,7 @@ const PropertiesAndGarages = () => {
               >
                 Finalizar contrato
               </Button>
+              )}
             </div>
           </>
         ) : (
@@ -795,6 +801,7 @@ const PropertiesAndGarages = () => {
                             >
                               Editar contrato
                             </Dropdown.Item>
+                            {!isCancelledContract(contract) && (
                             <Dropdown.Item
                               className="text-danger"
                               onClick={() => {
@@ -804,6 +811,7 @@ const PropertiesAndGarages = () => {
                             >
                               Finalizar contrato
                             </Dropdown.Item>
+                            )}
                             <Dropdown.Divider />
                           </>
                         )}

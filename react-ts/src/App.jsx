@@ -10,9 +10,11 @@ import ExportPage from "./pages/Export";
 import Settings from "./pages/Settings";
 import ContractsTable from "./pages/Contracts";
 import AllContracts from "./pages/AllContracts";
+import Sysadmin from "./pages/Sysadmin";
 import AuthProvider from "../context/AuthProvider";
 import Login from "./pages/Login";
 import PrivateRoute from "../routes/PrivateRoute";
+import AdminRoute from "../routes/AdminRoute";
 import './App.css';
 
 
@@ -122,6 +124,16 @@ function App() {
                   <AllContracts />
                 </Layout>
               </PrivateRoute>
+            }
+          />
+          <Route
+            path="/sysadmin"
+            element={
+              <AdminRoute>
+                <Layout>
+                  <Sysadmin />
+                </Layout>
+              </AdminRoute>
             }
           />
         </Routes>

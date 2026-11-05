@@ -22,7 +22,7 @@ const linkClass = (active) =>
 
 export default function NavigationBar() {
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, role } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingInstallments, setPendingInstallments] = useState(0);
 
@@ -131,6 +131,17 @@ export default function NavigationBar() {
           Exportar
         </NavDropdown.Item>
       </NavDropdown>
+      {role === "admin" && (
+        <Nav.Link
+          as={Link}
+          to="/sysadmin"
+          active={path === "/sysadmin"}
+          onClick={onSelect}
+          className={linkClass(path === "/sysadmin")}
+        >
+          Sysadmin
+        </Nav.Link>
+      )}
       <Nav.Link
         as={Link}
         to="/configuracion"

@@ -205,6 +205,7 @@ const ContractsTable = () => {
     const renderPeriodActions = (period, stacked = false) => {
       const isPaid = period.payment_status === "PAGADO";
       const hasPayments = Number(period.amount_paid) > 0;
+      const cancelled = period.contract?.cancelled || period.contract?.status === 0;
       return (
       <div className={stacked ? "d-grid gap-1" : "d-flex flex-wrap gap-2"}>
         {!isPaid && (
@@ -293,7 +294,7 @@ const ContractsTable = () => {
             {syncingTgiId === period.contract.id ? "Consultando TGI..." : "Actualizar TGI"}
           </Button>
         )}
-        {period.contract?.id && (
+        {period.contract?.id && !cancelled && (
           <Button
             variant="outline-danger"
             size="sm"

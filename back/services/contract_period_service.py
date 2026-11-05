@@ -25,6 +25,17 @@ def _period_load():
         joinedload(ContractPeriod.contract).joinedload(RentalContract.garage).joinedload(Garage.property),
     )
 
+
+def _activos_contract_filter():
+    """Keep unpaid occupancy of a cancelled lease; drop months after the leave date."""
+    return or_(
+        RentalContract.status == 1,
+        and_(
+            RentalContract.status == 0,
+            ContractPeriod.start_date <= RentalContract.end_date,
+        ),
+    )
+
 class ContractPeriodService:
     def __init__(self, db: Session):
         self.db = db
@@ -145,12 +156,17 @@ class ContractPeriodService:
         )
 
     def get_all_pending_periods(self) -> List[ContractPeriod]:
+        from services.rental_contract_service import RentalContractService
+
+        RentalContractService(self.db).release_properties_from_ended_contracts()
         pending = (
             self.db.query(ContractPeriod)
             .options(*_period_load())
+            .join(RentalContract, ContractPeriod.contract_id == RentalContract.id)
             .filter(
                 ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
                 ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
+                _activos_contract_filter(),
             )
             .order_by(
                 ContractPeriod.due_date.asc(),
@@ -175,11 +191,13 @@ class ContractPeriodService:
         return (
             self.db.query(ContractPeriod)
             .options(*_period_load())
+            .join(RentalContract, ContractPeriod.contract_id == RentalContract.id)
             .filter(
                 ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
                 ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
                 ContractPeriod.start_date <= last_day_of_month,
                 ContractPeriod.end_date >= first_day_of_month,
+                _activos_contract_filter(),
             )
             .order_by(
                 ContractPeriod.due_date.asc(),
@@ -192,6 +210,9 @@ class ContractPeriodService:
         self, year: int, month: int, payment: Optional[str] = None
     ) -> List[ContractPeriod]:
         """Periods that overlap the given year/month. payment: pending | paid | all."""
+        from services.rental_contract_service import RentalContractService
+
+        RentalContractService(self.db).release_properties_from_ended_contracts()
         first_day = date(year, month, 1)
         last_day = date(year, month, calendar.monthrange(year, month)[1])
         payment = (payment or "pending").strip().lower()
@@ -199,10 +220,12 @@ class ContractPeriodService:
         query = (
             self.db.query(ContractPeriod)
             .options(*_period_load())
+            .join(RentalContract, ContractPeriod.contract_id == RentalContract.id)
             .filter(
                 ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
                 ContractPeriod.start_date <= last_day,
                 ContractPeriod.end_date >= first_day,
+                _activos_contract_filter(),
             )
         )
         if payment == "paid":

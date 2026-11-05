@@ -6,7 +6,7 @@ from database import SessionLocal, init_db, UPLOADS_ROOT
 init_db()
 
 from services.rental_contract_service import RentalContractService
-from controllers import tenant_controller, user_controller, owner_controller, property_controller, rental_contract_controller, contract_period_controller, transaction_controller, garage_controller, real_agency_controller, index_controller, contract_history_controller, property_sale_controller, reports_controller, notification_controller, settings_controller
+from controllers import tenant_controller, user_controller, owner_controller, property_controller, rental_contract_controller, contract_period_controller, transaction_controller, garage_controller, real_agency_controller, index_controller, contract_history_controller, property_sale_controller, reports_controller, notification_controller, settings_controller, admin_controller
 from scheduler_tasks import init_scheduler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -71,6 +71,7 @@ app.include_router(contract_history_controller.router)
 app.include_router(reports_controller.router)
 app.include_router(notification_controller.router)
 app.include_router(settings_controller.router)
+app.include_router(admin_controller.router)
 
 _uploads_root = os.path.abspath(UPLOADS_ROOT)
 os.makedirs(_uploads_root, exist_ok=True)

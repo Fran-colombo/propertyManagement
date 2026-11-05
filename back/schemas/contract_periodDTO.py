@@ -41,6 +41,8 @@ class RentalContractSimpleResponse(BaseModel):
     fire_insurance: Optional[bool] = None
     document_path: Optional[str] = None
     garage_label: Optional[str] = None
+    status: Optional[int] = None
+    cancelled: bool = False
 
 class PeriodTaxesResponse(BaseModel):
     epe: Optional[float] = None
@@ -139,6 +141,8 @@ class ContractPeriodResponse(BaseModel):
                 'fire_insurance': getattr(contract_obj, 'fire_insurance', False),
                 'document_path': getattr(contract_obj, 'document_path', None),
                 'garage_label': contract_location_label(contract_obj) if not property_dict else None,
+                'status': getattr(contract_obj, 'status', 1),
+                'cancelled': getattr(contract_obj, 'status', 1) == 0,
             }
 
         period_dict['contract'] = contract_dict

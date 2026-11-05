@@ -124,6 +124,48 @@ class TgiChargeTests(unittest.TestCase):
         self.assertEqual(charge["current"]["total"], 78185.49)
         self.assertEqual(charge["total"], 78185.49)
 
+    def test_current_month_without_past_debt_is_only_this_month(self):
+        rows = [
+            row("2026-12", 26593.42, 0, "no_exigible"),
+            row("2026-11", 26593.42, 0, "no_exigible"),
+            row("2026-10", 26593.42, 0, "abonado"),
+        ]
+        charge = build_tgi_charge(rows, "2026-11")
+        self.assertIsNone(charge["catchup"])
+        self.assertEqual(charge["current"]["total"], 26593.42)
+        self.assertEqual(charge["total"], 26593.42)
+        self.assertEqual(overdue_months(rows, "2026-11"), [])
+
+    def test_future_pending_is_not_catchup(self):
+        rows = [
+            row("2026-12", 26593.42, 0, "pendiente"),
+            row("2026-11", 26593.42, 0, "no_exigible"),
+            row("2026-10", 26593.42, 0, "abonado"),
+        ]
+        charge = build_tgi_charge(rows, "2026-11")
+        self.assertIsNone(charge["catchup"])
+        self.assertEqual(charge["total"], 26593.42)
+        self.assertEqual(overdue_months(rows, "2026-11"), [])
+
+    def test_locked_future_catchup_is_ignored(self):
+        rows = [
+            row("2026-12", 26593.42, 0, "no_exigible"),
+            row("2026-11", 26593.42, 0, "no_exigible"),
+        ]
+        charge = build_tgi_charge(
+            rows,
+            "2026-11",
+            locked_catchup={
+                "period": "2026-12",
+                "capital": 26593.42,
+                "interest": 0,
+                "status": "no_exigible",
+                "total": 26593.42,
+            },
+        )
+        self.assertIsNone(charge["catchup"])
+        self.assertEqual(charge["total"], 26593.42)
+
     def test_parse_error_page_has_no_rows(self):
         page = '<UL class="error" id="strutsErrors"><LI>La cuenta ingresada es inexistente</LI></UL>'
         self.assertEqual(parse_siat_html(page), [])

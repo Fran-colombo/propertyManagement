@@ -382,10 +382,8 @@ class RentalContractService:
 
     def _period_tgi_locked(self, period: ContractPeriod) -> bool:
         detail = parse_tgi_detail(getattr(period, "tgi_detail", None))
-        if not detail:
+        if not detail or detail.get("manual"):
             return False
-        if detail.get("manual"):
-            return True
         return bool(detail.get("current") or detail.get("catchup"))
 
     def _tgi_property(self, contract: RentalContract) -> Optional[Property]:
@@ -439,6 +437,28 @@ class RentalContractService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Para traer el TGI del SIAT falta la cuenta o el código de gestión. Completalos en el contrato o elegí Manual.",
+            )
+
+    def _attach_tgi_sync(self, response: ContractResponse, result: Optional[TgiSyncResult]) -> ContractResponse:
+        if result is None:
+            return response
+        response.tgi_sync_error = result.tgi_sync_error
+        response.needs_debt_plan = bool(result.needs_debt_plan)
+        response.overdue_periods = result.overdue_periods
+        return response
+
+    def _try_sync_tgi(self, contract: RentalContract) -> Optional[TgiSyncResult]:
+        if not self._tgi_is_variable(contract):
+            return None
+        try:
+            return self.sync_contract_tgi(contract.id)
+        except HTTPException as exc:
+            detail = exc.detail
+            message = detail if isinstance(detail, str) else str(detail)
+            return TgiSyncResult(tgi_sync_error=message)
+        except Exception as exc:
+            return TgiSyncResult(
+                tgi_sync_error=f"No se pudo consultar el TGI en el SIAT: {exc}"
             )
 
     def _choose_tgi_period(self, periods: List[ContractPeriod], today: date) -> Optional[ContractPeriod]:
@@ -499,7 +519,7 @@ class RentalContractService:
             .all()
         )
         target = self._choose_tgi_period(periods, date.today())
-        if not target or not target.due_date:
+        if not target or not (target.start_date or target.due_date):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No hay un mes impago para cargar el TGI.",
@@ -524,9 +544,13 @@ class RentalContractService:
             for period in periods
             if period.id != target.id
         )
-        current_month = f"{target.due_date.year:04d}-{target.due_date.month:02d}"
+        anchor = target.start_date or target.due_date
+        current_month = f"{anchor.year:04d}-{anchor.month:02d}"
         late = overdue_months(installments, current_month)
         plan = str(contract.tgi_debt_plan or "").strip().lower()
+        if not late:
+            plan = ""
+            contract.tgi_debt_plan = None
         if late and plan not in ("two_installments", "proportional"):
             return TgiSyncResult(
                 needs_debt_plan=True,
@@ -1138,6 +1162,7 @@ class RentalContractService:
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail="Agencia inmobiliaria no encontrada",
                     )
+        old_tgi_mode = str(getattr(contract, "tgi_mode", None) or "").strip().lower()
         tgi_account = payload.pop("tgi_account", None)
         tgi_code = payload.pop("tgi_code", None)
         # El TGI de cada mes vive en el período. El del contrato es solo un valor
@@ -1161,7 +1186,11 @@ class RentalContractService:
         else:
             self.db.commit()
         self.db.refresh(contract)
-        return ContractResponse.from_orm(contract)
+        response = ContractResponse.from_orm(contract)
+        switched_to_siat = self._tgi_is_variable(contract) and old_tgi_mode != "siat"
+        if switched_to_siat:
+            return self._attach_tgi_sync(response, self._try_sync_tgi(contract))
+        return response
 
     def update_period_rent(
         self,
@@ -1273,9 +1302,69 @@ class RentalContractService:
         return [ContractPeriodResponse.from_orm(p) for p in periods]
     
 
+    def _close_unpaid_after_end(
+        self,
+        contract: RentalContract,
+        end_date: Optional[date] = None,
+        *,
+        waive_current_month: bool = False,
+        note: Optional[str] = None,
+    ) -> int:
+        """Mark unpaid periods after the leave date as CONTRATO_TERMINADO."""
+        end_date = end_date or contract.end_date
+        if not end_date:
+            return 0
+        unpaid = (
+            self.db.query(ContractPeriod)
+            .filter(
+                ContractPeriod.contract_id == contract.id,
+                ContractPeriod.payment_status != PaymentStatusEnum.PAGADO,
+                ContractPeriod.payment_status != PaymentStatusEnum.CONTRATO_TERMINADO,
+            )
+            .all()
+        )
+        ref = f"BAJA-{contract.id}"
+        text = note or (
+            f"Período posterior a la baja ({end_date.isoformat()}). No corresponde cobro."
+        )
+        closed = 0
+        for period in unpaid:
+            after_leave = period.start_date and period.start_date > end_date
+            leave_month = (
+                waive_current_month
+                and period.start_date
+                and period.end_date
+                and period.start_date <= end_date <= period.end_date
+            )
+            if not (after_leave or leave_month):
+                continue
+            period.payment_status = PaymentStatusEnum.CONTRATO_TERMINADO
+            period.payment_reference = ref
+            period.termination_note = (
+                f"{text.rstrip('.')}. Mes de la baja sin cobrar."
+                if leave_month and not after_leave
+                else text
+            )
+            period.total_amount = period.amount_paid or 0
+            closed += 1
+        return closed
+
     def release_properties_from_ended_contracts(self):
         """Free units whose end_date already passed. Scheduled terminations always free after that date."""
         today = date.today()
+
+        cancelled = (
+            self.db.query(RentalContract)
+            .filter(RentalContract.status == 0)
+            .all()
+        )
+        for contract in cancelled:
+            term = getattr(contract, "termination", None)
+            self._close_unpaid_after_end(
+                contract,
+                contract.end_date,
+                waive_current_month=bool(term and term.waive_current_month),
+            )
 
         contracts = (
             self.db.query(RentalContract)
@@ -1301,6 +1390,12 @@ class RentalContractService:
 
             # After a scheduled leave date, free the unit even if there is unpaid debt
             if has_termination or not has_pending_debt:
+                term = getattr(contract, "termination", None)
+                self._close_unpaid_after_end(
+                    contract,
+                    contract.end_date,
+                    waive_current_month=bool(term and term.waive_current_month),
+                )
                 contract.status = 0
 
         self.db.commit()
@@ -1473,6 +1568,13 @@ class RentalContractService:
                         remitted_to_owner=1,
                     )
                 )
+
+            self._close_unpaid_after_end(
+                contract,
+                effective_date,
+                waive_current_month=waive_current_month,
+                note=note,
+            )
 
             if commit:
                 self.db.commit()

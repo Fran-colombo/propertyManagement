@@ -89,6 +89,8 @@ class RentalContractWithPeriodsResponse(BaseModel):
     pays_api: bool = False
     fire_insurance: bool = False
     notes: Optional[str] = None
+    status: Optional[int] = 1
+    cancelled: bool = False
 
 
     class Config:

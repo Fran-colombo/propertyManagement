@@ -151,7 +151,12 @@ export default function EditTaxesModal({ show, onHide, period, onSave }) {
                   </div>
                 )}
                 {period?.tgi_detail?.manual && (
-                  <div className="small text-muted mb-1">Monto cargado a mano.</div>
+                  <div className="small text-muted mb-1">
+                    Monto cargado a mano.
+                    {period?.contract?.tgi_mode === "siat"
+                      ? " Para volver al SIAT usá Actualizar TGI: carga solo este mes, no los próximos."
+                      : ""}
+                  </div>
                 )}
                 <Form.Control
                   type="number"

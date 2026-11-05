@@ -1,8 +1,8 @@
 """Consulta anónima de TGI en el SIAT de Rosario y armado del cargo mensual.
 
-El cargo de un alquiler es el TGI del mes (capital, o capital + interés si ya está
-vencido) más el período Pendiente de Pago más antiguo que todavía no se cargó
-en otro mes de alquiler.
+El cargo de un alquiler es el TGI de ese mes (aunque en el SIAT figure
+No Exigible) más, si hay, un único período Pendiente de Pago **ya vencido**.
+Los meses futuros no se suman.
 """
 from __future__ import annotations
 
@@ -309,12 +309,16 @@ def _empty_month(period: str) -> dict:
 
 
 def overdue_months(rows: Iterable[SiatInstallment], current_month: str) -> list[str]:
-    """Meses Pendiente de Pago distintos del mes que se está cobrando."""
+    """Meses Pendiente de Pago anteriores al mes que se está cobrando.
+
+    Noviembre y diciembre No Exigible no cuentan: el plan de dos cuotas es
+    solo para deuda pasada, no para cuotas futuras.
+    """
     return sorted(
         {
             row.period
             for row in rows
-            if row.status == "pendiente" and row.period != current_month
+            if row.status == "pendiente" and row.period < current_month
         }
     )
 
@@ -328,10 +332,11 @@ def build_tgi_charge(
     fetched_on: Optional[date] = None,
     skip_catchup: bool = False,
 ) -> dict:
-    """Mes actual + el pendiente más antiguo que no esté ya asignado a otro alquiler.
+    """TGI de este mes + el pendiente vencido más antiguo, si hay.
 
-    Si este período ya tenía un mes de catch-up guardado, se mantiene aunque en el
-    SIAT ya figure abonado: así no se corre el cargo al mes siguiente antes de cobrarlo.
+    Nunca suma cuotas futuras (No Exigible ni Pendiente de un mes posterior).
+    Si este período ya tenía un catch-up de un mes pasado, se mantiene aunque en
+    el SIAT ya figure abonado: así no se corre el cargo al mes siguiente antes de cobrarlo.
     """
     grouped: dict[str, list[SiatInstallment]] = {}
     for row in rows:
@@ -361,6 +366,8 @@ def build_tgi_charge(
 
     catchup = None
     locked_period = None if skip_catchup else (locked_catchup or {}).get("period")
+    if locked_period and not (locked_period < current_month):
+        locked_period = None
     if locked_period and locked_period != current_month:
         if locked_period in grouped:
             fresh = summarize_month(grouped[locked_period], locked_period)
@@ -381,7 +388,7 @@ def build_tgi_charge(
         pending_months = sorted(
             month
             for month, month_rows in grouped.items()
-            if month != current_month
+            if month < current_month
             and month not in taken
             and any(row.status == "pendiente" for row in month_rows)
         )
